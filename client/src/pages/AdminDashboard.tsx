@@ -1,0 +1,1981 @@
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
+import {
+  BarChart3,
+  BellRing,
+  BookOpen,
+  Download,
+  MessageSquareText,
+  Pencil,
+  Pin,
+  PinOff,
+  Plus,
+  Search,
+  Send,
+  Trash2,
+  Users,
+} from "lucide-react";
+import vahaniLogo from "@/assets/vahani-logo.png";
+import {
+  assignScholarsToProgramme,
+  createAdminProgramme,
+  createAdminUser,
+  deleteAdminAssignment,
+  deleteAdminProgramme,
+  deleteAdminUser,
+  getAdminOverview,
+  getAdminReport,
+  removeScholarFromProgramme,
+  updateAdminProgramme,
+  updateAdminSettings,
+  updateAdminUser,
+  type AdminOverview,
+  type AdminProgramme,
+  type AdminReportResponse,
+  type AdminSettings,
+  type AdminUser,
+  type AdminUserRole,
+} from "@/api/admin";
+import {
+  createAnnouncement,
+  getAnnouncements,
+  type Announcement,
+} from "@/api/announcements";
+import {
+  getSupportQueries,
+  replyToSupportQuery,
+  updateSupportQueryStatus,
+  type QueryStatus,
+  type SupportQuery,
+} from "@/api/queries";
+import { AdminSidebar } from "@/components/dashboard/AdminSidebar";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+
+const emptyUserForm = {
+  name: "",
+  email: "",
+  password: "",
+  role: "scholar" as AdminUserRole,
+  batch: "",
+  phoneNumber: "",
+  creditsEarned: "0",
+};
+
+const emptyProgrammeForm = {
+  title: "",
+  description: "",
+  credits: "",
+  programmeManagerId: "",
+  selfEnrollmentEnabled: false,
+  spotlightTitle: "",
+  spotlightMessage: "",
+};
+
+const emptyAnnouncementForm = {
+  title: "",
+  message: "",
+  programmeId: "",
+  targetBatch: "",
+  targetRoles: ["scholar"] as string[],
+  userIds: [] as string[],
+};
+
+const reportLabels = {
+  enrollment: "Enrollment",
+  progress: "Progress",
+  evaluations: "Evaluations",
+} as const;
+
+const queryStatusLabels: Record<QueryStatus, string> = {
+  open: "Open",
+  in_progress: "In Progress",
+  resolved: "Resolved",
+  closed: "Closed",
+};
+
+const formatDate = (value?: string | null) =>
+  value
+    ? new Date(value).toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : "No date";
+
+const formatDateTime = (value?: string | null) =>
+  value
+    ? new Date(value).toLocaleString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : "No date";
+
+const matchesDateRange = (value: string | null | undefined, from: string, to: string) => {
+  if (!value) return !from && !to;
+  const target = new Date(value).getTime();
+  if (Number.isNaN(target)) return false;
+  if (from && target < new Date(from).getTime()) return false;
+  if (to) {
+    const toDate = new Date(to);
+    toDate.setHours(23, 59, 59, 999);
+    if (target > toDate.getTime()) return false;
+  }
+  return true;
+};
+
+const roleLabel = (role: AdminUserRole) =>
+  role === "programme_manager"
+    ? "Programme manager"
+    : role === "admin"
+      ? "Admin"
+      : "Scholar";
+
+const downloadCsv = (report: AdminReportResponse) => {
+  if (!report.rows.length) return;
+  const headers = Object.keys(report.rows[0]);
+  const csv = [
+    headers.join(","),
+    ...report.rows.map((row) =>
+      headers
+        .map((header) => `"${String(row[header] ?? "").replace(/"/g, '""')}"`)
+        .join(","),
+    ),
+  ].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${report.type}-report-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+};
+
+export default function AdminDashboard() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+
+  const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [queries, setQueries] = useState<SupportQuery[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("overview");
+
+  const [userSearch, setUserSearch] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState<"all" | AdminUserRole>("all");
+  const [userBatchFilter, setUserBatchFilter] = useState("all");
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [userForm, setUserForm] = useState(emptyUserForm);
+  const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [pendingDeleteUser, setPendingDeleteUser] = useState<AdminUser | null>(null);
+
+  const [programmeSearch, setProgrammeSearch] = useState("");
+  const [programmeDateFrom, setProgrammeDateFrom] = useState("");
+  const [programmeDateTo, setProgrammeDateTo] = useState("");
+  const [editingProgrammeId, setEditingProgrammeId] = useState<string | null>(null);
+  const [programmeForm, setProgrammeForm] = useState(emptyProgrammeForm);
+  const [isProgrammeDialogOpen, setIsProgrammeDialogOpen] = useState(false);
+  const [selectedProgrammeId, setSelectedProgrammeId] = useState("");
+  const [isProgrammeDetailOpen, setIsProgrammeDetailOpen] = useState(false);
+  const [selectedScholarIds, setSelectedScholarIds] = useState<string[]>([]);
+  const [pendingDeleteProgramme, setPendingDeleteProgramme] =
+    useState<AdminProgramme | null>(null);
+  const [pendingDeleteAssignmentId, setPendingDeleteAssignmentId] = useState<string | null>(null);
+
+  const [announcementSearch, setAnnouncementSearch] = useState("");
+  const [announcementDateFrom, setAnnouncementDateFrom] = useState("");
+  const [announcementDateTo, setAnnouncementDateTo] = useState("");
+  const [announcementForm, setAnnouncementForm] = useState(emptyAnnouncementForm);
+  const [isAnnouncementDialogOpen, setIsAnnouncementDialogOpen] = useState(false);
+
+  const [querySearch, setQuerySearch] = useState("");
+  const [queryStatusFilter, setQueryStatusFilter] = useState<"all" | QueryStatus>("all");
+  const [queryBatchFilter, setQueryBatchFilter] = useState("all");
+  const [selectedQueryId, setSelectedQueryId] = useState("");
+  const [queryReplyDraft, setQueryReplyDraft] = useState("");
+  const [queryStatusDraft, setQueryStatusDraft] = useState<QueryStatus>("open");
+  const [pinnedQueryIds, setPinnedQueryIds] = useState<string[]>([]);
+
+  const [reportType, setReportType] =
+    useState<keyof typeof reportLabels>("enrollment");
+  const [reportData, setReportData] = useState<AdminReportResponse | null>(null);
+  const [settingsDraft, setSettingsDraft] = useState<AdminSettings | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("admin:pinnedQueries");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setPinnedQueryIds(parsed.filter((item): item is string => typeof item === "string"));
+      }
+    } catch {
+      setPinnedQueryIds([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("admin:pinnedQueries", JSON.stringify(pinnedQueryIds));
+  }, [pinnedQueryIds]);
+
+  const loadOverview = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await getAdminOverview();
+      const nextOverview = response.data as AdminOverview;
+      setOverview(nextOverview);
+      setSettingsDraft(nextOverview.settings);
+      setSelectedProgrammeId((current) => current || nextOverview.programmes[0]?.id || "");
+    } catch (error) {
+      toast({
+        title: "Failed to load admin dashboard",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  const loadAnnouncements = useCallback(async () => {
+    try {
+      const response = await getAnnouncements();
+      const nextAnnouncements = Array.isArray(response?.data?.announcements)
+        ? (response.data.announcements as Announcement[])
+        : [];
+      setAnnouncements(nextAnnouncements);
+    } catch (error) {
+      toast({
+        title: "Unable to load announcements",
+        description: error instanceof Error ? error.message : "Please try again shortly.",
+        variant: "destructive",
+      });
+    }
+  }, [toast]);
+
+  const loadQueries = useCallback(async (preferredQueryId?: string) => {
+    try {
+      const response = await getSupportQueries();
+      const nextQueries = Array.isArray(response?.data?.queries)
+        ? (response.data.queries as SupportQuery[])
+        : [];
+      setQueries(nextQueries);
+      setSelectedQueryId((current) => preferredQueryId || current || nextQueries[0]?.id || "");
+    } catch (error) {
+      toast({
+        title: "Unable to load support queries",
+        description: error instanceof Error ? error.message : "Please try again shortly.",
+        variant: "destructive",
+      });
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    void Promise.all([loadOverview(), loadAnnouncements(), loadQueries()]);
+  }, [loadAnnouncements, loadOverview, loadQueries]);
+
+  const users = useMemo(() => overview?.users ?? [], [overview?.users]);
+  const programmes = useMemo(() => overview?.programmes ?? [], [overview?.programmes]);
+  const scholars = users.filter((entry) => entry.role === "scholar");
+  const programmeManagers = users.filter((entry) => entry.role === "programme_manager");
+
+  const scholarBatches = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          scholars
+            .map((entry) => entry.batch)
+            .filter((entry): entry is string => Boolean(entry)),
+        ),
+      ).sort(),
+    [scholars],
+  );
+
+  const selectedProgramme =
+    programmes.find((programme) => programme.id === selectedProgrammeId) ||
+    programmes[0] ||
+    null;
+
+  const filteredUsers = useMemo(
+    () =>
+      users.filter((entry) => {
+        const searchTarget =
+          `${entry.name} ${entry.email} ${entry.phoneNumber || ""} ${entry.batch || ""}`.toLowerCase();
+        const matchesSearch = !userSearch.trim() || searchTarget.includes(userSearch.toLowerCase());
+        const matchesRole = userRoleFilter === "all" || entry.role === userRoleFilter;
+        const matchesBatch =
+          userRoleFilter !== "scholar" ||
+          userBatchFilter === "all" ||
+          entry.batch === userBatchFilter;
+        return matchesSearch && matchesRole && matchesBatch;
+      }),
+    [userBatchFilter, userRoleFilter, userSearch, users],
+  );
+
+  const filteredProgrammes = useMemo(
+    () =>
+      programmes.filter((programme) => {
+        const searchTarget =
+          `${programme.title} ${programme.description || ""} ${programme.programmeManager?.name || ""}`.toLowerCase();
+        const matchesSearch =
+          !programmeSearch.trim() || searchTarget.includes(programmeSearch.toLowerCase());
+        const matchesTimeline = matchesDateRange(
+          programme.createdAt,
+          programmeDateFrom,
+          programmeDateTo,
+        );
+        return matchesSearch && matchesTimeline;
+      }),
+    [programmeDateFrom, programmeDateTo, programmeSearch, programmes],
+  );
+
+  const availableScholars = useMemo(
+    () =>
+      scholars.filter(
+        (scholar) =>
+          !selectedProgramme?.enrollments.some(
+            (enrollment) => enrollment.user.id === scholar.id,
+          ),
+      ),
+    [scholars, selectedProgramme],
+  );
+
+  const announcementAudienceUsers = useMemo(
+    () =>
+      users.filter((entry) => {
+        const roleMatch =
+          announcementForm.targetRoles.length === 0 ||
+          announcementForm.targetRoles.includes(entry.role);
+        const batchMatch =
+          !announcementForm.targetBatch ||
+          entry.role !== "scholar" ||
+          entry.batch === announcementForm.targetBatch;
+        const programmeMatch =
+          !announcementForm.programmeId ||
+          (entry.role === "scholar" &&
+            entry.enrollments.some(
+              (enrollment) => enrollment.programme.id === announcementForm.programmeId,
+            )) ||
+          (entry.role === "programme_manager" &&
+            entry.programmes.some((programme) => programme.id === announcementForm.programmeId));
+        return roleMatch && batchMatch && programmeMatch;
+      }),
+    [announcementForm.programmeId, announcementForm.targetBatch, announcementForm.targetRoles, users],
+  );
+
+  const filteredAnnouncements = useMemo(
+    () =>
+      announcements.filter((announcement) => {
+        const searchTarget =
+          `${announcement.title} ${announcement.message} ${announcement.programme?.title || ""}`.toLowerCase();
+        const matchesSearch =
+          !announcementSearch.trim() ||
+          searchTarget.includes(announcementSearch.toLowerCase());
+        const matchesTimeline = matchesDateRange(
+          announcement.createdAt,
+          announcementDateFrom,
+          announcementDateTo,
+        );
+        return matchesSearch && matchesTimeline;
+      }),
+    [announcementDateFrom, announcementDateTo, announcementSearch, announcements],
+  );
+
+  const filteredQueries = useMemo(() => {
+    const nextQueries = queries.filter((query) => {
+      const searchTarget =
+        `${query.subject} ${query.message} ${query.author.name} ${query.author.email} ${query.programme?.title || ""}`.toLowerCase();
+      const matchesSearch = !querySearch.trim() || searchTarget.includes(querySearch.toLowerCase());
+      const matchesStatus = queryStatusFilter === "all" || query.status === queryStatusFilter;
+      const matchesBatch = queryBatchFilter === "all" || query.author.batch === queryBatchFilter;
+      return matchesSearch && matchesStatus && matchesBatch;
+    });
+    return [...nextQueries].sort((left, right) => {
+      const leftPinned = pinnedQueryIds.includes(left.id) ? 1 : 0;
+      const rightPinned = pinnedQueryIds.includes(right.id) ? 1 : 0;
+      if (leftPinned !== rightPinned) return rightPinned - leftPinned;
+      return (
+        new Date(right.updatedAt || right.createdAt).getTime() -
+        new Date(left.updatedAt || left.createdAt).getTime()
+      );
+    });
+  }, [pinnedQueryIds, queries, queryBatchFilter, querySearch, queryStatusFilter]);
+
+  const selectedQuery =
+    filteredQueries.find((query) => query.id === selectedQueryId) ||
+    queries.find((query) => query.id === selectedQueryId) ||
+    filteredQueries[0] ||
+    null;
+
+  useEffect(() => {
+    if (selectedQuery) {
+      setQueryStatusDraft(selectedQuery.status);
+    }
+  }, [selectedQuery]);
+
+  const overviewStats = [
+    {
+      label: "Total users",
+      value: overview?.stats.totalUsers ?? 0,
+      hint: `${overview?.stats.scholars ?? 0} scholars, ${overview?.stats.programmeManagers ?? 0} managers`,
+      icon: Users,
+    },
+    {
+      label: "Open programmes",
+      value: overview?.stats.programmes ?? 0,
+      hint: `${overview?.stats.activeEnrollments ?? 0} active enrollments`,
+      icon: BookOpen,
+    },
+    {
+      label: "Self-enroll enabled",
+      value: programmes.filter((programme) => programme.selfEnrollmentEnabled).length,
+      hint: "Programmes open for scholar-choice registration",
+      icon: BellRing,
+    },
+    {
+      label: "Open queries",
+      value: queries.filter((query) => query.status === "open").length,
+      hint: `${announcements.length} announcements sent`,
+      icon: MessageSquareText,
+    },
+  ];
+
+  const resetUserForm = () => {
+    setEditingUserId(null);
+    setUserForm(emptyUserForm);
+  };
+
+  const resetProgrammeForm = () => {
+    setEditingProgrammeId(null);
+    setProgrammeForm(emptyProgrammeForm);
+  };
+
+  const openEditUserDialog = (member: AdminUser) => {
+    setEditingUserId(member.id);
+    setUserForm({
+      name: member.name,
+      email: member.email,
+      password: "",
+      role: member.role,
+      batch: member.batch || "",
+      phoneNumber: member.phoneNumber || "",
+      creditsEarned: String(member.creditsEarned ?? 0),
+    });
+    setIsUserDialogOpen(true);
+  };
+
+  const openEditProgrammeDialog = (programme: AdminProgramme) => {
+    setEditingProgrammeId(programme.id);
+    setProgrammeForm({
+      title: programme.title,
+      description: programme.description || "",
+      credits:
+        programme.credits !== null && programme.credits !== undefined
+          ? String(programme.credits)
+          : "",
+      programmeManagerId: programme.programmeManagerId || "",
+      selfEnrollmentEnabled: programme.selfEnrollmentEnabled,
+      spotlightTitle: programme.spotlightTitle || "",
+      spotlightMessage: programme.spotlightMessage || "",
+    });
+    setIsProgrammeDialogOpen(true);
+  };
+
+  const handleUserSubmit = async () => {
+    if (!userForm.name || !userForm.email || (!editingUserId && !userForm.password)) {
+      toast({
+        title: "Missing user details",
+        description: "Name, email, role and password are required for new users.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      if (editingUserId) {
+        await updateAdminUser(editingUserId, {
+          name: userForm.name,
+          email: userForm.email,
+          role: userForm.role,
+          batch: userForm.role === "scholar" ? userForm.batch : "",
+          phoneNumber: userForm.phoneNumber,
+          creditsEarned: Number(userForm.creditsEarned || 0),
+          ...(userForm.password ? { password: userForm.password } : {}),
+        });
+      } else {
+        await createAdminUser({
+          name: userForm.name,
+          email: userForm.email,
+          password: userForm.password,
+          role: userForm.role,
+          batch: userForm.role === "scholar" ? userForm.batch : "",
+          phoneNumber: userForm.phoneNumber,
+          creditsEarned: Number(userForm.creditsEarned || 0),
+        });
+      }
+      setIsUserDialogOpen(false);
+      resetUserForm();
+      await loadOverview();
+      toast({
+        title: editingUserId ? "User updated" : "User created",
+        description: "The user record has been saved.",
+      });
+    } catch (error) {
+      toast({
+        title: "Unable to save user",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleProgrammeSubmit = async () => {
+    if (!programmeForm.title.trim()) {
+      toast({
+        title: "Programme title required",
+        description: "Add a title before saving the programme.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const payload = {
+        title: programmeForm.title.trim(),
+        description: programmeForm.description.trim(),
+        credits: programmeForm.credits !== "" ? Number(programmeForm.credits) : null,
+        programmeManagerId: programmeForm.programmeManagerId,
+        selfEnrollmentEnabled: programmeForm.selfEnrollmentEnabled,
+        spotlightTitle: programmeForm.spotlightTitle.trim(),
+        spotlightMessage: programmeForm.spotlightMessage.trim(),
+      };
+      if (editingProgrammeId) {
+        await updateAdminProgramme(editingProgrammeId, payload);
+      } else {
+        await createAdminProgramme(payload);
+      }
+      setIsProgrammeDialogOpen(false);
+      resetProgrammeForm();
+      await loadOverview();
+      toast({
+        title: editingProgrammeId ? "Programme updated" : "Programme created",
+        description: "The programme details have been saved.",
+      });
+    } catch (error) {
+      toast({
+        title: "Unable to save programme",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleConfirmDeleteUser = async () => {
+    if (!pendingDeleteUser) return;
+    try {
+      await deleteAdminUser(pendingDeleteUser.id);
+      setPendingDeleteUser(null);
+      if (selectedUser?.id === pendingDeleteUser.id) setSelectedUser(null);
+      await loadOverview();
+      toast({ title: "User deleted", description: "The user has been removed." });
+    } catch (error) {
+      toast({
+        title: "Unable to delete user",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleConfirmDeleteProgramme = async () => {
+    if (!pendingDeleteProgramme) return;
+    try {
+      await deleteAdminProgramme(pendingDeleteProgramme.id);
+      setPendingDeleteProgramme(null);
+      await loadOverview();
+      toast({ title: "Programme deleted", description: "The programme has been removed." });
+    } catch (error) {
+      toast({
+        title: "Unable to delete programme",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleConfirmDeleteAssignment = async () => {
+    if (!pendingDeleteAssignmentId) return;
+    try {
+      await deleteAdminAssignment(pendingDeleteAssignmentId);
+      setPendingDeleteAssignmentId(null);
+      await loadOverview();
+      toast({ title: "Assignment deleted", description: "The assignment has been removed." });
+    } catch (error) {
+      toast({
+        title: "Unable to delete assignment",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAssignScholars = async () => {
+    if (!selectedProgramme || selectedScholarIds.length === 0) return;
+    try {
+      await assignScholarsToProgramme(selectedProgramme.id, selectedScholarIds);
+      setSelectedScholarIds([]);
+      await loadOverview();
+      toast({
+        title: "Scholars added",
+        description: "Selected scholars were enrolled in the programme.",
+      });
+    } catch (error) {
+      toast({
+        title: "Unable to add scholars",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRemoveScholar = async (programmeId: string, scholarId: string) => {
+    try {
+      await removeScholarFromProgramme(programmeId, scholarId);
+      await loadOverview();
+      toast({ title: "Scholar removed", description: "Enrollment was removed." });
+    } catch (error) {
+      toast({
+        title: "Unable to remove scholar",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSendAnnouncement = async () => {
+    if (!announcementForm.title.trim() || !announcementForm.message.trim()) {
+      toast({
+        title: "Announcement details required",
+        description: "Fill in the announcement title and message.",
+        variant: "destructive",
+      });
+      return;
+    }
+    try {
+      await createAnnouncement({
+        title: announcementForm.title.trim(),
+        message: announcementForm.message.trim(),
+        programmeId: announcementForm.programmeId || undefined,
+        targetBatch: announcementForm.targetBatch || undefined,
+        targetRoles: announcementForm.targetRoles,
+        userIds: announcementForm.userIds.length ? announcementForm.userIds : undefined,
+      });
+      setAnnouncementForm(emptyAnnouncementForm);
+      setIsAnnouncementDialogOpen(false);
+      await loadAnnouncements();
+      toast({ title: "Announcement sent", description: "Recipients will see it now." });
+    } catch (error) {
+      toast({
+        title: "Could not send announcement",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleReplyToQuery = async () => {
+    if (!selectedQuery || !queryReplyDraft.trim()) return;
+    try {
+      await replyToSupportQuery(selectedQuery.id, queryReplyDraft.trim());
+      setQueryReplyDraft("");
+      await loadQueries(selectedQuery.id);
+    } catch (error) {
+      toast({
+        title: "Unable to reply",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleUpdateQueryStatus = async () => {
+    if (!selectedQuery) return;
+    try {
+      await updateSupportQueryStatus(selectedQuery.id, queryStatusDraft);
+      await loadQueries(selectedQuery.id);
+    } catch (error) {
+      toast({
+        title: "Unable to update query",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleGenerateReport = async () => {
+    try {
+      const response = await getAdminReport(reportType);
+      setReportData(response.data as AdminReportResponse);
+    } catch (error) {
+      toast({
+        title: "Unable to generate report",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    if (!settingsDraft) return;
+    try {
+      await updateAdminSettings(settingsDraft);
+      await loadOverview();
+      toast({ title: "Settings saved", description: "Admin settings were updated." });
+    } catch (error) {
+      toast({
+        title: "Unable to save settings",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const togglePinnedQuery = (queryId: string) => {
+    setPinnedQueryIds((current) =>
+      current.includes(queryId)
+        ? current.filter((item) => item !== queryId)
+        : [queryId, ...current],
+    );
+  };
+
+  if (loading && !overview) {
+    return (
+      <div className="min-h-screen bg-background px-6 py-10 text-sm text-muted-foreground">
+        Loading admin dashboard...
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-screen bg-background">
+      <AdminSidebar activeSection={activeTab} onSelectSection={setActiveTab} />
+      <main className="min-w-0 flex-1 overflow-y-auto px-4 py-6 pl-14 sm:px-6 lg:px-8 lg:pl-8">
+        <div className="mx-auto max-w-7xl">
+          <header className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-border bg-card/80 px-5 py-4 shadow-sm backdrop-blur">
+            <div className="flex items-center gap-3">
+              <img src={vahaniLogo} alt="Vahani" className="h-10 w-10 rounded-xl" />
+              <div>
+                <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">
+                  Admin Console
+                </p>
+                <h1 className="text-base font-semibold text-foreground">
+                  Platform operations
+                </h1>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-medium text-foreground">{user?.name}</p>
+              <p className="text-xs text-muted-foreground">{user?.email}</p>
+            </div>
+          </header>
+
+          {activeTab === "overview" && (
+            <>
+              <section className="mb-6 overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-vahani-blue/10 via-background to-vahani-gold/10">
+                <div className="grid gap-5 px-6 py-6 lg:grid-cols-[1.25fr_0.75fr] lg:px-8">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-vahani-blue">
+                      Platform Control
+                    </p>
+                    <h2 className="mt-2 text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+                      Coordinate users, programmes, announcements, and support from one place
+                    </h2>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                      Manage access, keep programmes organized, review support quickly, and keep
+                      communication moving without leaving the admin workspace.
+                    </p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                    <div className="rounded-2xl border border-border bg-card/80 p-4">
+                      <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">
+                        Admin
+                      </p>
+                      <p className="mt-2 text-lg font-semibold text-foreground">{user?.name}</p>
+                      <p className="text-sm text-muted-foreground">{user?.email}</p>
+                    </div>
+                    <div className="rounded-2xl border border-border bg-card/80 p-4">
+                      <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">
+                        Live scope
+                      </p>
+                      <p className="mt-2 text-lg font-semibold text-foreground">
+                        {programmes.length} programmes
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {queries.filter((query) => query.status === "open").length} open support
+                        queries
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <div className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {overviewStats.map((stat) => (
+                  <Card key={stat.label}>
+                    <CardContent className="pt-5">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">{stat.label}</span>
+                        <stat.icon className="h-4 w-4 text-vahani-blue" />
+                      </div>
+                      <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+                      <p className="text-xs text-muted-foreground">{stat.hint}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </>
+          )}
+
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+            <TabsContent value="overview">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Programmes overview</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-4 md:grid-cols-2">
+                  {programmes.map((programme) => (
+                    <button
+                      key={programme.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedProgrammeId(programme.id);
+                        setActiveTab("programmes");
+                      }}
+                      className="rounded-xl border border-border p-4 text-left transition hover:border-vahani-blue/40 hover:bg-muted/40"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-foreground">{programme.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {programme.programmeManager?.name || "Unassigned manager"}
+                          </p>
+                        </div>
+                        <Badge variant="secondary">{programme.enrollments.length} scholars</Badge>
+                      </div>
+                      <p className="mt-3 text-sm text-muted-foreground">
+                        {programme.description || "No programme description added yet."}
+                      </p>
+                    </button>
+                  ))}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="users" className="space-y-6">
+              <Card>
+                <CardHeader className="gap-4">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <CardTitle>Users</CardTitle>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Search, filter, inspect, edit, and create platform users from one place.
+                      </p>
+                    </div>
+                    <Button
+                      onClick={() => {
+                        resetUserForm();
+                        setIsUserDialogOpen(true);
+                      }}
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Create user
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <div className="grid gap-3 lg:grid-cols-[1.2fr_220px_220px]">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        value={userSearch}
+                        onChange={(event: ChangeEvent<HTMLInputElement>) => setUserSearch(event.target.value)}
+                        placeholder="Search users by name, email, phone, or batch"
+                        className="pl-9"
+                      />
+                    </div>
+                    <Select
+                      value={userRoleFilter}
+                      onValueChange={(value: "all" | AdminUserRole) => {
+                        setUserRoleFilter(value);
+                        if (value !== "scholar") setUserBatchFilter("all");
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All roles" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All roles</SelectItem>
+                        <SelectItem value="scholar">Scholars</SelectItem>
+                        <SelectItem value="programme_manager">Programme managers</SelectItem>
+                        <SelectItem value="admin">Admins</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {userRoleFilter === "scholar" ? (
+                      <Select value={userBatchFilter} onValueChange={setUserBatchFilter}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="All batches" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All batches</SelectItem>
+                          {scholarBatches.map((batch) => (
+                            <SelectItem key={batch} value={batch}>
+                              {batch}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-border px-4 py-2 text-sm text-muted-foreground">
+                        {filteredUsers.length} users matched
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid gap-4 xl:grid-cols-2">
+                    {filteredUsers.map((member) => (
+                      <button
+                        key={member.id}
+                        type="button"
+                        onClick={() => setSelectedUser(member)}
+                        className="rounded-2xl border border-border bg-card p-5 text-left transition hover:border-vahani-blue/40 hover:bg-muted/30"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-semibold text-foreground">{member.name}</p>
+                              <Badge variant="secondary">{roleLabel(member.role)}</Badge>
+                            </div>
+                            <p className="mt-1 text-sm text-muted-foreground">{member.email}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openEditUserDialog(member);
+                              }}
+                            >
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Edit
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setPendingDeleteUser(member);
+                              }}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </Button>
+                          </div>
+                        </div>
+
+                        {member.role === "scholar" && (
+                          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                            <div className="rounded-xl bg-muted/40 p-3">
+                              <p className="text-xs text-muted-foreground">Batch</p>
+                              <p className="mt-1 font-medium text-foreground">{member.batch || "--"}</p>
+                            </div>
+                            <div className="rounded-xl bg-muted/40 p-3">
+                              <p className="text-xs text-muted-foreground">Active programmes</p>
+                              <p className="mt-1 font-medium text-foreground">{member.enrolledProgrammesCount}</p>
+                            </div>
+                            <div className="rounded-xl bg-muted/40 p-3">
+                              <p className="text-xs text-muted-foreground">Credits earned</p>
+                              <p className="mt-1 font-medium text-foreground">{member.creditsEarned}</p>
+                            </div>
+                          </div>
+                        )}
+
+                        {member.role === "programme_manager" && (
+                          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                            <div className="rounded-xl bg-muted/40 p-3">
+                              <p className="text-xs text-muted-foreground">Phone</p>
+                              <p className="mt-1 font-medium text-foreground">{member.phoneNumber || "--"}</p>
+                            </div>
+                            <div className="rounded-xl bg-muted/40 p-3">
+                              <p className="text-xs text-muted-foreground">Total managed courses</p>
+                              <p className="mt-1 font-medium text-foreground">{member.managedProgrammesCount}</p>
+                            </div>
+                            <div className="rounded-xl bg-muted/40 p-3">
+                              <p className="text-xs text-muted-foreground">Currently handling</p>
+                              <p className="mt-1 font-medium text-foreground">{member.programmes.length}</p>
+                            </div>
+                          </div>
+                        )}
+
+                        {member.role === "admin" && (
+                          <div className="mt-4 flex flex-wrap gap-3 text-sm text-muted-foreground">
+                            <span>{member.phoneNumber || "No phone"}</span>
+                            <span>{roleLabel(member.role)}</span>
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  {filteredUsers.length === 0 && (
+                    <div className="rounded-2xl border border-dashed border-border px-5 py-10 text-center text-sm text-muted-foreground">
+                      No users match the current filters.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="programmes" className="space-y-6">
+              <Card>
+                  <CardHeader className="gap-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <CardTitle>Programmes</CardTitle>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Search, filter by timeline, and open a programme to manage scholars and assignments.
+                        </p>
+                      </div>
+                      <Button
+                        onClick={() => {
+                          resetProgrammeForm();
+                          setIsProgrammeDialogOpen(true);
+                        }}
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Create programme
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-3">
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={programmeSearch}
+                          onChange={(event: ChangeEvent<HTMLInputElement>) => setProgrammeSearch(event.target.value)}
+                          placeholder="Search programmes by title, description, or manager"
+                          className="pl-9"
+                        />
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Input type="date" value={programmeDateFrom} onChange={(event: ChangeEvent<HTMLInputElement>) => setProgrammeDateFrom(event.target.value)} />
+                        <Input type="date" value={programmeDateTo} onChange={(event: ChangeEvent<HTMLInputElement>) => setProgrammeDateTo(event.target.value)} />
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {filteredProgrammes.map((programme) => (
+                        <button
+                          key={programme.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedProgrammeId(programme.id);
+                            setIsProgrammeDetailOpen(true);
+                          }}
+                          className="w-full rounded-2xl border border-border p-4 text-left transition hover:border-vahani-blue/40 hover:bg-muted/40"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="font-semibold text-foreground">{programme.title}</p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {programme.programmeManager?.name || "Unassigned manager"}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {programme.selfEnrollmentEnabled && <Badge variant="secondary">Self-enroll</Badge>}
+                              <Badge variant="outline">{programme.enrollments.length} scholars</Badge>
+                            </div>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                            <span>{formatDate(programme.createdAt)}</span>
+                            <span>{programme.assignments.length} assignments</span>
+                            <span>{programme.resources?.length ?? 0} resources</span>
+                          </div>
+                          <div className="mt-3 flex gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openEditProgrammeDialog(programme);
+                              }}
+                            >
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Edit
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setPendingDeleteProgramme(programme);
+                              }}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </Button>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="announcements" className="space-y-6">
+              <Card>
+                <CardHeader className="gap-4">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <CardTitle>Announcements</CardTitle>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Send filtered announcements and review sent messages by time range.
+                      </p>
+                    </div>
+                    <Button onClick={() => setIsAnnouncementDialogOpen(true)}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Send announcement
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <div className="grid gap-3 lg:grid-cols-[1.2fr_200px_200px]">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        value={announcementSearch}
+                        onChange={(event: ChangeEvent<HTMLInputElement>) => setAnnouncementSearch(event.target.value)}
+                        placeholder="Search announcements by title, message, or programme"
+                        className="pl-9"
+                      />
+                    </div>
+                    <Input type="date" value={announcementDateFrom} onChange={(event: ChangeEvent<HTMLInputElement>) => setAnnouncementDateFrom(event.target.value)} />
+                    <Input type="date" value={announcementDateTo} onChange={(event: ChangeEvent<HTMLInputElement>) => setAnnouncementDateTo(event.target.value)} />
+                  </div>
+
+                  <div className="space-y-4">
+                    {filteredAnnouncements.map((announcement) => (
+                      <div key={announcement.id} className="rounded-2xl border border-border p-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-foreground">{announcement.title}</p>
+                          <Badge variant="outline">{announcement.programme?.title || "General"}</Badge>
+                          <Badge variant="secondary">
+                            {announcement.recipients?.length || announcement.recipientCount || 0} recipients
+                          </Badge>
+                        </div>
+                        <p className="mt-2 text-sm text-muted-foreground">{announcement.message}</p>
+                        <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                          <span>{formatDateTime(announcement.createdAt)}</span>
+                          {announcement.targetBatch && <span>Batch {announcement.targetBatch}</span>}
+                          {announcement.targetRoles?.length ? (
+                            <span>Roles: {announcement.targetRoles.join(", ")}</span>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="queries" className="space-y-6">
+              <div className="grid gap-6 xl:grid-cols-[360px,1fr]">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Admin queries</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={querySearch}
+                          onChange={(event: ChangeEvent<HTMLInputElement>) => setQuerySearch(event.target.value)}
+                          placeholder="Search queries by subject, scholar, programme, or content"
+                          className="pl-9"
+                        />
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Select value={queryStatusFilter} onValueChange={(value: "all" | QueryStatus) => setQueryStatusFilter(value)}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="All statuses" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All statuses</SelectItem>
+                            <SelectItem value="open">Open</SelectItem>
+                            <SelectItem value="in_progress">In progress</SelectItem>
+                            <SelectItem value="resolved">Resolved</SelectItem>
+                            <SelectItem value="closed">Closed</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Select value={queryBatchFilter} onValueChange={setQueryBatchFilter}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="All batches" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All batches</SelectItem>
+                            {scholarBatches.map((batch) => (
+                              <SelectItem key={batch} value={batch}>
+                                {batch}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {filteredQueries.map((query) => (
+                        <button
+                          key={query.id}
+                          type="button"
+                          onClick={() => setSelectedQueryId(query.id)}
+                          className={`w-full rounded-2xl border p-4 text-left transition ${
+                            selectedQuery?.id === query.id
+                              ? "border-vahani-blue bg-vahani-blue/5"
+                              : "border-border hover:bg-muted/40"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="font-semibold text-foreground">{query.subject}</p>
+                                {pinnedQueryIds.includes(query.id) && <Badge variant="secondary">Pinned</Badge>}
+                              </div>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {query.author.name}
+                                {query.author.batch ? ` • ${query.author.batch}` : ""}
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                togglePinnedQuery(query.id);
+                              }}
+                            >
+                              {pinnedQueryIds.includes(query.id) ? (
+                                <PinOff className="h-4 w-4" />
+                              ) : (
+                                <Pin className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                            <Badge variant="outline">{queryStatusLabels[query.status]}</Badge>
+                            {query.programme && <Badge variant="outline">{query.programme.title}</Badge>}
+                            <span>{formatDateTime(query.updatedAt || query.createdAt)}</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Query thread</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {!selectedQuery ? (
+                      <p className="text-sm text-muted-foreground">Select a query to read the thread and respond.</p>
+                    ) : (
+                      <>
+                        <div className="rounded-2xl border border-border p-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-lg font-semibold text-foreground">{selectedQuery.subject}</p>
+                            <Badge variant="secondary">{queryStatusLabels[selectedQuery.status]}</Badge>
+                            {selectedQuery.programme && <Badge variant="outline">{selectedQuery.programme.title}</Badge>}
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-3 text-sm text-muted-foreground">
+                            <span>
+                              From {selectedQuery.author.name} ({selectedQuery.author.email})
+                            </span>
+                            {selectedQuery.author.batch && <span>Batch {selectedQuery.author.batch}</span>}
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          {selectedQuery.messages.map((message) => {
+                            const mine = message.author.id === user?.id;
+                            return (
+                              <div
+                                key={message.id}
+                                className={`rounded-2xl border p-4 ${
+                                  mine ? "border-vahani-blue/20 bg-vahani-blue/5" : "border-border bg-card"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-sm font-semibold text-foreground">
+                                    {mine ? "You" : message.author.name}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">{formatDateTime(message.createdAt)}</p>
+                                </div>
+                                <p className="mt-2 text-sm leading-6 text-foreground/90">{message.message}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-[220px,1fr]">
+                          <div className="space-y-2">
+                            <Label>Status</Label>
+                            <Select value={queryStatusDraft} onValueChange={(value: QueryStatus) => setQueryStatusDraft(value)}>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="open">Open</SelectItem>
+                                <SelectItem value="in_progress">In Progress</SelectItem>
+                                <SelectItem value="resolved">Resolved</SelectItem>
+                                <SelectItem value="closed">Closed</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Button variant="outline" className="w-full" onClick={() => void handleUpdateQueryStatus()}>
+                              Update status
+                            </Button>
+                          </div>
+                          <div className="space-y-3 rounded-2xl border border-border p-4">
+                            <div className="flex items-center gap-2">
+                              <MessageSquareText className="h-4 w-4 text-vahani-blue" />
+                              <p className="text-sm font-semibold text-foreground">Reply</p>
+                            </div>
+                            <Textarea
+                              rows={4}
+                              value={queryReplyDraft}
+                              onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setQueryReplyDraft(event.target.value)}
+                              placeholder="Reply to the scholar or request more context."
+                            />
+                            <Button className="bg-vahani-blue hover:bg-vahani-blue/90" onClick={() => void handleReplyToQuery()}>
+                              <Send className="mr-2 h-4 w-4" />
+                              Send reply
+                            </Button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="reports" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Export reports</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <Select value={reportType} onValueChange={(value: keyof typeof reportLabels) => setReportType(value)}>
+                      <SelectTrigger className="sm:w-72">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(reportLabels).map(([key, label]) => (
+                          <SelectItem key={key} value={key}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button onClick={() => void handleGenerateReport()}>
+                      <BarChart3 className="mr-2 h-4 w-4" />
+                      Generate report
+                    </Button>
+                    <Button variant="outline" disabled={!reportData || reportData.rows.length === 0} onClick={() => reportData && downloadCsv(reportData)}>
+                      <Download className="mr-2 h-4 w-4" />
+                      Export CSV
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="settings" className="space-y-6">
+              <div className="grid gap-6 lg:grid-cols-3">
+                <Card className="lg:col-span-2">
+                  <CardHeader>
+                    <CardTitle>System settings</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {settingsDraft?.featureAccess &&
+                      Object.entries(settingsDraft.featureAccess).map(([key, enabled]) => (
+                        <div key={key} className="flex items-center justify-between rounded-lg border border-border p-4">
+                          <div>
+                            <p className="font-medium text-foreground">{key}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Control whether this capability is available in the platform.
+                            </p>
+                          </div>
+                          <Switch
+                            checked={enabled}
+                            onCheckedChange={(value) =>
+                              setSettingsDraft((current) =>
+                                current
+                                  ? {
+                                      ...current,
+                                      featureAccess: { ...current.featureAccess, [key]: value },
+                                    }
+                                  : current,
+                              )
+                            }
+                          />
+                        </div>
+                      ))}
+
+                    <Button onClick={() => void handleSaveSettings()}>Save settings</Button>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Access summary</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      {settingsDraft?.featureAccess &&
+                        Object.entries(settingsDraft.featureAccess).map(([key, enabled]) => (
+                          <Badge key={key} variant={enabled ? "default" : "outline"}>
+                            {key}
+                          </Badge>
+                        ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </main>
+      <Dialog
+        open={isUserDialogOpen}
+        onOpenChange={(open: boolean) => {
+          setIsUserDialogOpen(open);
+          if (!open) resetUserForm();
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editingUserId ? "Edit user" : "Create user"}</DialogTitle>
+            <DialogDescription>Add or update user details here.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Name</Label>
+              <Input value={userForm.name} onChange={(event: ChangeEvent<HTMLInputElement>) => setUserForm((current) => ({ ...current, name: event.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Email</Label>
+              <Input value={userForm.email} onChange={(event: ChangeEvent<HTMLInputElement>) => setUserForm((current) => ({ ...current, email: event.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Role</Label>
+              <Select value={userForm.role} onValueChange={(value: AdminUserRole) => setUserForm((current) => ({ ...current, role: value }))}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="scholar">Scholar</SelectItem>
+                  <SelectItem value="programme_manager">Programme manager</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Phone number</Label>
+              <Input value={userForm.phoneNumber} onChange={(event: ChangeEvent<HTMLInputElement>) => setUserForm((current) => ({ ...current, phoneNumber: event.target.value }))} />
+            </div>
+            {userForm.role === "scholar" && (
+              <>
+                <div className="space-y-1.5">
+                  <Label>Batch</Label>
+                  <Input value={userForm.batch} onChange={(event: ChangeEvent<HTMLInputElement>) => setUserForm((current) => ({ ...current, batch: event.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Credits earned</Label>
+                  <Input type="number" min="0" value={userForm.creditsEarned} onChange={(event: ChangeEvent<HTMLInputElement>) => setUserForm((current) => ({ ...current, creditsEarned: event.target.value }))} />
+                </div>
+              </>
+            )}
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Password {editingUserId ? "(optional)" : ""}</Label>
+              <Input type="password" value={userForm.password} onChange={(event: ChangeEvent<HTMLInputElement>) => setUserForm((current) => ({ ...current, password: event.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsUserDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => void handleUserSubmit()}>
+              {editingUserId ? "Update user" : "Create user"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!selectedUser} onOpenChange={(open: boolean) => !open && setSelectedUser(null)}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>User details</DialogTitle>
+            <DialogDescription>Review the selected user profile.</DialogDescription>
+          </DialogHeader>
+          {selectedUser && (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-border p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-lg font-semibold text-foreground">{selectedUser.name}</p>
+                    <p className="text-sm text-muted-foreground">{selectedUser.email}</p>
+                  </div>
+                  <Badge variant="secondary">{roleLabel(selectedUser.role)}</Badge>
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl bg-muted/40 p-4">
+                  <p className="text-xs text-muted-foreground">Phone</p>
+                  <p className="mt-1 font-medium text-foreground">{selectedUser.phoneNumber || "--"}</p>
+                </div>
+                {selectedUser.role === "scholar" && (
+                  <>
+                    <div className="rounded-xl bg-muted/40 p-4">
+                      <p className="text-xs text-muted-foreground">Batch</p>
+                      <p className="mt-1 font-medium text-foreground">{selectedUser.batch || "--"}</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/40 p-4">
+                      <p className="text-xs text-muted-foreground">Active programmes</p>
+                      <p className="mt-1 font-medium text-foreground">{selectedUser.enrolledProgrammesCount}</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/40 p-4">
+                      <p className="text-xs text-muted-foreground">Credits earned</p>
+                      <p className="mt-1 font-medium text-foreground">{selectedUser.creditsEarned}</p>
+                    </div>
+                  </>
+                )}
+                {selectedUser.role === "programme_manager" && (
+                  <>
+                    <div className="rounded-xl bg-muted/40 p-4">
+                      <p className="text-xs text-muted-foreground">Managed courses</p>
+                      <p className="mt-1 font-medium text-foreground">{selectedUser.managedProgrammesCount}</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/40 p-4">
+                      <p className="text-xs text-muted-foreground">Currently handling</p>
+                      <p className="mt-1 font-medium text-foreground">{selectedUser.programmes.length}</p>
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedUser(null);
+                    openEditUserDialog(selectedUser);
+                  }}
+                >
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit user
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isProgrammeDialogOpen}
+        onOpenChange={(open: boolean) => {
+          setIsProgrammeDialogOpen(open);
+          if (!open) resetProgrammeForm();
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editingProgrammeId ? "Edit programme" : "Create programme"}</DialogTitle>
+            <DialogDescription>Add programme details and assign a manager.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Title</Label>
+              <Input value={programmeForm.title} onChange={(event: ChangeEvent<HTMLInputElement>) => setProgrammeForm((current) => ({ ...current, title: event.target.value }))} />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Description</Label>
+              <Textarea value={programmeForm.description} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setProgrammeForm((current) => ({ ...current, description: event.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Credits</Label>
+              <Input type="number" min="0" value={programmeForm.credits} onChange={(event: ChangeEvent<HTMLInputElement>) => setProgrammeForm((current) => ({ ...current, credits: event.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Programme manager</Label>
+              <Select value={programmeForm.programmeManagerId || "unassigned"} onValueChange={(value: string) => setProgrammeForm((current) => ({ ...current, programmeManagerId: value === "unassigned" ? "" : value }))}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {programmeManagers.map((manager) => (
+                    <SelectItem key={manager.id} value={manager.id}>
+                      {manager.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-border p-4 sm:col-span-2">
+              <div>
+                <p className="font-medium text-foreground">Scholar self-enrollment</p>
+                <p className="text-xs text-muted-foreground">Allow scholars to enroll themselves.</p>
+              </div>
+              <Switch checked={programmeForm.selfEnrollmentEnabled} onCheckedChange={(value) => setProgrammeForm((current) => ({ ...current, selfEnrollmentEnabled: value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Spotlight title</Label>
+              <Input value={programmeForm.spotlightTitle} onChange={(event: ChangeEvent<HTMLInputElement>) => setProgrammeForm((current) => ({ ...current, spotlightTitle: event.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Spotlight message</Label>
+              <Textarea value={programmeForm.spotlightMessage} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setProgrammeForm((current) => ({ ...current, spotlightMessage: event.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsProgrammeDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => void handleProgrammeSubmit()}>
+              {editingProgrammeId ? "Update programme" : "Create programme"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isProgrammeDetailOpen} onOpenChange={setIsProgrammeDetailOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>{selectedProgramme?.title || "Programme details"}</DialogTitle>
+            <DialogDescription>
+              Review programme details, published assignments, and enrolled scholars.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedProgramme && (
+            <div className="space-y-6">
+              <div className="grid gap-4 md:grid-cols-4">
+                <div className="rounded-xl border border-border p-4">
+                  <p className="text-xs text-muted-foreground">Manager</p>
+                  <p className="mt-1 font-semibold text-foreground">
+                    {selectedProgramme.programmeManager?.name || "Not assigned"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border p-4">
+                  <p className="text-xs text-muted-foreground">Enrolled scholars</p>
+                  <p className="mt-1 font-semibold text-foreground">
+                    {selectedProgramme.enrollments.length}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border p-4">
+                  <p className="text-xs text-muted-foreground">Assignments</p>
+                  <p className="mt-1 font-semibold text-foreground">
+                    {selectedProgramme.assignments.length}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border p-4">
+                  <p className="text-xs text-muted-foreground">Created</p>
+                  <p className="mt-1 font-semibold text-foreground">
+                    {formatDate(selectedProgramme.createdAt)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-foreground">Add scholars</h3>
+                  <Button size="sm" onClick={() => void handleAssignScholars()} disabled={selectedScholarIds.length === 0}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add scholars
+                  </Button>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {availableScholars.map((scholar) => (
+                    <label key={scholar.id} className="flex items-center gap-3 rounded-xl border border-border p-3">
+                      <Checkbox
+                        checked={selectedScholarIds.includes(scholar.id)}
+                        onCheckedChange={() =>
+                          setSelectedScholarIds((current) =>
+                            current.includes(scholar.id)
+                              ? current.filter((id) => id !== scholar.id)
+                              : [...current, scholar.id],
+                          )
+                        }
+                      />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">{scholar.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">{scholar.email}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="font-semibold text-foreground">Enrolled scholars</h3>
+                {selectedProgramme.enrollments.map((enrollment) => (
+                  <div key={enrollment.id} className="flex flex-col gap-3 rounded-xl border border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-medium text-foreground">{enrollment.user.name}</p>
+                      <p className="text-xs text-muted-foreground">{enrollment.user.email}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{enrollment.status}</Badge>
+                      <Button variant="outline" size="sm" onClick={() => void handleRemoveScholar(selectedProgramme.id, enrollment.user.id)}>
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="font-semibold text-foreground">Published assignments</h3>
+                {selectedProgramme.assignments.map((assignment) => (
+                  <div key={assignment.id} className="rounded-xl border border-border p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-foreground">{assignment.title}</p>
+                          <Badge variant="secondary">{assignment.assignmentType}</Badge>
+                        </div>
+                        <p className="mt-1 text-sm text-muted-foreground">Due {formatDate(assignment.dueDate)}</p>
+                        <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                          <span>{assignment.submissionCount} / {assignment.totalScholars} submitted</span>
+                          <span>{assignment.pendingCount} pending</span>
+                          <span>{assignment.gradedCount} graded</span>
+                        </div>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={() => setPendingDeleteAssignmentId(assignment.id)}>
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isAnnouncementDialogOpen}
+        onOpenChange={(open: boolean) => {
+          setIsAnnouncementDialogOpen(open);
+          if (!open) setAnnouncementForm(emptyAnnouncementForm);
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Send announcement</DialogTitle>
+            <DialogDescription>Target users by programme, role, batch, or specific people.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Programme filter</Label>
+                <Select value={announcementForm.programmeId || "all"} onValueChange={(value: string) => setAnnouncementForm((current) => ({ ...current, programmeId: value === "all" ? "" : value, userIds: [] }))}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All programmes</SelectItem>
+                    {programmes.map((programme) => (
+                      <SelectItem key={programme.id} value={programme.id}>
+                        {programme.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Batch filter</Label>
+                <Select value={announcementForm.targetBatch || "all"} onValueChange={(value: string) => setAnnouncementForm((current) => ({ ...current, targetBatch: value === "all" ? "" : value, userIds: [] }))}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All batches</SelectItem>
+                    {scholarBatches.map((batch) => (
+                      <SelectItem key={batch} value={batch}>
+                        {batch}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Role filters</Label>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {(["scholar", "programme_manager", "admin"] as const).map((role) => (
+                  <label key={role} className="flex items-center gap-2 rounded-lg border border-border p-3 text-sm">
+                    <Checkbox
+                      checked={announcementForm.targetRoles.includes(role)}
+                      onCheckedChange={() =>
+                        setAnnouncementForm((current) => ({
+                          ...current,
+                          targetRoles: current.targetRoles.includes(role)
+                            ? current.targetRoles.filter((item) => item !== role)
+                            : [...current.targetRoles, role],
+                          userIds: [],
+                        }))
+                      }
+                    />
+                    <span>{roleLabel(role)}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Specific users</Label>
+              <div className="max-h-52 space-y-2 overflow-y-auto rounded-xl border border-border p-3">
+                {announcementAudienceUsers.map((member) => (
+                  <label key={member.id} className="flex items-center gap-3 text-sm">
+                    <Checkbox
+                      checked={announcementForm.userIds.includes(member.id)}
+                      onCheckedChange={() =>
+                        setAnnouncementForm((current) => ({
+                          ...current,
+                          userIds: current.userIds.includes(member.id)
+                            ? current.userIds.filter((id) => id !== member.id)
+                            : [...current.userIds, member.id],
+                        }))
+                      }
+                    />
+                    <span>
+                      {member.name} • {roleLabel(member.role)}
+                      {member.batch ? ` • ${member.batch}` : ""}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Title</Label>
+              <Input value={announcementForm.title} onChange={(event: ChangeEvent<HTMLInputElement>) => setAnnouncementForm((current) => ({ ...current, title: event.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Message</Label>
+              <Textarea rows={5} value={announcementForm.message} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setAnnouncementForm((current) => ({ ...current, message: event.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAnnouncementDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => void handleSendAnnouncement()}>Send announcement</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!pendingDeleteUser} onOpenChange={(open: boolean) => !open && setPendingDeleteUser(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete user?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDeleteUser ? `This will permanently remove ${pendingDeleteUser.name} from the platform.` : "This action cannot be undone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleConfirmDeleteUser()}>
+              Delete user
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!pendingDeleteProgramme} onOpenChange={(open: boolean) => !open && setPendingDeleteProgramme(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete programme?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDeleteProgramme ? `This will permanently remove ${pendingDeleteProgramme.title}.` : "This action cannot be undone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleConfirmDeleteProgramme()}>
+              Delete programme
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!pendingDeleteAssignmentId} onOpenChange={(open: boolean) => !open && setPendingDeleteAssignmentId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete assignment?</AlertDialogTitle>
+            <AlertDialogDescription>This assignment will be removed from the programme.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleConfirmDeleteAssignment()}>
+              Delete assignment
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}

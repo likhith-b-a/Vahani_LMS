@@ -1,0 +1,363 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  scholar
+  programme_manager
+  admin
+}
+
+enum EnrollmentStatus {
+  active
+  completed
+  dropped
+}
+
+enum AssignmentType {
+  document
+  audio
+  video
+  quiz
+  interactive_session
+  archive
+  link_submission
+}
+
+enum ResourceType {
+  study_material
+  reference_material
+  meeting_link
+  recording
+  external_link
+}
+
+enum NotificationType {
+  programme
+  announcement
+  assignment
+  grade
+  resource
+  meeting
+  certificate
+  wishlist
+  query
+  system
+}
+
+enum CertificateStatus {
+  available
+  claimed
+  revoked
+}
+
+enum QueryStatus {
+  open
+  in_progress
+  resolved
+  closed
+}
+
+enum QueryTargetType {
+  programme_manager
+  admin
+}
+
+model User {
+  id                        String                  @id @default(uuid())
+  name                      String
+  email                     String                  @unique
+  password                  String
+  role                      UserRole                @default(scholar)
+  refreshToken              String?
+  batch                     String?
+  creditsEarned             Int                     @default(0)
+  phoneNumber               String?
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+
+  managedProgrammes         Programme[]             @relation("ProgrammeManager")
+  enrollments               Enrollment[]
+  submissions               Submission[]            @relation("SubmissionAuthor")
+  evaluatedSubmissions      Submission[]            @relation("SubmissionEvaluator")
+  createdAssignments        Assignment[]            @relation("AssignmentCreator")
+  programmeResources        ProgrammeResource[]     @relation("ResourceCreator")
+  sentAnnouncements         Announcement[]          @relation("AnnouncementSender")
+  announcementRecipients    AnnouncementRecipient[]
+  sentNotifications         Notification[]          @relation("NotificationActor")
+  notificationRecipients    NotificationRecipient[]
+  certificates              Certificate[]           @relation("CertificateOwner")
+  issuedCertificates        Certificate[]           @relation("CertificateIssuer")
+  wishlistEntries           ProgrammeWishlist[]
+  authoredQueries           SupportQuery[]          @relation("QueryAuthor")
+  assignedQueries           SupportQuery[]          @relation("QueryAssignee")
+  queryMessages             SupportQueryMessage[]   @relation("QueryMessageAuthor")
+  updatedSettings           SystemSetting[]         @relation("SettingsUpdatedBy")
+}
+
+model Programme {
+  id                        String                  @id @default(uuid())
+  title                     String
+  description               String?
+  credits                   Int?
+  selfEnrollmentEnabled     Boolean                 @default(false)
+  spotlightTitle            String?
+  spotlightMessage          String?
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+
+  programmeManagerId        String?
+  programmeManager          User?                   @relation("ProgrammeManager", fields: [programmeManagerId], references: [id], onDelete: SetNull)
+
+  assignments               Assignment[]
+  enrollments               Enrollment[]
+  resources                 ProgrammeResource[]
+  announcements             Announcement[]
+  notifications             Notification[]
+  wishlists                 ProgrammeWishlist[]
+  certificates              Certificate[]
+  queries                   SupportQuery[]
+}
+
+model Enrollment {
+  id                        String                  @id @default(uuid())
+  status                    EnrollmentStatus        @default(active)
+  progressPercent           Int                     @default(0)
+  creditsAwarded            Int                     @default(0)
+  enrolledAt                DateTime                @default(now())
+  completedAt               DateTime?
+  lastActivityAt            DateTime?
+
+  userId                    String
+  programmeId               String
+
+  user                      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  programme                 Programme               @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, programmeId])
+}
+
+model Assignment {
+  id                        String                  @id @default(uuid())
+  title                     String
+  description               String?
+  dueDate                   DateTime?
+  maxScore                  Int?
+  type                      AssignmentType          @default(document)
+  acceptedFileTypes         String[]                @default([".pdf", ".doc", ".docx", ".png", ".jpg", ".jpeg"])
+  isGraded                  Boolean                 @default(true)
+  isPublished               Boolean                 @default(true)
+  allowResubmission         Boolean                 @default(true)
+  allowLateSubmission       Boolean                 @default(true)
+  meetingUrl                String?
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+
+  programmeId               String
+  createdById               String?
+
+  programme                 Programme               @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  createdBy                 User?                   @relation("AssignmentCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  submissions               Submission[]
+  notifications             Notification[]
+}
+
+model Submission {
+  id                        String                  @id @default(uuid())
+  fileUrl                   String?
+  linkUrl                   String?
+  textResponse              String?
+  score                     Int?
+  feedback                  String?
+  submittedAt               DateTime                @default(now())
+  evaluatedAt               DateTime?
+  isLate                    Boolean                 @default(false)
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+
+  assignmentId              String
+  userId                    String
+  evaluatedById             String?
+
+  assignment                Assignment              @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  user                      User                    @relation("SubmissionAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  evaluatedBy               User?                   @relation("SubmissionEvaluator", fields: [evaluatedById], references: [id], onDelete: SetNull)
+
+  @@unique([assignmentId, userId])
+  @@index([assignmentId, userId])
+}
+
+model ProgrammeResource {
+  id                        String                  @id @default(uuid())
+  title                     String
+  description               String?
+  resourceType              ResourceType            @default(study_material)
+  url                       String?
+  fileUrl                   String?
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+
+  programmeId               String
+  createdById               String?
+
+  programme                 Programme               @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  createdBy                 User?                   @relation("ResourceCreator", fields: [createdById], references: [id], onDelete: SetNull)
+}
+
+model Announcement {
+  id                        String                  @id @default(uuid())
+  title                     String
+  message                   String
+  targetBatch               String?
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+
+  programmeId               String?
+  createdById               String
+
+  programme                 Programme?              @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  createdBy                 User                    @relation("AnnouncementSender", fields: [createdById], references: [id], onDelete: Cascade)
+  recipients                AnnouncementRecipient[]
+  notifications             Notification[]
+}
+
+model AnnouncementRecipient {
+  id                        String                  @id @default(uuid())
+  createdAt                 DateTime                @default(now())
+
+  announcementId            String
+  userId                    String
+
+  announcement              Announcement            @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user                      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, userId])
+}
+
+model Notification {
+  id                        String                  @id @default(uuid())
+  type                      NotificationType
+  title                     String
+  message                   String
+  actionUrl                 String?
+  metadata                  Json?
+  createdAt                 DateTime                @default(now())
+
+  actorId                   String?
+  programmeId               String?
+  assignmentId              String?
+  announcementId            String?
+
+  actor                     User?                   @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  programme                 Programme?              @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  assignment                Assignment?             @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  announcement              Announcement?           @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  recipients                NotificationRecipient[]
+}
+
+model NotificationRecipient {
+  id                        String                  @id @default(uuid())
+  isRead                    Boolean                 @default(false)
+  readAt                    DateTime?
+  createdAt                 DateTime                @default(now())
+
+  notificationId            String
+  userId                    String
+
+  notification              Notification            @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user                      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, userId])
+}
+
+model Certificate {
+  id                        String                  @id @default(uuid())
+  title                     String
+  description               String?
+  fileUrl                   String
+  status                    CertificateStatus       @default(available)
+  issuedAt                  DateTime                @default(now())
+  claimedAt                 DateTime?
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+
+  programmeId               String
+  userId                    String
+  issuedById                String?
+
+  programme                 Programme               @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  user                      User                    @relation("CertificateOwner", fields: [userId], references: [id], onDelete: Cascade)
+  issuedBy                  User?                   @relation("CertificateIssuer", fields: [issuedById], references: [id], onDelete: SetNull)
+
+  @@unique([programmeId, userId])
+}
+
+model ProgrammeWishlist {
+  id                        String                  @id @default(uuid())
+  note                      String?
+  createdAt                 DateTime                @default(now())
+
+  programmeId               String
+  userId                    String
+
+  programme                 Programme               @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  user                      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([programmeId, userId])
+}
+
+model SupportQuery {
+  id                        String                  @id @default(uuid())
+  subject                   String
+  message                   String
+  status                    QueryStatus             @default(open)
+  targetType                QueryTargetType
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+  resolvedAt                DateTime?
+
+  programmeId               String?
+  authorId                  String
+  assignedToId              String?
+
+  programme                 Programme?              @relation(fields: [programmeId], references: [id], onDelete: SetNull)
+  author                    User                    @relation("QueryAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  assignedTo                User?                   @relation("QueryAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  messages                  SupportQueryMessage[]
+}
+
+model SupportQueryMessage {
+  id                        String                  @id @default(uuid())
+  message                   String
+  createdAt                 DateTime                @default(now())
+
+  queryId                   String
+  authorId                  String
+
+  query                     SupportQuery            @relation(fields: [queryId], references: [id], onDelete: Cascade)
+  author                    User                    @relation("QueryMessageAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+}
+
+model PasswordResetOtp {
+  id                        String                  @id @default(uuid())
+  email                     String                  @unique
+  otpHash                   String
+  expiresAt                 DateTime
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+}
+
+model SystemSetting {
+  key                       String                  @id
+  value                     Json
+  updatedAt                 DateTime                @updatedAt
+
+  updatedById               String?
+
+  updatedBy                 User?                   @relation("SettingsUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+}

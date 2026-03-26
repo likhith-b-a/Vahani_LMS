@@ -1,0 +1,255 @@
+import { fetchWithAuth } from "./fetchWithAuth";
+
+export type AdminUserRole = "scholar" | "programme_manager" | "admin";
+
+export interface AdminUser {
+  id: string;
+  name: string;
+  email: string;
+  role: AdminUserRole;
+  batch?: string | null;
+  phoneNumber?: string | null;
+  creditsEarned: number;
+  managedProgrammesCount: number;
+  enrolledProgrammesCount: number;
+  submissionCount: number;
+  programmes: Array<{
+    id: string;
+    title: string;
+  }>;
+  enrollments: Array<{
+    id: string;
+    status: string;
+    programme: {
+      id: string;
+      title: string;
+    };
+  }>;
+}
+
+export interface AdminProgrammeAssignment {
+  id: string;
+  title: string;
+  description: string | null;
+  dueDate: string | null;
+  maxScore: number | null;
+  assignmentType: string;
+  acceptedFileTypes: string[];
+  submissionCount: number;
+  totalScholars: number;
+  pendingCount: number;
+  gradedCount: number;
+}
+
+export interface AdminProgramme {
+  id: string;
+  title: string;
+  description: string | null;
+  credits?: number | null;
+  createdAt: string;
+  selfEnrollmentEnabled: boolean;
+  spotlightTitle: string;
+  spotlightMessage: string;
+  resources?: Array<{
+    id: string;
+    title: string;
+    description?: string | null;
+    resourceType: string;
+    url: string;
+  }>;
+  wishlistsCount?: number;
+  programmeManagerId: string | null;
+  programmeManager: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
+  enrollments: Array<{
+    id: string;
+    status: string;
+    enrolledAt: string;
+    user: {
+      id: string;
+      name: string;
+      email: string;
+    };
+  }>;
+  assignments: AdminProgrammeAssignment[];
+}
+
+export interface AdminOverview {
+  stats: {
+    totalUsers: number;
+    scholars: number;
+    programmeManagers: number;
+    admins: number;
+    programmes: number;
+    assignments: number;
+    submissions: number;
+    gradedSubmissions: number;
+    activeEnrollments: number;
+  };
+  users: AdminUser[];
+  programmes: AdminProgramme[];
+  settings: AdminSettings;
+}
+
+export interface AdminSettings {
+  featureAccess: {
+    dashboardReports: boolean;
+    bulkEvaluation: boolean;
+    managerStudentView: boolean;
+    scholarSelfEnrollment: boolean;
+  };
+  notifications: {
+    reportEmailsEnabled: boolean;
+    assignmentAlertsEnabled: boolean;
+  };
+  policies: {
+    allowResubmissions: boolean;
+    scholarProfileEditing: boolean;
+    evaluationVisibility: string;
+  };
+}
+
+export interface AdminReportResponse {
+  type: "enrollment" | "progress" | "evaluations";
+  generatedAt: string;
+  rows: Array<Record<string, string | number | null>>;
+}
+
+export interface AdminUserPayload {
+  name: string;
+  email: string;
+  password: string;
+  role: AdminUserRole;
+  batch?: string;
+  phoneNumber?: string;
+  creditsEarned?: number;
+}
+
+export interface AdminProgrammePayload {
+  title: string;
+  description: string;
+  credits?: number | null;
+  programmeManagerId: string;
+  selfEnrollmentEnabled?: boolean;
+  spotlightTitle?: string;
+  spotlightMessage?: string;
+}
+
+export const getAdminOverview = async () => {
+  return fetchWithAuth("/admin/overview", {
+    method: "GET",
+  });
+};
+
+export const getAdminUsers = async (role = "all") => {
+  const query =
+    role && role !== "all" ? `?role=${encodeURIComponent(role)}` : "";
+
+  return fetchWithAuth(`/admin/users${query}`, {
+    method: "GET",
+  });
+};
+
+export const createAdminUser = async (payload: AdminUserPayload) => {
+  return fetchWithAuth("/admin/users", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+};
+
+export const updateAdminUser = async (
+  userId: string,
+  payload: Partial<AdminUserPayload>,
+) => {
+  return fetchWithAuth(`/admin/users/${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+};
+
+export const deleteAdminUser = async (userId: string) => {
+  return fetchWithAuth(`/admin/users/${userId}`, {
+    method: "DELETE",
+  });
+};
+
+export const getAdminProgrammes = async () => {
+  return fetchWithAuth("/admin/programmes", {
+    method: "GET",
+  });
+};
+
+export const createAdminProgramme = async (payload: AdminProgrammePayload) => {
+  return fetchWithAuth("/admin/programmes", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+};
+
+export const updateAdminProgramme = async (
+  programmeId: string,
+  payload: Partial<AdminProgrammePayload>,
+) => {
+  return fetchWithAuth(`/admin/programmes/${programmeId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+};
+
+export const deleteAdminProgramme = async (programmeId: string) => {
+  return fetchWithAuth(`/admin/programmes/${programmeId}`, {
+    method: "DELETE",
+  });
+};
+
+export const assignScholarsToProgramme = async (
+  programmeId: string,
+  scholarIds: string[],
+) => {
+  return fetchWithAuth(`/admin/programmes/${programmeId}/enrollments`, {
+    method: "POST",
+    body: JSON.stringify({ scholarIds }),
+  });
+};
+
+export const removeScholarFromProgramme = async (
+  programmeId: string,
+  scholarId: string,
+) => {
+  return fetchWithAuth(
+    `/admin/programmes/${programmeId}/enrollments/${scholarId}`,
+    {
+      method: "DELETE",
+    },
+  );
+};
+
+export const deleteAdminAssignment = async (assignmentId: string) => {
+  return fetchWithAuth(`/admin/assignments/${assignmentId}`, {
+    method: "DELETE",
+  });
+};
+
+export const getAdminReport = async (
+  type: "enrollment" | "progress" | "evaluations",
+) => {
+  return fetchWithAuth(`/admin/reports?type=${encodeURIComponent(type)}`, {
+    method: "GET",
+  });
+};
+
+export const getAdminSettings = async () => {
+  return fetchWithAuth("/admin/settings", {
+    method: "GET",
+  });
+};
+
+export const updateAdminSettings = async (payload: Partial<AdminSettings>) => {
+  return fetchWithAuth("/admin/settings", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+};
