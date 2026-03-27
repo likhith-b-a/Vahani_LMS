@@ -1,4 +1,5 @@
-export const BASE_URL = "http://localhost:3000";
+export const BASE_URL =
+  import.meta.env.VITE_API_URL?.trim() || "http://localhost:3000";
 
 const notifyAuthExpired = () => {
   window.dispatchEvent(new Event("auth:expired"));

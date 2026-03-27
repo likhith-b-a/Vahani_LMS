@@ -3,12 +3,36 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 import { requestLogger } from "./middlewares/requestLogger.js";
+import { logger } from "./utils/logger.js";
 
 const app = express();
 
+const allowedOrigins = (
+  process.env.CORS_ALLOWED_ORIGINS ||
+  process.env.FRONTEND_URL ||
+  "http://localhost:5173"
+)
+  .split(",")
+  .map((origin) => origin.trim().replace(/\/+$/, ""))
+  .filter(Boolean);
+
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      const normalizedOrigin = origin.replace(/\/+$/, "");
+      if (allowedOrigins.includes(normalizedOrigin)) {
+        callback(null, true);
+        return;
+      }
+
+      logger.warn("Blocked CORS origin", { origin: normalizedOrigin });
+      callback(new Error("CORS origin not allowed"));
+    },
     credentials: true,
   }),
 );
