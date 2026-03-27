@@ -1,5 +1,6 @@
 import * as React from "react";
 import * as RechartsPrimitive from "recharts";
+import type { NameType, Payload, ValueType } from "recharts/types/component/DefaultTooltipContent";
 
 import { cn } from "@/lib/utils";
 
@@ -91,8 +92,23 @@ const ChartTooltip = RechartsPrimitive.Tooltip;
 
 const ChartTooltipContent = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<typeof RechartsPrimitive.Tooltip> &
-    React.ComponentProps<"div"> & {
+  React.ComponentProps<"div"> & {
+      active?: boolean;
+      payload?: Payload<ValueType, NameType>[];
+      label?: React.ReactNode;
+      formatter?: (
+        value: ValueType,
+        name: NameType,
+        item: Payload<ValueType, NameType>,
+        index: number,
+        payload: Payload<ValueType, NameType>["payload"],
+      ) => React.ReactNode;
+      labelFormatter?: (
+        label: React.ReactNode,
+        payload: Payload<ValueType, NameType>[],
+      ) => React.ReactNode;
+      color?: string;
+      labelClassName?: string;
       hideLabel?: boolean;
       hideIndicator?: boolean;
       indicator?: "line" | "dot" | "dashed";
@@ -167,7 +183,7 @@ const ChartTooltipContent = React.forwardRef<
 
             return (
               <div
-                key={item.dataKey}
+                key={String(item.dataKey ?? index)}
                 className={cn(
                   "flex w-full flex-wrap items-stretch gap-2 [&>svg]:h-2.5 [&>svg]:w-2.5 [&>svg]:text-muted-foreground",
                   indicator === "dot" && "items-center",
@@ -229,8 +245,14 @@ const ChartLegend = RechartsPrimitive.Legend;
 
 const ChartLegendContent = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"div"> &
-    Pick<RechartsPrimitive.LegendProps, "payload" | "verticalAlign"> & {
+  React.ComponentProps<"div"> & {
+      payload?: Array<{
+        value?: string;
+        color?: string;
+        dataKey?: string | number;
+        type?: string;
+      }>;
+      verticalAlign?: "top" | "bottom" | "middle";
       hideIcon?: boolean;
       nameKey?: string;
     }

@@ -61,24 +61,27 @@ export function SmartCalendar() {
   }, [toast]);
 
   const programmeOptions = useMemo(
-    () =>
-      Array.from(
-        new Map(
-          [
-            ...assignments.map((assignment) => [
-              assignment.programme.id,
-              assignment.programme,
-            ]),
-            ...programmes.map((programme) => [
-              programme.id,
-              {
-                id: programme.id,
-                title: programme.title,
-              },
-            ]),
+    () => {
+      const programmeEntries: Array<[string, { id: string; title: string }]> = [
+        ...assignments.map(
+          (assignment): [string, { id: string; title: string }] => [
+            assignment.programme.id,
+            assignment.programme,
           ],
-        ).values(),
-      ),
+        ),
+        ...programmes.map(
+          (programme): [string, { id: string; title: string }] => [
+            programme.id,
+            {
+              id: programme.id,
+              title: programme.title,
+            },
+          ],
+        ),
+      ];
+
+      return Array.from(new Map<string, { id: string; title: string }>(programmeEntries).values());
+    },
     [assignments, programmes],
   );
 
@@ -95,7 +98,7 @@ export function SmartCalendar() {
           date: assignment.dueDate,
           programmeId: assignment.programme.id,
           programmeTitle: assignment.programme.title,
-          type: "assignment",
+          type: "assignment" as const,
         })),
       ...programmes.flatMap((programme) =>
         (programme.interactiveSessions || []).map((session) => ({
@@ -178,7 +181,6 @@ export function SmartCalendar() {
                 </option>
               ))}
             </select>
-            <br></br>
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"

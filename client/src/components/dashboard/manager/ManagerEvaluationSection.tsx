@@ -38,7 +38,7 @@ interface ManagerEvaluationSectionProps {
   onSelectedAssignmentChange: (value: string) => void;
   selectedAssignments: ManagedProgrammeAssignment[];
   selectedInteractiveSessions: ManagedInteractiveSession[];
-  selectedAssignmentType: "assignment" | "session";
+  selectedAssignmentType: "" | "assignment" | "session";
   evaluationSearch: string;
   onEvaluationSearchChange: (value: string) => void;
   evaluationFilter: string;

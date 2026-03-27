@@ -35,7 +35,7 @@ const formatDate = (value?: string | null) =>
 export default function Profile() {
   const { user, setAuthData } = useAuth();
   const { toast } = useToast();
-  const { assignments, isLoading: assignmentsLoading } = useAssignments();
+  const { assignments, loading: assignmentsLoading } = useAssignments();
 
   const [profile, setProfile] = useState<MyProfileResponse | null>(null);
   const [programmes, setProgrammes] = useState<Programme[]>([]);
