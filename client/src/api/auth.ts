@@ -1,6 +1,4 @@
-import { fetchWithAuth } from "./fetchWithAuth";
-
-const BASE_URL = "http://localhost:3000";
+import { BASE_URL, fetchWithAuth } from "./fetchWithAuth";
 
 export const loginUser = async (email: string, password: string) => {
   const res = await fetch(`${BASE_URL}/login`, {

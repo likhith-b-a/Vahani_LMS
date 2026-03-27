@@ -10,14 +10,16 @@ export const fetchWithAuth = async (
   options: RequestInit = {},
   accessToken?: string,
 ) => {
+  const resolvedAccessToken =
+    accessToken || localStorage.getItem("accessToken") || "";
   const isFormData = options.body instanceof FormData;
   const headers: HeadersInit = {
     ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...(options.headers || {}),
   };
 
-  if (accessToken) {
-    (headers as Record<string, string>).Authorization = `Bearer ${accessToken}`;
+  if (resolvedAccessToken.trim()) {
+    (headers as Record<string, string>).Authorization = `Bearer ${resolvedAccessToken.trim()}`;
   }
 
   let res = await fetch(`${BASE_URL}${endpoint}`, {
@@ -39,6 +41,13 @@ export const fetchWithAuth = async (
     });
 
     if (refreshRes.ok) {
+      const refreshData = await refreshRes.json().catch(() => null);
+      const nextAccessToken = refreshData?.data?.accessToken;
+      if (nextAccessToken) {
+        localStorage.setItem("accessToken", nextAccessToken);
+        (headers as Record<string, string>).Authorization = `Bearer ${nextAccessToken}`;
+      }
+
       res = await fetch(`${BASE_URL}${endpoint}`, {
         ...options,
         credentials: "include",

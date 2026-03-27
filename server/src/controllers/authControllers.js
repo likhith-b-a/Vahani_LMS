@@ -11,6 +11,16 @@ import {
   setPasswordResetOtp,
 } from "../utils/passwordResetStore.js";
 
+const getCookieOptions = () => {
+  const isProduction = process.env.NODE_ENV === "production";
+
+  return {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+  };
+};
+
 const isPasswordCorrect = async (password, hashedPassword) => {
   if (!hashedPassword) {
     return false;
@@ -56,7 +66,7 @@ const generateAccessAndRefreshTokens = async (userId) => {
 
 const refreshAccessToken = asyncHandler(async (req, res) => {
   const incomingRefreshToken =
-    req.cookies.refreshToken || req.body.refreshToken;
+    req.cookies?.refreshToken || req.body?.refreshToken;
 
   if (!incomingRefreshToken) {
     throw new ApiError(401, "No refresh token");
@@ -83,10 +93,7 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     user.id,
   );
 
-  const options = {
-    httpOnly: true,
-    secure: true,
-  };
+  const options = getCookieOptions();
 
   return res
     .status(200)
@@ -109,10 +116,7 @@ const logoutUser = asyncHandler(async (req, res) => {
     data: { refreshToken: null },
   });
 
-  const options = {
-    httpOnly: true,
-    secure: true,
-  };
+  const options = getCookieOptions();
 
   return res
     .status(200)
@@ -442,8 +446,7 @@ const loginUser = asyncHandler(async (req, res) => {
   user.accessToken = accessToken;
 
   const options = {
-    httpOnly: true,
-    secure: true,
+    ...getCookieOptions(),
   };
 
   return res
