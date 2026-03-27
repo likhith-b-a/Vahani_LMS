@@ -4,7 +4,6 @@ import {
   BellRing,
   BookOpen,
   Download,
-  Mail,
   MessageSquareText,
   Pencil,
   Pin,
@@ -53,6 +52,12 @@ import {
   type SupportQuery,
 } from "@/api/queries";
 import { AdminSidebar } from "@/components/dashboard/AdminSidebar";
+import { AdminUsersSection } from "@/components/dashboard/admin/AdminUsersSection";
+import {
+  AdminUserDetailsDialog,
+  AdminUserDialog,
+  BulkUserImportDialog,
+} from "@/components/dashboard/admin/AdminUserDialogs";
 import { EmailComposerDialog } from "@/components/dashboard/EmailComposerDialog";
 import {
   AlertDialog,
@@ -1106,209 +1111,35 @@ export default function AdminDashboard() {
             </TabsContent>
 
             <TabsContent value="users" className="space-y-6">
-              <Card>
-                <CardHeader className="gap-4">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                      <CardTitle>Users</CardTitle>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Search, filter, inspect, edit, and create platform users from one place.
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={handleSelectMatchedUsersForEmail}
-                        disabled={filteredUsers.length === 0}
-                      >
-                        <Mail className="mr-2 h-4 w-4" />
-                        Select matched
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => setSelectedEmailUserIds([])}
-                        disabled={selectedEmailUserIds.length === 0}
-                      >
-                        Clear selection
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => setIsEmailDialogOpen(true)}
-                        disabled={selectedEmailUserIds.length === 0}
-                      >
-                        Proceed to email
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setBulkUserFile(null);
-                          setIsBulkUserDialogOpen(true);
-                        }}
-                      >
-                        <Download className="mr-2 h-4 w-4" />
-                        Add multiple users
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          resetUserForm();
-                          setIsUserDialogOpen(true);
-                        }}
-                      >
-                        <Plus className="mr-2 h-4 w-4" />
-                        Create user
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-5">
-                  <div className="grid gap-3 lg:grid-cols-[1.2fr_220px_220px]">
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        value={userSearch}
-                        onChange={(event: ChangeEvent<HTMLInputElement>) => setUserSearch(event.target.value)}
-                        placeholder="Search users by name, email, phone, or batch"
-                        className="pl-9"
-                      />
-                    </div>
-                    <Select
-                      value={userRoleFilter}
-                      onValueChange={(value: "all" | AdminUserRole) => {
-                        setUserRoleFilter(value);
-                        if (value !== "scholar") setUserBatchFilter("all");
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All roles" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All roles</SelectItem>
-                        <SelectItem value="scholar">Scholars</SelectItem>
-                        <SelectItem value="programme_manager">Programme managers</SelectItem>
-                        <SelectItem value="admin">Admins</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {userRoleFilter === "scholar" ? (
-                      <Select value={userBatchFilter} onValueChange={setUserBatchFilter}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="All batches" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All batches</SelectItem>
-                          {scholarBatches.map((batch) => (
-                            <SelectItem key={batch} value={batch}>
-                              {batch}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <div className="rounded-xl border border-dashed border-border px-4 py-2 text-sm text-muted-foreground">
-                        {filteredUsers.length} users matched
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="grid gap-4 xl:grid-cols-2">
-                    {filteredUsers.map((member) => (
-                      <button
-                        key={member.id}
-                        type="button"
-                        onClick={() => setSelectedUser(member)}
-                        className="rounded-2xl border border-border bg-card p-5 text-left transition hover:border-vahani-blue/40 hover:bg-muted/30"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Checkbox
-                                checked={selectedEmailUserIds.includes(member.id)}
-                                onCheckedChange={() => toggleEmailUser(member.id)}
-                                onClick={(event) => event.stopPropagation()}
-                              />
-                              <p className="font-semibold text-foreground">{member.name}</p>
-                              <Badge variant="secondary">{roleLabel(member.role)}</Badge>
-                            </div>
-                            <p className="mt-1 text-sm text-muted-foreground">{member.email}</p>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openEditUserDialog(member);
-                              }}
-                            >
-                              <Pencil className="mr-2 h-4 w-4" />
-                              Edit
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setPendingDeleteUser(member);
-                              }}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
-                            </Button>
-                          </div>
-                        </div>
-
-                        {member.role === "scholar" && (
-                          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                            <div className="rounded-xl bg-muted/40 p-3">
-                              <p className="text-xs text-muted-foreground">Batch</p>
-                              <p className="mt-1 font-medium text-foreground">{member.batch || "--"}</p>
-                            </div>
-                            <div className="rounded-xl bg-muted/40 p-3">
-                              <p className="text-xs text-muted-foreground">Active programmes</p>
-                              <p className="mt-1 font-medium text-foreground">{member.enrolledProgrammesCount}</p>
-                            </div>
-                            <div className="rounded-xl bg-muted/40 p-3">
-                              <p className="text-xs text-muted-foreground">Credits earned</p>
-                              <p className="mt-1 font-medium text-foreground">{member.creditsEarned}</p>
-                            </div>
-                          </div>
-                        )}
-
-                        {member.role === "programme_manager" && (
-                          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                            <div className="rounded-xl bg-muted/40 p-3">
-                              <p className="text-xs text-muted-foreground">Phone</p>
-                              <p className="mt-1 font-medium text-foreground">{member.phoneNumber || "--"}</p>
-                            </div>
-                            <div className="rounded-xl bg-muted/40 p-3">
-                              <p className="text-xs text-muted-foreground">Total managed courses</p>
-                              <p className="mt-1 font-medium text-foreground">{member.managedProgrammesCount}</p>
-                            </div>
-                            <div className="rounded-xl bg-muted/40 p-3">
-                              <p className="text-xs text-muted-foreground">Currently handling</p>
-                              <p className="mt-1 font-medium text-foreground">{member.programmes.length}</p>
-                            </div>
-                          </div>
-                        )}
-
-                        {member.role === "admin" && (
-                          <div className="mt-4 flex flex-wrap gap-3 text-sm text-muted-foreground">
-                            <span>{member.phoneNumber || "No phone"}</span>
-                            <span>{roleLabel(member.role)}</span>
-                          </div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-
-                  {filteredUsers.length === 0 && (
-                    <div className="rounded-2xl border border-dashed border-border px-5 py-10 text-center text-sm text-muted-foreground">
-                      No users match the current filters.
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              <AdminUsersSection
+                userSearch={userSearch}
+                onUserSearchChange={setUserSearch}
+                userRoleFilter={userRoleFilter}
+                onUserRoleFilterChange={(value) => {
+                  setUserRoleFilter(value);
+                  if (value !== "scholar") setUserBatchFilter("all");
+                }}
+                userBatchFilter={userBatchFilter}
+                onUserBatchFilterChange={setUserBatchFilter}
+                scholarBatches={scholarBatches}
+                filteredUsers={filteredUsers}
+                selectedEmailUserIds={selectedEmailUserIds}
+                onToggleEmailUser={toggleEmailUser}
+                onSelectMatchedUsersForEmail={handleSelectMatchedUsersForEmail}
+                onClearSelectedUsers={() => setSelectedEmailUserIds([])}
+                onProceedToEmail={() => setIsEmailDialogOpen(true)}
+                onOpenBulkImport={() => {
+                  setBulkUserFile(null);
+                  setIsBulkUserDialogOpen(true);
+                }}
+                onOpenCreateUser={() => {
+                  resetUserForm();
+                  setIsUserDialogOpen(true);
+                }}
+                onOpenUserDetails={setSelectedUser}
+                onOpenEditUser={openEditUserDialog}
+                onRequestDeleteUser={setPendingDeleteUser}
+              />
             </TabsContent>
 
             <TabsContent value="programmes" className="space-y-6">
@@ -1876,211 +1707,38 @@ export default function AdminDashboard() {
           </Tabs>
         </div>
       </main>
-      <Dialog
+      <BulkUserImportDialog
         open={isBulkUserDialogOpen}
-        onOpenChange={(open: boolean) => {
+        onOpenChange={(open) => {
           setIsBulkUserDialogOpen(open);
           if (!open) {
             setBulkUserFile(null);
           }
         }}
-      >
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Add multiple users</DialogTitle>
-            <DialogDescription>
-              Download the template, fill in one row per user, then upload the completed
-              sheet to create users in bulk.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-5">
-            <div className="rounded-2xl border border-border bg-muted/20 p-4">
-              <p className="text-sm font-medium text-foreground">Template columns</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                The template includes: <span className="font-medium">name</span>,{" "}
-                <span className="font-medium">email</span>,{" "}
-                <span className="font-medium">password</span>,{" "}
-                <span className="font-medium">role</span>,{" "}
-                <span className="font-medium">batch</span>,{" "}
-                <span className="font-medium">phoneNumber</span>, and{" "}
-                <span className="font-medium">creditsEarned</span>.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void handleDownloadUserTemplate()}
-                disabled={isDownloadingUserTemplate}
-              >
-                <Download className="mr-2 h-4 w-4" />
-                {isDownloadingUserTemplate ? "Downloading..." : "Download template"}
-              </Button>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="bulk-user-import">Upload filled sheet</Label>
-              <Input
-                id="bulk-user-import"
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  setBulkUserFile(event.target.files?.[0] || null)
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                Required columns are name, email, password, and role. Allowed roles are
-                scholar, programme_manager, and admin.
-              </p>
-              {bulkUserFile && (
-                <p className="text-sm text-foreground">Selected file: {bulkUserFile.name}</p>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsBulkUserDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={() => void handleBulkUserImport()} disabled={isImportingUsers}>
-              {isImportingUsers ? "Importing..." : "Upload users"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog
+        bulkUserFile={bulkUserFile}
+        onBulkUserFileChange={setBulkUserFile}
+        isDownloadingUserTemplate={isDownloadingUserTemplate}
+        isImportingUsers={isImportingUsers}
+        onDownloadTemplate={() => void handleDownloadUserTemplate()}
+        onImportUsers={() => void handleBulkUserImport()}
+      />
+      <AdminUserDialog
         open={isUserDialogOpen}
-        onOpenChange={(open: boolean) => {
+        onOpenChange={(open) => {
           setIsUserDialogOpen(open);
           if (!open) resetUserForm();
         }}
-      >
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{editingUserId ? "Edit user" : "Create user"}</DialogTitle>
-            <DialogDescription>Add or update user details here.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label>Name</Label>
-              <Input value={userForm.name} onChange={(event: ChangeEvent<HTMLInputElement>) => setUserForm((current) => ({ ...current, name: event.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Email</Label>
-              <Input value={userForm.email} onChange={(event: ChangeEvent<HTMLInputElement>) => setUserForm((current) => ({ ...current, email: event.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Role</Label>
-              <Select value={userForm.role} onValueChange={(value: AdminUserRole) => setUserForm((current) => ({ ...current, role: value }))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="scholar">Scholar</SelectItem>
-                  <SelectItem value="programme_manager">Programme manager</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Phone number</Label>
-              <Input value={userForm.phoneNumber} onChange={(event: ChangeEvent<HTMLInputElement>) => setUserForm((current) => ({ ...current, phoneNumber: event.target.value }))} />
-            </div>
-            {userForm.role === "scholar" && (
-              <>
-                <div className="space-y-1.5">
-                  <Label>Batch</Label>
-                  <Input value={userForm.batch} onChange={(event: ChangeEvent<HTMLInputElement>) => setUserForm((current) => ({ ...current, batch: event.target.value }))} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Credits earned</Label>
-                  <Input type="number" min="0" value={userForm.creditsEarned} onChange={(event: ChangeEvent<HTMLInputElement>) => setUserForm((current) => ({ ...current, creditsEarned: event.target.value }))} />
-                </div>
-              </>
-            )}
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label>Password {editingUserId ? "(optional)" : ""}</Label>
-              <Input type="password" value={userForm.password} onChange={(event: ChangeEvent<HTMLInputElement>) => setUserForm((current) => ({ ...current, password: event.target.value }))} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsUserDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={() => void handleUserSubmit()}>
-              {editingUserId ? "Update user" : "Create user"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        editingUserId={editingUserId}
+        userForm={userForm}
+        onUserFormChange={setUserForm}
+        onSubmit={() => void handleUserSubmit()}
+      />
 
-      <Dialog open={!!selectedUser} onOpenChange={(open: boolean) => !open && setSelectedUser(null)}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>User details</DialogTitle>
-            <DialogDescription>Review the selected user profile.</DialogDescription>
-          </DialogHeader>
-          {selectedUser && (
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-border p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-lg font-semibold text-foreground">{selectedUser.name}</p>
-                    <p className="text-sm text-muted-foreground">{selectedUser.email}</p>
-                  </div>
-                  <Badge variant="secondary">{roleLabel(selectedUser.role)}</Badge>
-                </div>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl bg-muted/40 p-4">
-                  <p className="text-xs text-muted-foreground">Phone</p>
-                  <p className="mt-1 font-medium text-foreground">{selectedUser.phoneNumber || "--"}</p>
-                </div>
-                {selectedUser.role === "scholar" && (
-                  <>
-                    <div className="rounded-xl bg-muted/40 p-4">
-                      <p className="text-xs text-muted-foreground">Batch</p>
-                      <p className="mt-1 font-medium text-foreground">{selectedUser.batch || "--"}</p>
-                    </div>
-                    <div className="rounded-xl bg-muted/40 p-4">
-                      <p className="text-xs text-muted-foreground">Active programmes</p>
-                      <p className="mt-1 font-medium text-foreground">{selectedUser.enrolledProgrammesCount}</p>
-                    </div>
-                    <div className="rounded-xl bg-muted/40 p-4">
-                      <p className="text-xs text-muted-foreground">Credits earned</p>
-                      <p className="mt-1 font-medium text-foreground">{selectedUser.creditsEarned}</p>
-                    </div>
-                  </>
-                )}
-                {selectedUser.role === "programme_manager" && (
-                  <>
-                    <div className="rounded-xl bg-muted/40 p-4">
-                      <p className="text-xs text-muted-foreground">Managed courses</p>
-                      <p className="mt-1 font-medium text-foreground">{selectedUser.managedProgrammesCount}</p>
-                    </div>
-                    <div className="rounded-xl bg-muted/40 p-4">
-                      <p className="text-xs text-muted-foreground">Currently handling</p>
-                      <p className="mt-1 font-medium text-foreground">{selectedUser.programmes.length}</p>
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className="flex justify-end">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setSelectedUser(null);
-                    openEditUserDialog(selectedUser);
-                  }}
-                >
-                  <Pencil className="mr-2 h-4 w-4" />
-                  Edit user
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <AdminUserDetailsDialog
+        selectedUser={selectedUser}
+        onOpenChange={(open) => !open && setSelectedUser(null)}
+        onEditUser={openEditUserDialog}
+      />
 
       <Dialog
         open={isProgrammeDialogOpen}

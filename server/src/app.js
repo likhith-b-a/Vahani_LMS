@@ -1,7 +1,8 @@
 import express from "express";
-import bodyParser from "body-parser";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
+import { requestLogger } from "./middlewares/requestLogger.js";
 
 const app = express();
 
@@ -14,10 +15,9 @@ app.use(
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
 app.use(cookieParser());
+app.use(requestLogger);
 
 import authRoutes from "./routes/authRoutes.js";
 import programmeRoutes from "./routes/programmeRoutes.js";
@@ -42,28 +42,7 @@ app.use("/queries", queryRoutes);
 app.use("/emails", emailRoutes);
 app.use("/", authRoutes);
 
-// // 404 handler - must be after all route definitions
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: `Route not found: ${req.method} ${req.path}`,
-    statusCode: 404,
-  });
-});
-
-// Global error handler - must be last middleware
-app.use((err, req, res, next) => {
-
-  // Handle ApiError instances
-  const statusCode = err.statusCode || 500;
-  const message = err.message || "Internal Server Error";
-  console.log(err)
-  res.status(statusCode).json({
-    success: false,
-    message,
-    statusCode,
-    errors: err.errors || [],
-  });
-});
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 export {app};

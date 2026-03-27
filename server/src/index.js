@@ -3,25 +3,26 @@ dotenv.config();
 
 import { app } from "./app.js";
 import { db } from "./db.js";
+import { logger } from "./utils/logger.js";
 
 async function startServer() {
   try {
     await db.$connect();
-    console.log("✅ Database connected successfully");
+    logger.info("Database connected successfully");
 
-    app.listen(process.env.PORT || 5000, () => {
-      console.log(`🚀 Server running on port: ${process.env.PORT || 5000}`);
+    const port = Number(process.env.PORT || 5000);
+    app.listen(port, () => {
+      logger.info("Server running", {
+        port,
+        nodeEnv: process.env.NODE_ENV || "development",
+      });
     });
   } catch (error) {
-    console.error("❌ Database connection failed:", error.message);
-    process.exit(1); // stop server if DB fails
+    logger.error("Database connection failed", {
+      message: error.message,
+    });
+    process.exit(1);
   }
 }
 
 startServer();
-
-
-// app.listen(process.env.PORT || 5000, () => {
-//   console.log(`Server running on port: ${process.env.PORT}`);
-// });
-

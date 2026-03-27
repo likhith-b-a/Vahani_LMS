@@ -10,13 +10,13 @@ import {
   Play,
   Users,
 } from "lucide-react";
-import { AppSidebar } from "@/components/dashboard/AppSidebar";
-import { TopNavbar } from "@/components/dashboard/TopNavbar";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getProgrammeDetail, type Programme } from "@/api/programmes";
-import { useToast } from "@/hooks/use-toast";
+import { AppSidebar } from "../components/dashboard/AppSidebar";
+import { TopNavbar } from "../components/dashboard/TopNavbar";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { getProgrammeDetail, type Programme } from "../api/programmes";
+import { useToast } from "../hooks/use-toast";
 
 function getPendingAssignments(programme: Programme) {
   return programme.assignments.filter((assignment) => assignment.submissions.length === 0);

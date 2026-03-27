@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { AppSidebar } from "@/components/dashboard/AppSidebar";
-import { TopNavbar } from "@/components/dashboard/TopNavbar";
-import { useAuth } from "@/contexts/AuthContext";
+import { AppSidebar } from "../components/dashboard/AppSidebar";
+import { TopNavbar } from "../components/dashboard/TopNavbar";
+import { useAuth } from "../contexts/AuthContext";
 import { Moon, Sun, Type, Zap, Lock } from "lucide-react";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { ChangePasswordModal } from "@/components/dashboard/ChangePasswordModal";
+import { Switch } from "../components/ui/switch";
+import { Label } from "../components/ui/label";
+import { Button } from "../components/ui/button";
+import { ChangePasswordModal } from "../components/dashboard/ChangePasswordModal";
 
 export default function Settings() {
   const { user } = useAuth();

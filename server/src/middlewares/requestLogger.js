@@ -1,0 +1,19 @@
+import { logger } from "../utils/logger.js";
+
+const requestLogger = (req, res, next) => {
+  const startedAt = Date.now();
+
+  res.on("finish", () => {
+    logger.info("HTTP request completed", {
+      method: req.method,
+      path: req.originalUrl,
+      statusCode: res.statusCode,
+      durationMs: Date.now() - startedAt,
+      userId: req.user?.id,
+    });
+  });
+
+  next();
+};
+
+export { requestLogger };

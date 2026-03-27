@@ -1,7 +1,7 @@
-import { AppSidebar } from "@/components/dashboard/AppSidebar";
-import { TopNavbar } from "@/components/dashboard/TopNavbar";
-import { Announcements } from "@/components/dashboard/Announcements";
-import { useNotifications } from "@/contexts/NotificationsContext";
+import { AppSidebar } from "../components/dashboard/AppSidebar";
+import { TopNavbar } from "../components/dashboard/TopNavbar";
+import { Announcements } from "../components/dashboard/Announcements";
+import { useNotifications } from "../contexts/NotificationsContext";
 import { BellRing } from "lucide-react";
 
 export default function Updates() {

@@ -4,8 +4,8 @@ import {
   BookOpen, ClipboardList, CalendarCheck, Award, BarChart3, Users,
   ChevronRight, Sparkles
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import vahaniLogo from "@/assets/vahani-logo.png";
+import { Button } from "../components/ui/button";
+import vahaniLogo from "../assets/vahani-logo.png";
 
 const features = [
   { icon: BookOpen, title: "Track Courses & Progress", desc: "Monitor your learning journey with real-time progress tracking across all enrolled courses." },

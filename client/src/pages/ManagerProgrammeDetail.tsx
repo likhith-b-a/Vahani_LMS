@@ -20,11 +20,11 @@ import {
   publishProgrammeResults,
   type ManagedInteractiveSession,
   type ManagedProgramme,
-} from "@/api/programmeManager";
-import { ManagerSidebar } from "@/components/dashboard/ManagerSidebar";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+} from "../api/programmeManager";
+import { ManagerSidebar } from "../components/dashboard/ManagerSidebar";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardHeader } from "../components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -32,12 +32,12 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { useAuth } from "@/contexts/AuthContext";
-import { useToast } from "@/hooks/use-toast";
+} from "../components/ui/dialog";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Textarea } from "../components/ui/textarea";
+import { useAuth } from "../contexts/AuthContext";
+import { useToast } from "../hooks/use-toast";
 
 const emptyAssignmentForm = {
   title: "",

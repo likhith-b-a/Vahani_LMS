@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CalendarCheck, CheckCircle2, Clock3, XCircle } from "lucide-react";
 
-import { getMyProgrammes, type Programme } from "@/api/programmes";
-import { AppSidebar } from "@/components/dashboard/AppSidebar";
-import { TopNavbar } from "@/components/dashboard/TopNavbar";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useToast } from "@/hooks/use-toast";
+import { getMyProgrammes, type Programme } from "../api/programmes";
+import { AppSidebar } from "../components/dashboard/AppSidebar";
+import { TopNavbar } from "../components/dashboard/TopNavbar";
+import { Badge } from "../components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Progress } from "../components/ui/progress";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { useToast } from "../hooks/use-toast";
 
 type SessionAttendanceStatus = "present" | "absent" | "unmarked" | "upcoming";
 

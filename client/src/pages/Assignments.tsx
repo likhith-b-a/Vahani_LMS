@@ -9,11 +9,11 @@ import {
   RefreshCw,
   Upload,
 } from "lucide-react";
-import { AppSidebar } from "@/components/dashboard/AppSidebar";
-import { TopNavbar } from "@/components/dashboard/TopNavbar";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { AppSidebar } from "../components/dashboard/AppSidebar";
+import { TopNavbar } from "../components/dashboard/TopNavbar";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Card, CardContent } from "../components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -21,16 +21,16 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
-import { getAssignmentsByProgramme, type ProgrammeAssignment, type UserAssignment } from "@/api/assignments";
-import { getProgrammeDetail } from "@/api/programmes";
-import { useAssignments } from "@/contexts/AssignmentsContext";
-import { useToast } from "@/hooks/use-toast";
+} from "../components/ui/dialog";
+import { Input } from "../components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { Skeleton } from "../components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Textarea } from "../components/ui/textarea";
+import { getAssignmentsByProgramme, type ProgrammeAssignment, type UserAssignment } from "../api/assignments";
+import { getProgrammeDetail } from "../api/programmes";
+import { useAssignments } from "../contexts/AssignmentsContext";
+import { useToast } from "../hooks/use-toast";
 import { useSearchParams } from "react-router-dom";
 
 type EnrichedAssignment = UserAssignment & {

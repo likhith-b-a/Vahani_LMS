@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { AppSidebar } from "@/components/dashboard/AppSidebar";
-import { TopNavbar } from "@/components/dashboard/TopNavbar";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
+import { AppSidebar } from "../components/dashboard/AppSidebar";
+import { TopNavbar } from "../components/dashboard/TopNavbar";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import { useToast } from "../hooks/use-toast";
+import { useAuth } from "../contexts/AuthContext";
 import {
   getDiscoverableProgrammes,
   selfEnrollInProgramme,
   type DiscoverableProgramme,
-} from "@/api/programmes";
+} from "../api/programmes";
 
 export default function CourseRegistration() {
   const { toast } = useToast();

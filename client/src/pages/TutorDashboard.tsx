@@ -37,6 +37,8 @@ import {
 } from "@/api/queries";
 import { ManagerSidebar } from "@/components/dashboard/ManagerSidebar";
 import { EmailComposerDialog } from "@/components/dashboard/EmailComposerDialog";
+import { ManagerEvaluationSection } from "@/components/dashboard/manager/ManagerEvaluationSection";
+import { ManagerProgrammesSection } from "@/components/dashboard/manager/ManagerProgrammesSection";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1202,78 +1204,19 @@ export default function TutorDashboard() {
             )}
 
             {activeSection === "programmes" && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Programmes</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-5">
-                  <div className="grid gap-3 lg:grid-cols-[1fr_180px_180px]">
-                    <Input
-                      value={programmeSearch}
-                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                        setProgrammeSearch(event.target.value)
-                      }
-                      placeholder="Search programmes by title or description"
-                    />
-                    <Input
-                      type="date"
-                      value={programmeDateFrom}
-                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                        setProgrammeDateFrom(event.target.value)
-                      }
-                    />
-                    <Input
-                      type="date"
-                      value={programmeDateTo}
-                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                        setProgrammeDateTo(event.target.value)
-                      }
-                    />
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {filteredProgrammes.map((programme) => (
-                      <button
-                        key={programme.id}
-                        type="button"
-                        onClick={() =>
-                          navigate(
-                            `${dashboardBasePath}/programmes/${programme.id}`,
-                          )
-                        }
-                        className="rounded-2xl border border-border p-5 text-left transition hover:border-vahani-blue/40 hover:bg-muted/30"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-semibold text-foreground">
-                              {programme.title}
-                            </p>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                              {programme.description ||
-                                "No description added yet."}
-                            </p>
-                          </div>
-                          <Badge variant="secondary">
-                            {programme.enrollments.length} scholars
-                          </Badge>
-                        </div>
-                        <div className="mt-4 flex flex-wrap gap-3 text-xs text-muted-foreground">
-                          <span>
-                            {programme.assignments.length} assignments
-                          </span>
-                          <span>
-                            {programme.resources?.length || 0} resources
-                          </span>
-                          <span>
-                            {programme.meetingLinks?.length || 0} meetings
-                          </span>
-                          <span>Created {formatDate(programme.createdAt)}</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+              <ManagerProgrammesSection
+                programmeSearch={programmeSearch}
+                onProgrammeSearchChange={setProgrammeSearch}
+                programmeDateFrom={programmeDateFrom}
+                onProgrammeDateFromChange={setProgrammeDateFrom}
+                programmeDateTo={programmeDateTo}
+                onProgrammeDateToChange={setProgrammeDateTo}
+                filteredProgrammes={filteredProgrammes}
+                onOpenProgramme={(programmeId) =>
+                  navigate(`${dashboardBasePath}/programmes/${programmeId}`)
+                }
+                formatDate={formatDate}
+              />
             )}
 
             {activeSection === "announcements" && (
@@ -1350,360 +1293,100 @@ export default function TutorDashboard() {
               </Card>
             )}
             {activeSection === "evaluation" && (
-              <Card>
-                <CardHeader className="space-y-5">
-                  <div>
-                    <CardTitle>Evaluation</CardTitle>
-                    <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-                      Choose a programme first, then select the assignment or
-                      interactive session you want to review. Document
-                      submissions open in a built-in preview here, while audio
-                      and video submissions download directly for review.
-                    </p>
-                  </div>
+              <ManagerEvaluationSection
+                programmes={programmes}
+                selectedProgrammeId={selectedProgrammeId}
+                onSelectedProgrammeChange={(value) => {
+                  setSelectedProgrammeId(value);
+                  setSelectedAssignmentId("");
+                  setEvaluationSearch("");
+                  setEvaluationFilter("all");
+                }}
+                selectedAssignmentId={selectedAssignmentId}
+                onSelectedAssignmentChange={(value) => {
+                  setSelectedAssignmentId(value);
+                  setEvaluationSearch("");
+                  setEvaluationFilter("all");
+                }}
+                selectedAssignments={selectedAssignments}
+                selectedInteractiveSessions={selectedInteractiveSessions}
+                selectedAssignmentType={selectedAssignmentType}
+                evaluationSearch={evaluationSearch}
+                onEvaluationSearchChange={setEvaluationSearch}
+                evaluationFilter={evaluationFilter}
+                onEvaluationFilterChange={setEvaluationFilter}
+                filteredSubmissions={filteredSubmissions}
+                filteredSessionStudents={filteredSessionStudents}
+                selectedEvaluationSession={selectedEvaluationSession}
+                scoreDrafts={scoreDrafts}
+                onScoreDraftChange={(submissionId, value) =>
+                  setScoreDrafts((current) => ({
+                    ...current,
+                    [submissionId]: value,
+                  }))
+                }
+                onSaveMarks={(submissionId) => void handleSaveMarks(submissionId)}
+                onOpenSubmissionFile={(submission) => {
+                  if (submission.assignment.assignmentType === "document") {
+                    setPreviewFile({
+                      url: submission.fileUrl as string,
+                      title: `${submission.student.name} | ${submission.assignment.title}`,
+                    });
+                    return;
+                  }
 
-                  <div className="space-y-4">
-                    <div className="max-w-xl space-y-2">
-                      <Label>Select programme</Label>
-                      <select
-                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                        value={selectedProgrammeId}
-                        onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-                          setSelectedProgrammeId(event.target.value);
-                          setSelectedAssignmentId("");
-                          setEvaluationSearch("");
-                          setEvaluationFilter("all");
-                        }}
-                      >
-                        <option value="">Select a programme</option>
-                        {programmes.map((programme) => (
-                          <option key={programme.id} value={programme.id}>
-                            {programme.title}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {selectedProgrammeId ? (
-                      <div className="max-w-xl space-y-2">
-                        <Label>Select assignment or session</Label>
-                        <select
-                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                          value={selectedAssignmentId}
-                          onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-                            setSelectedAssignmentId(event.target.value);
-                            setEvaluationSearch("");
-                            setEvaluationFilter("all");
-                          }}
-                        >
-                          <option value="">Select an item</option>
-                          {selectedAssignments.map((assignment) => (
-                            <option
-                              key={assignment.id}
-                              value={`assignment:${assignment.id}`}
-                            >
-                              Assignment: {assignment.title}
-                            </option>
-                          ))}
-                          {selectedInteractiveSessions.map((session) => (
-                            <option key={session.id} value={`session:${session.id}`}>
-                              Interactive session: {session.title}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    ) : null}
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-5">
-                  {!selectedProgrammeId ? (
-                    <div className="rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
-                      Select a programme to begin evaluation.
-                    </div>
-                  ) : null}
-
-                  {selectedProgrammeId && !selectedAssignmentId ? (
-                    <div className="rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
-                      Now choose an assignment or interactive session to load
-                      scholar records.
-                    </div>
-                  ) : null}
-
-                  {selectedAssignmentId ? (
-                    <>
-                      <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/20 p-4 xl:flex-row xl:items-center xl:justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-foreground">
-                            {selectedAssignmentType === "session"
-                              ? "Interactive session evaluation"
-                              : "Scholar submissions"}
-                          </p>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            Use search and the quick filter to narrow the list
-                            before grading or following up.
-                          </p>
-                        </div>
-                        <div className="flex flex-col gap-3 sm:flex-row xl:min-w-[560px]">
-                          <Input
-                            value={evaluationSearch}
-                            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                              setEvaluationSearch(event.target.value)
-                            }
-                            placeholder="Search scholars by name, email, or batch"
-                            className="sm:flex-1"
-                          />
-                          <select
-                            className="h-10 rounded-md border border-input bg-background px-3 text-sm sm:w-[220px]"
-                            value={evaluationFilter}
-                            onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                              setEvaluationFilter(event.target.value)
-                            }
-                          >
-                            {selectedAssignmentType === "session" ? (
-                              <>
-                                <option value="all">All scholars</option>
-                                <option value="present">Present</option>
-                                <option value="absent">Absent</option>
-                              </>
-                            ) : (
-                              <>
-                                <option value="all">All submissions</option>
-                                <option value="under_evaluation">
-                                  Under evaluation
-                                </option>
-                                <option value="graded">Graded</option>
-                              </>
-                            )}
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        {selectedAssignmentType === "assignment" ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleOpenEmailForPendingAssignments}
-                            disabled={!selectedAssignmentId}
-                          >
-                            <Mail className="mr-2 h-4 w-4" />
-                            Email not submitted
-                          </Button>
-                        ) : null}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            const recipients =
-                              selectedAssignmentType === "session"
-                                ? filteredSessionStudents.map((entry) => ({
-                                    id: entry.user.id,
-                                    name: entry.user.name,
-                                    email: entry.user.email,
-                                  }))
-                                : filteredSubmissions.map((submission) => ({
-                                    id: submission.student.id,
-                                    name: submission.student.name,
-                                    email: submission.student.email,
-                                  }));
-                            openEmailDialogForRecipients(
-                              recipients,
-                              "currently visible scholars",
-                            );
-                          }}
-                          disabled={
-                            selectedAssignmentType === "session"
-                              ? filteredSessionStudents.length === 0
-                              : filteredSubmissions.length === 0
-                          }
-                        >
-                          <Mail className="mr-2 h-4 w-4" />
-                          Email visible scholars
-                        </Button>
-                      </div>
-                    </>
-                  ) : null}
-
-                  {selectedAssignmentType === "assignment" &&
-                  filteredSubmissions.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      No submissions match the current search or filter.
-                    </p>
-                  ) : null}
-
-                  {selectedAssignmentType === "assignment" &&
-                    filteredSubmissions.map((submission) => (
-                      <div
-                        key={submission.id}
-                        className="space-y-3 rounded-lg border border-border p-4"
-                      >
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
-                            <p className="font-medium text-foreground">
-                              {submission.student.name}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {submission.student.email}
-                              {submission.student.batch
-                                ? ` ? ${submission.student.batch}`
-                                : ""}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Submitted {formatDateTime(submission.submittedAt)}
-                            </p>
-                            {submission.fileUrl ? (
-                              <button
-                                type="button"
-                                className="mt-2 text-xs font-medium text-vahani-blue underline-offset-4 hover:underline"
-                                onClick={() => {
-                                  if (
-                                    submission.assignment.assignmentType ===
-                                    "document"
-                                  ) {
-                                    setPreviewFile({
-                                      url: submission.fileUrl,
-                                      title: `${submission.student.name} ? ${submission.assignment.title}`,
-                                    });
-                                    return;
-                                  }
-
-                                  const link = document.createElement("a");
-                                  link.href = submission.fileUrl;
-                                  link.target = "_blank";
-                                  link.rel = "noreferrer";
-                                  link.download = "";
-                                  document.body.appendChild(link);
-                                  link.click();
-                                  link.remove();
-                                }}
-                              >
-                                {submission.assignment.assignmentType ===
-                                "document"
-                                  ? "Preview submission"
-                                  : "Download submission"}
-                              </button>
-                            ) : null}
-                          </div>
-                          <Badge variant="outline">{submission.status}</Badge>
-                        </div>
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                          <Input
-                            type="number"
-                            min="0"
-                            max={submission.assignment.maxScore ?? undefined}
-                            value={scoreDrafts[submission.id] || ""}
-                            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                              setScoreDrafts((current) => ({
-                                ...current,
-                                [submission.id]: event.target.value,
-                              }))
-                            }
-                            className="sm:max-w-[180px]"
-                          />
-                          <Button
-                            onClick={() => void handleSaveMarks(submission.id)}
-                          >
-                            Save marks
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-
-                  {selectedAssignmentType === "session" &&
-                    selectedEvaluationSession && (
-                      <div className="space-y-4">
-                        <div className="rounded-xl border border-border bg-muted/20 p-4">
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div>
-                              <p className="font-medium text-foreground">
-                                {selectedEvaluationSession.title}
-                              </p>
-                              <p className="mt-1 text-sm text-muted-foreground">
-                                {formatDateTime(
-                                  selectedEvaluationSession.scheduledAt,
-                                )}
-                              </p>
-                            </div>
-                            <Badge variant="outline">
-                              Max marks {selectedEvaluationSession.maxScore}
-                            </Badge>
-                          </div>
-                        </div>
-
-                        {filteredSessionStudents.length === 0 && (
-                          <p className="text-sm text-muted-foreground">
-                            No scholars match the current search or filter.
-                          </p>
-                        )}
-
-                        {filteredSessionStudents.map((entry) => (
-                          <div
-                            key={entry.user.id}
-                            className="grid gap-3 rounded-lg border border-border p-4 sm:grid-cols-[1fr_160px_140px]"
-                          >
-                            <div>
-                              <p className="font-medium text-foreground">
-                                {entry.user.name}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {entry.user.email}
-                                {entry.user.batch
-                                  ? ` ? ${entry.user.batch}`
-                                  : ""}
-                              </p>
-                            </div>
-                            <select
-                              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                              value={entry.status}
-                              onChange={(
-                                event: ChangeEvent<HTMLSelectElement>,
-                              ) => {
-                                const nextStatus = event.target
-                                  .value as "present" | "absent";
-                                setAttendanceDrafts((current) => ({
-                                  ...current,
-                                  [entry.user.id]: nextStatus,
-                                }));
-                                setAttendanceScoreDrafts((current) => ({
-                                  ...current,
-                                  [entry.user.id]:
-                                    nextStatus === "absent"
-                                      ? "0"
-                                      : current[entry.user.id] ||
-                                        String(
-                                          selectedEvaluationSession.maxScore || 0,
-                                        ),
-                                }));
-                              }}
-                            >
-                              <option value="present">Present</option>
-                              <option value="absent">Absent</option>
-                            </select>
-                            <Input
-                              type="number"
-                              min="0"
-                              max={selectedEvaluationSession.maxScore || 0}
-                              disabled={entry.status === "absent"}
-                              value={entry.status === "absent" ? "0" : entry.score}
-                              onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                                setAttendanceScoreDrafts((current) => ({
-                                  ...current,
-                                  [entry.user.id]: event.target.value,
-                                }))
-                              }
-                            />
-                          </div>
-                        ))}
-
-                        <div className="flex justify-end">
-                          <Button onClick={() => void handleSaveAttendance()}>
-                            Save session evaluation
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                </CardContent>
-              </Card>
+                  if (submission.fileUrl) {
+                    const link = document.createElement("a");
+                    link.href = submission.fileUrl;
+                    link.target = "_blank";
+                    link.rel = "noreferrer";
+                    link.download = "";
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                  }
+                }}
+                onEmailPendingAssignments={handleOpenEmailForPendingAssignments}
+                onEmailVisibleScholars={() => {
+                  const recipients =
+                    selectedAssignmentType === "session"
+                      ? filteredSessionStudents.map((entry) => ({
+                          id: entry.user.id,
+                          name: entry.user.name,
+                          email: entry.user.email,
+                        }))
+                      : filteredSubmissions.map((submission) => ({
+                          id: submission.student.id,
+                          name: submission.student.name,
+                          email: submission.student.email,
+                        }));
+                  openEmailDialogForRecipients(recipients, "currently visible scholars");
+                }}
+                attendanceSessionMaxScore={selectedEvaluationSession?.maxScore || 0}
+                onSessionStatusChange={(userId, status) => {
+                  setAttendanceDrafts((current) => ({
+                    ...current,
+                    [userId]: status,
+                  }));
+                  setAttendanceScoreDrafts((current) => ({
+                    ...current,
+                    [userId]:
+                      status === "absent"
+                        ? "0"
+                        : current[userId] || String(selectedEvaluationSession?.maxScore || 0),
+                  }));
+                }}
+                onSessionScoreChange={(userId, value) =>
+                  setAttendanceScoreDrafts((current) => ({
+                    ...current,
+                    [userId]: value,
+                  }))
+                }
+                onSaveSessionEvaluation={() => void handleSaveAttendance()}
+                formatDateTime={formatDateTime}
+                previewFile={previewFile}
+                onPreviewFileChange={setPreviewFile}
+              />
             )}
 
             {activeSection === "reports" && (
@@ -2755,45 +2438,6 @@ export default function TutorDashboard() {
         sending={sendingEmail}
         onSend={handleSendManagerEmail}
       />
-
-      <Dialog
-        open={Boolean(previewFile)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setPreviewFile(null);
-          }
-        }}
-      >
-        <DialogContent className="max-w-5xl">
-          <DialogHeader>
-            <DialogTitle>{previewFile?.title || "Submission preview"}</DialogTitle>
-            <DialogDescription>
-              Review the uploaded document here without leaving the evaluation
-              flow.
-            </DialogDescription>
-          </DialogHeader>
-          {previewFile ? (
-            <div className="space-y-4">
-              <iframe
-                src={previewFile.url}
-                title={previewFile.title}
-                className="h-[70vh] w-full rounded-xl border border-border bg-background"
-              />
-              <div className="flex justify-end">
-                <Button asChild variant="outline">
-                  <a
-                    href={previewFile.url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Open in new tab
-                  </a>
-                </Button>
-              </div>
-            </div>
-          ) : null}
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={showStudentDialog} onOpenChange={setShowStudentDialog}>
         <DialogContent className="max-w-xl">
