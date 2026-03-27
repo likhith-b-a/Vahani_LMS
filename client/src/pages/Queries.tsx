@@ -114,6 +114,7 @@ export default function Queries() {
   const [replyDraft, setReplyDraft] = useState("");
   const [creating, setCreating] = useState(false);
   const [replying, setReplying] = useState(false);
+  const [isQueryListCollapsed, setIsQueryListCollapsed] = useState(false);
 
   const loadQueries = useCallback(
     async (preferredId?: string) => {
@@ -406,10 +407,25 @@ export default function Queries() {
               </CardHeader>
             </Card>
 
-            <div className="grid gap-6 xl:grid-cols-[360px,1fr]">
+            <div
+              className={`grid gap-6 ${
+                isQueryListCollapsed ? "grid-cols-1" : "xl:grid-cols-[360px,1fr]"
+              }`}
+            >
+              {!isQueryListCollapsed && (
               <Card className="min-h-[520px]">
                 <CardHeader>
-                  <CardTitle>Your Queries</CardTitle>
+                  <div className="flex items-center justify-between gap-3">
+                    <CardTitle>Your Queries</CardTitle>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsQueryListCollapsed(true)}
+                    >
+                      Collapse list
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {loading && (
@@ -474,10 +490,23 @@ export default function Queries() {
                   </div>
                 </CardContent>
               </Card>
+              )}
 
               <Card className="min-h-[520px]">
                 <CardHeader>
-                  <CardTitle>Conversation</CardTitle>
+                  <div className="flex items-center justify-between gap-3">
+                    <CardTitle>Conversation</CardTitle>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setIsQueryListCollapsed((current) => !current)
+                      }
+                    >
+                      {isQueryListCollapsed ? "Show query list" : "Hide query list"}
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-5">
                   {!selectedQuery && (

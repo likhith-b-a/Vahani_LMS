@@ -16,6 +16,7 @@ const mainNav = [
   { icon: CalendarCheck, label: "Attendance", path: "/attendance" },
   { icon: ClipboardList, label: "Assignments", path: "/assignments" },
   { icon: CircleHelp, label: "Queries", path: "/queries" },
+  { icon: BookPlus, label: "Wishlist", path: "/wishlist" },
   { icon: FolderOpen, label: "Resources", path: "/dashboard" },
   { icon: Megaphone, label: "Announcements", path: "/updates" },
   { icon: BarChart3, label: "Performance Reports", path: "/dashboard" },

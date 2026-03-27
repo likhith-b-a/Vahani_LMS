@@ -1,5 +1,6 @@
 import {
   BellRing,
+  BarChart3,
   BookOpen,
   CircleHelp,
   FileText,
@@ -20,6 +21,7 @@ const primaryNav = [
   { icon: BookOpen, label: "Programmes", value: "programmes" },
   { icon: BellRing, label: "Announcements", value: "announcements" },
   { icon: FileText, label: "Evaluation", value: "evaluation" },
+  { icon: BarChart3, label: "Reports", value: "reports" },
   { icon: CircleHelp, label: "Queries", value: "queries" },
   { icon: Users, label: "Students", value: "students" },
 ];

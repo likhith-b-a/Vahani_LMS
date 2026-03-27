@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
 import {
+  Download,
   BellRing,
   BookOpen,
   CircleHelp,
+  Mail,
   MessageSquareText,
   Pin,
   PinOff,
@@ -11,13 +13,18 @@ import {
   Send,
 } from "lucide-react";
 import { createAnnouncement, getAnnouncements, type Announcement } from "@/api/announcements";
+import { sendRoleBasedEmail, type EmailRecipient } from "@/api/emails";
 import {
   addProgrammeMeetingLink,
   addProgrammeResource,
   createProgrammeAssignment,
+  createInteractiveSession,
   evaluateProgrammeSubmission,
   getManagedAssignmentSubmissions,
   getManagedProgrammes,
+  getManagedProgrammeReport,
+  markInteractiveSessionAttendance,
+  type ProgrammeManagerReportResponse,
   type ManagedProgramme,
   type ManagedSubmission,
 } from "@/api/programmeManager";
@@ -29,9 +36,11 @@ import {
   type SupportQuery,
 } from "@/api/queries";
 import { ManagerSidebar } from "@/components/dashboard/ManagerSidebar";
+import { EmailComposerDialog } from "@/components/dashboard/EmailComposerDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -45,6 +54,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { downloadCsvReport, exportReportAsPdf } from "@/lib/reportExport";
+import { useLocation, useNavigate } from "react-router-dom";
 
 const emptyAssignmentForm = {
   title: "",
@@ -62,10 +73,26 @@ const emptyLinkForm = {
   url: "",
 };
 
+const emptyResourceForm = {
+  title: "",
+  url: "",
+  description: "",
+  file: null as File | null,
+};
+
 const emptyAnnouncementForm = {
   title: "",
   message: "",
   programmeId: "",
+};
+
+const emptySessionForm = {
+  title: "",
+  description: "",
+  scheduledAt: "",
+  durationMinutes: "60",
+  maxScore: "0",
+  meetingUrl: "",
 };
 
 const queryStatusLabels: Record<QueryStatus, string> = {
@@ -74,6 +101,8 @@ const queryStatusLabels: Record<QueryStatus, string> = {
   resolved: "Resolved",
   closed: "Closed",
 };
+
+type QueryTimeRangeFilter = "all" | "7d" | "30d" | "90d";
 
 const formatDate = (value?: string | null) =>
   value
@@ -112,9 +141,36 @@ const matchesDateRange = (
   return true;
 };
 
+const isWithinTimeRange = (
+  value: string | null | undefined,
+  timeRange: QueryTimeRangeFilter,
+) => {
+  if (timeRange === "all") {
+    return true;
+  }
+  if (!value) {
+    return false;
+  }
+
+  const target = new Date(value).getTime();
+  if (Number.isNaN(target)) {
+    return false;
+  }
+
+  const dayMap: Record<Exclude<QueryTimeRangeFilter, "all">, number> = {
+    "7d": 7,
+    "30d": 30,
+    "90d": 90,
+  };
+
+  return Date.now() - target <= dayMap[timeRange] * 24 * 60 * 60 * 1000;
+};
+
 export default function TutorDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const [activeSection, setActiveSection] = useState("overview");
   const [loading, setLoading] = useState(true);
@@ -124,7 +180,6 @@ export default function TutorDashboard() {
 
   const [selectedProgrammeId, setSelectedProgrammeId] = useState("");
   const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
-  const [selectedStudentId, setSelectedStudentId] = useState("all");
   const [selectedQueryId, setSelectedQueryId] = useState("");
 
   const [programmeSearch, setProgrammeSearch] = useState("");
@@ -133,30 +188,50 @@ export default function TutorDashboard() {
   const [announcementSearch, setAnnouncementSearch] = useState("");
   const [announcementDateFrom, setAnnouncementDateFrom] = useState("");
   const [announcementDateTo, setAnnouncementDateTo] = useState("");
+  const [reportProgrammeId, setReportProgrammeId] = useState("");
   const [querySearch, setQuerySearch] = useState("");
   const [queryStatusFilter, setQueryStatusFilter] = useState<"all" | QueryStatus>("all");
   const [queryBatchFilter, setQueryBatchFilter] = useState("all");
+  const [queryTimeRangeFilter, setQueryTimeRangeFilter] =
+    useState<QueryTimeRangeFilter>("all");
   const [studentSearch, setStudentSearch] = useState("");
+  const [evaluationSearch, setEvaluationSearch] = useState("");
+  const [evaluationFilter, setEvaluationFilter] = useState("all");
 
   const [submissions, setSubmissions] = useState<ManagedSubmission[]>([]);
   const [scoreDrafts, setScoreDrafts] = useState<Record<string, string>>({});
   const [queryReplyDraft, setQueryReplyDraft] = useState("");
   const [queryStatusDraft, setQueryStatusDraft] = useState<QueryStatus>("open");
   const [pinnedQueryIds, setPinnedQueryIds] = useState<string[]>([]);
+  const [isQueryListCollapsed, setIsQueryListCollapsed] = useState(false);
 
-  const [programmeDetailId, setProgrammeDetailId] = useState<string | null>(null);
   const [studentDetailId, setStudentDetailId] = useState<string | null>(null);
-  const [showProgrammeDialog, setShowProgrammeDialog] = useState(false);
   const [showAssignmentDialog, setShowAssignmentDialog] = useState(false);
+  const [showSessionDialog, setShowSessionDialog] = useState(false);
   const [showResourceDialog, setShowResourceDialog] = useState(false);
   const [showMeetingDialog, setShowMeetingDialog] = useState(false);
   const [showAnnouncementDialog, setShowAnnouncementDialog] = useState(false);
   const [showStudentDialog, setShowStudentDialog] = useState(false);
+  const [showAttendanceDialog, setShowAttendanceDialog] = useState(false);
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [previewFile, setPreviewFile] = useState<{
+    url: string;
+    title: string;
+  } | null>(null);
 
   const [assignmentForm, setAssignmentForm] = useState(emptyAssignmentForm);
-  const [resourceForm, setResourceForm] = useState(emptyLinkForm);
+  const [sessionForm, setSessionForm] = useState(emptySessionForm);
+  const [resourceForm, setResourceForm] = useState(emptyResourceForm);
   const [meetingForm, setMeetingForm] = useState(emptyLinkForm);
   const [announcementForm, setAnnouncementForm] = useState(emptyAnnouncementForm);
+  const [attendanceSessionId, setAttendanceSessionId] = useState<string | null>(null);
+  const [attendanceDrafts, setAttendanceDrafts] = useState<Record<string, "present" | "absent">>({});
+  const [attendanceScoreDrafts, setAttendanceScoreDrafts] = useState<Record<string, string>>({});
+  const [reportData, setReportData] = useState<ProgrammeManagerReportResponse | null>(null);
+  const [selectedEmailStudentIds, setSelectedEmailStudentIds] = useState<string[]>([]);
+  const [emailRecipients, setEmailRecipients] = useState<EmailRecipient[]>([]);
+  const [emailRecipientLabel, setEmailRecipientLabel] = useState("selected scholars");
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   useEffect(() => {
     try {
@@ -185,6 +260,7 @@ export default function TutorDashboard() {
           : [];
         setProgrammes(nextProgrammes);
         setSelectedProgrammeId((current) => preferredProgrammeId || current || nextProgrammes[0]?.id || "");
+        setReportProgrammeId((current) => current || preferredProgrammeId || nextProgrammes[0]?.id || "");
       } catch (error) {
         toast({
           title: "Unable to load programmes",
@@ -277,13 +353,37 @@ export default function TutorDashboard() {
 
   const selectedProgramme =
     programmes.find((programme) => programme.id === selectedProgrammeId) || null;
-  const programmeDetail =
-    programmes.find((programme) => programme.id === programmeDetailId) || null;
+  const selectedAssignmentType = selectedAssignmentId.startsWith("session:")
+    ? "session"
+    : selectedAssignmentId.startsWith("assignment:")
+      ? "assignment"
+      : "";
+  const selectedAssignmentKey =
+    selectedAssignmentType === "assignment"
+      ? selectedAssignmentId.replace("assignment:", "")
+      : "";
+  const selectedSessionKey =
+    selectedAssignmentType === "session"
+      ? selectedAssignmentId.replace("session:", "")
+      : "";
   const selectedAssignments = useMemo(
     () => selectedProgramme?.assignments || [],
     [selectedProgramme],
   );
+  const selectedInteractiveSessions = useMemo(
+    () => selectedProgramme?.interactiveSessions || [],
+    [selectedProgramme],
+  );
   const selectedQuery = queries.find((query) => query.id === selectedQueryId) || null;
+  const selectedAttendanceSession = useMemo(
+    () =>
+      programmes
+        .flatMap((programme) => programme.interactiveSessions || [])
+        .find((session) => session.id === attendanceSessionId) || null,
+    [attendanceSessionId, programmes],
+  );
+  const selectedEvaluationSession =
+    selectedInteractiveSessions.find((session) => session.id === selectedSessionKey) || null;
 
   const totalStudents = useMemo(
     () =>
@@ -358,7 +458,11 @@ export default function TutorDashboard() {
         queryStatusFilter === "all" || query.status === queryStatusFilter;
       const matchesBatch =
         queryBatchFilter === "all" || query.author.batch === queryBatchFilter;
-      return matchesSearch && matchesStatus && matchesBatch;
+      const matchesTimeRange = isWithinTimeRange(
+        query.updatedAt || query.createdAt,
+        queryTimeRangeFilter,
+      );
+      return matchesSearch && matchesStatus && matchesBatch && matchesTimeRange;
     });
 
     return [...filtered].sort((left, right) => {
@@ -367,7 +471,14 @@ export default function TutorDashboard() {
       if (leftPinned !== rightPinned) return leftPinned ? -1 : 1;
       return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
     });
-  }, [pinnedQueryIds, queries, queryBatchFilter, querySearch, queryStatusFilter]);
+  }, [
+    pinnedQueryIds,
+    queries,
+    queryBatchFilter,
+    querySearch,
+    queryStatusFilter,
+    queryTimeRangeFilter,
+  ]);
 
   const visibleStudents = selectedProgramme
     ? selectedProgramme.enrollments.filter((enrollment) =>
@@ -377,15 +488,110 @@ export default function TutorDashboard() {
       )
     : [];
 
+  const selectedEmailRecipients = useMemo<EmailRecipient[]>(
+    () =>
+      (selectedProgramme?.enrollments || [])
+        .filter((enrollment) => selectedEmailStudentIds.includes(enrollment.user.id))
+        .map((enrollment) => ({
+          id: enrollment.user.id,
+          name: enrollment.user.name,
+          email: enrollment.user.email,
+        })),
+    [selectedEmailStudentIds, selectedProgramme],
+  );
+
   const selectedStudentDetail =
     selectedProgramme?.enrollments.find(
       (enrollment) => enrollment.user.id === studentDetailId,
     ) || null;
 
-  const filteredSubmissions =
-    selectedStudentId === "all"
-      ? submissions
-      : submissions.filter((submission) => submission.student.id === selectedStudentId);
+  const filteredSubmissions = useMemo(() => {
+    return submissions.filter((submission) => {
+      const matchesSearch =
+        !evaluationSearch.trim() ||
+        `${submission.student.name} ${submission.student.email}`
+          .toLowerCase()
+          .includes(evaluationSearch.toLowerCase());
+
+      const matchesFilter =
+        evaluationFilter === "all" ||
+        (evaluationFilter === "graded" && submission.status === "GRADED") ||
+        (evaluationFilter === "under_evaluation" &&
+          submission.status === "SUBMITTED");
+
+      return matchesSearch && matchesFilter;
+    });
+  }, [evaluationFilter, evaluationSearch, submissions]);
+  const filteredSessionStudents = useMemo(() => {
+    if (!selectedProgramme || !selectedEvaluationSession) {
+      return [];
+    }
+
+    return selectedProgramme.enrollments
+      .filter((enrollment) => {
+        const matchesSearch =
+          !evaluationSearch.trim() ||
+          `${enrollment.user.name} ${enrollment.user.email} ${enrollment.user.batch || ""}`
+            .toLowerCase()
+            .includes(evaluationSearch.toLowerCase());
+
+        const attendance = selectedEvaluationSession.attendances.find(
+          (entry) => entry.user.id === enrollment.user.id,
+        );
+        const status = attendanceDrafts[enrollment.user.id] || attendance?.status || "present";
+        const matchesFilter =
+          evaluationFilter === "all" ||
+          (evaluationFilter === "present" && status === "present") ||
+          (evaluationFilter === "absent" && status === "absent");
+
+        return matchesSearch && matchesFilter;
+      })
+      .map((enrollment) => {
+        const attendance = selectedEvaluationSession.attendances.find(
+          (entry) => entry.user.id === enrollment.user.id,
+        );
+
+        return {
+          user: enrollment.user,
+          status: attendanceDrafts[enrollment.user.id] || attendance?.status || "present",
+          score:
+            attendanceDrafts[enrollment.user.id] === "absent"
+              ? "0"
+              : attendanceScoreDrafts[enrollment.user.id] ??
+                (attendance?.score !== null && attendance?.score !== undefined
+                  ? String(attendance.score)
+                  : String(selectedEvaluationSession.maxScore || 0)),
+        };
+      });
+  }, [
+    attendanceDrafts,
+    attendanceScoreDrafts,
+    evaluationFilter,
+    evaluationSearch,
+    selectedEvaluationSession,
+    selectedProgramme,
+  ]);
+
+  const pendingAssignmentRecipients = useMemo<EmailRecipient[]>(() => {
+    if (!selectedProgramme || selectedAssignmentType !== "assignment" || !selectedAssignmentKey) {
+      return [];
+    }
+
+    const submittedStudentIds = new Set(submissions.map((submission) => submission.student.id));
+
+    return selectedProgramme.enrollments
+      .filter((enrollment) => !submittedStudentIds.has(enrollment.user.id))
+      .map((enrollment) => ({
+        id: enrollment.user.id,
+        name: enrollment.user.name,
+        email: enrollment.user.email,
+      }));
+  }, [
+    selectedAssignmentKey,
+    selectedAssignmentType,
+    selectedProgramme,
+    submissions,
+  ]);
 
   useEffect(() => {
     if (!selectedProgrammeId && programmes[0]) {
@@ -395,12 +601,19 @@ export default function TutorDashboard() {
 
   useEffect(() => {
     setSelectedAssignmentId((current) => {
-      if (!selectedAssignments.length) return "";
-      return selectedAssignments.some((assignment) => assignment.id === current)
-        ? current
-        : selectedAssignments[0].id;
+      if (
+        selectedAssignments.some(
+          (assignment) => `assignment:${assignment.id}` === current,
+        ) ||
+        selectedInteractiveSessions.some(
+          (session) => `session:${session.id}` === current,
+        )
+      ) {
+        return current;
+      }
+      return "";
     });
-  }, [selectedAssignments]);
+  }, [selectedAssignments, selectedInteractiveSessions]);
 
   useEffect(() => {
     if (selectedQuery) {
@@ -409,13 +622,143 @@ export default function TutorDashboard() {
   }, [selectedQuery]);
 
   useEffect(() => {
-    void loadSubmissions(selectedProgrammeId, selectedAssignmentId);
-  }, [loadSubmissions, selectedAssignmentId, selectedProgrammeId]);
+    if (selectedAssignmentType === "assignment") {
+      void loadSubmissions(selectedProgrammeId, selectedAssignmentKey);
+      return;
+    }
 
-  const openProgrammeDialog = (programmeId: string) => {
-    setProgrammeDetailId(programmeId);
-    setSelectedProgrammeId(programmeId);
-    setShowProgrammeDialog(true);
+    setSubmissions([]);
+    setScoreDrafts({});
+  }, [
+    loadSubmissions,
+    selectedAssignmentId,
+    selectedAssignmentKey,
+    selectedAssignmentType,
+    selectedProgrammeId,
+  ]);
+
+  useEffect(() => {
+    if (!selectedProgramme || !selectedEvaluationSession) {
+      return;
+    }
+
+    setAttendanceSessionId(selectedEvaluationSession.id);
+    setAttendanceDrafts(
+      Object.fromEntries(
+        selectedProgramme.enrollments.map((enrollment) => {
+          const attendance = selectedEvaluationSession.attendances.find(
+            (entry) => entry.user.id === enrollment.user.id,
+          );
+          return [enrollment.user.id, attendance?.status || "present"];
+        }),
+      ) as Record<string, "present" | "absent">,
+    );
+    setAttendanceScoreDrafts(
+      Object.fromEntries(
+        selectedProgramme.enrollments.map((enrollment) => {
+          const attendance = selectedEvaluationSession.attendances.find(
+            (entry) => entry.user.id === enrollment.user.id,
+          );
+          return [
+            enrollment.user.id,
+            attendance?.score !== null && attendance?.score !== undefined
+              ? String(attendance.score)
+              : String(selectedEvaluationSession.maxScore || 0),
+          ];
+        }),
+      ) as Record<string, string>,
+    );
+  }, [selectedEvaluationSession, selectedProgramme]);
+
+  const toggleEmailStudent = (userId: string) => {
+    setSelectedEmailStudentIds((current) =>
+      current.includes(userId)
+        ? current.filter((id) => id !== userId)
+        : [...current, userId],
+    );
+  };
+
+  const openEmailDialogForRecipients = (
+    recipients: EmailRecipient[],
+    label: string,
+  ) => {
+    setEmailRecipients(recipients);
+    setEmailRecipientLabel(label);
+    setShowEmailDialog(true);
+  };
+
+  const handleOpenEmailForSelectedStudents = () => {
+    if (!selectedEmailRecipients.length) {
+      toast({
+        title: "No scholars selected",
+        description: "Select one or more scholars before proceeding to email.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    openEmailDialogForRecipients(
+      selectedEmailRecipients,
+      `${selectedEmailRecipients.length} selected scholar${selectedEmailRecipients.length === 1 ? "" : "s"}`,
+    );
+  };
+
+  const handleOpenEmailForPendingAssignments = () => {
+    if (!pendingAssignmentRecipients.length) {
+      toast({
+        title: "No pending scholars",
+        description: "Everyone has already submitted for this assignment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    openEmailDialogForRecipients(
+      pendingAssignmentRecipients,
+      `${pendingAssignmentRecipients.length} scholar${pendingAssignmentRecipients.length === 1 ? "" : "s"} who have not submitted yet`,
+    );
+  };
+
+  const handleSendManagerEmail = async (payload: {
+    subject: string;
+    body: string;
+    cc: string;
+    bcc: string;
+    attachments: File[];
+  }) => {
+    if (!emailRecipients.length) {
+      toast({
+        title: "No recipients selected",
+        description: "Choose at least one scholar before sending.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setSendingEmail(true);
+      await sendRoleBasedEmail({
+        userIds: emailRecipients.map((recipient) => recipient.id),
+        subject: payload.subject,
+        body: payload.body,
+        cc: payload.cc,
+        bcc: payload.bcc,
+        attachments: payload.attachments,
+      });
+      setShowEmailDialog(false);
+      toast({
+        title: "Email sent",
+        description: `Sent to ${emailRecipients.length} recipient${emailRecipients.length === 1 ? "" : "s"}.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Unable to send email",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSendingEmail(false);
+    }
   };
 
   const togglePinnedQuery = (queryId: string) => {
@@ -425,6 +768,7 @@ export default function TutorDashboard() {
         : [queryId, ...current],
     );
   };
+
   const handleCreateAssignment = async () => {
     if (!selectedProgrammeId || !assignmentForm.title.trim()) {
       toast({
@@ -456,11 +800,50 @@ export default function TutorDashboard() {
     }
   };
 
+  const handleCreateInteractiveSession = async () => {
+    if (!selectedProgrammeId || !sessionForm.title.trim() || !sessionForm.scheduledAt) {
+      toast({
+        title: "Session details required",
+        description: "Add a title and schedule for the interactive session.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await createInteractiveSession(selectedProgrammeId, {
+        title: sessionForm.title.trim(),
+        description: sessionForm.description.trim(),
+        scheduledAt: sessionForm.scheduledAt,
+        durationMinutes: Number(sessionForm.durationMinutes || 60),
+        maxScore: Number(sessionForm.maxScore || 0),
+        meetingUrl: sessionForm.meetingUrl.trim() || undefined,
+      });
+      setSessionForm(emptySessionForm);
+      setShowSessionDialog(false);
+      await loadProgrammes(selectedProgrammeId);
+      toast({
+        title: "Interactive session scheduled",
+        description: "Scholars will now see it in their calendar.",
+      });
+    } catch (error) {
+      toast({
+        title: "Unable to schedule session",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleAddResource = async () => {
-    if (!selectedProgrammeId || !resourceForm.title.trim() || !resourceForm.url.trim()) {
+    if (
+      !selectedProgrammeId ||
+      !resourceForm.title.trim() ||
+      (!resourceForm.url.trim() && !resourceForm.file)
+    ) {
       toast({
         title: "Resource details required",
-        description: "Add both a title and a URL for the study material.",
+        description: "Add a title and either a URL or an uploaded file.",
         variant: "destructive",
       });
       return;
@@ -468,7 +851,7 @@ export default function TutorDashboard() {
 
     try {
       await addProgrammeResource(selectedProgrammeId, resourceForm);
-      setResourceForm(emptyLinkForm);
+      setResourceForm(emptyResourceForm);
       setShowResourceDialog(false);
       await loadProgrammes(selectedProgrammeId);
       toast({
@@ -545,6 +928,65 @@ export default function TutorDashboard() {
     }
   };
 
+  const handleSaveAttendance = async () => {
+    if (!attendanceSessionId || !selectedProgramme) {
+      return;
+    }
+
+    try {
+      await markInteractiveSessionAttendance(
+        attendanceSessionId,
+        selectedProgramme.enrollments.map((enrollment) => ({
+          userId: enrollment.user.id,
+          status: attendanceDrafts[enrollment.user.id] || "present",
+          score: Number(
+            attendanceDrafts[enrollment.user.id] === "absent"
+              ? 0
+              : attendanceScoreDrafts[enrollment.user.id] || 0,
+          ),
+        })),
+      );
+      setShowAttendanceDialog(false);
+      await loadProgrammes(selectedProgramme.id);
+      toast({
+        title: "Attendance updated",
+        description: "The interactive session attendance has been saved.",
+      });
+    } catch (error) {
+      toast({
+        title: "Unable to update attendance",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleGenerateProgrammeReport = async () => {
+    if (!reportProgrammeId) {
+      toast({
+        title: "Programme required",
+        description: "Choose a programme before generating the report.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const response = await getManagedProgrammeReport(reportProgrammeId);
+      setReportData(response.data as ProgrammeManagerReportResponse);
+      toast({
+        title: "Report generated",
+        description: "The programme report is ready to export.",
+      });
+    } catch (error) {
+      toast({
+        title: "Unable to generate report",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleSaveMarks = async (submissionId: string) => {
     const draft = scoreDrafts[submissionId];
     if (draft === undefined || draft.trim() === "") {
@@ -558,7 +1000,7 @@ export default function TutorDashboard() {
 
     try {
       await evaluateProgrammeSubmission(submissionId, Number(draft));
-      await loadSubmissions(selectedProgrammeId, selectedAssignmentId);
+      await loadSubmissions(selectedProgrammeId, selectedAssignmentKey);
       toast({
         title: "Marks saved",
         description: "The scholar submission has been evaluated.",
@@ -618,9 +1060,27 @@ export default function TutorDashboard() {
     }
   };
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const section = params.get("section");
+    if (section) {
+      setActiveSection(section);
+    }
+  }, [location.search]);
+
+  const dashboardBasePath = location.pathname.startsWith("/tutor")
+    ? "/tutor"
+    : "/programme-manager";
+
   return (
     <div className="flex min-h-screen bg-background">
-      <ManagerSidebar activeSection={activeSection} onSelectSection={setActiveSection} />
+      <ManagerSidebar
+        activeSection={activeSection}
+        onSelectSection={(section) => {
+          setActiveSection(section);
+          navigate(`${dashboardBasePath}?section=${section}`);
+        }}
+      />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-border bg-card/80 px-4 pl-14 backdrop-blur-md lg:px-8 lg:pl-8">
@@ -632,7 +1092,10 @@ export default function TutorDashboard() {
               Welcome, {user?.name}
             </p>
           </div>
-          <Button variant="outline" onClick={() => void loadProgrammes(selectedProgrammeId)}>
+          <Button
+            variant="outline"
+            onClick={() => void loadProgrammes(selectedProgrammeId)}
+          >
             <RefreshCw size={16} className="mr-2" />
             Refresh
           </Button>
@@ -649,11 +1112,12 @@ export default function TutorDashboard() {
                         Platform Control
                       </p>
                       <h2 className="mt-2 text-lg font-semibold tracking-tight sm:text-xl">
-                        Manage programmes, content, evaluation, and scholar support
+                        Manage programmes, content, evaluation, and scholar
+                        support
                       </h2>
                       <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                        Work one programme at a time and keep assignment, resource,
-                        announcement, and evaluation workflows tidy.
+                        Work one programme at a time and keep assignment,
+                        resource, announcement, and evaluation workflows tidy.
                       </p>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-3">
@@ -709,7 +1173,8 @@ export default function TutorDashboard() {
                       label: "Open queries",
                       value: queries.filter(
                         (query) =>
-                          query.status !== "closed" && query.status !== "resolved",
+                          query.status !== "closed" &&
+                          query.status !== "resolved",
                       ).length,
                       hint: "Threads that still need attention",
                       icon: CircleHelp,
@@ -726,7 +1191,9 @@ export default function TutorDashboard() {
                         <p className="text-2xl font-bold text-foreground">
                           {loading ? "..." : stat.value}
                         </p>
-                        <p className="text-xs text-muted-foreground">{stat.hint}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {stat.hint}
+                        </p>
                       </CardContent>
                     </Card>
                   ))}
@@ -769,7 +1236,11 @@ export default function TutorDashboard() {
                       <button
                         key={programme.id}
                         type="button"
-                        onClick={() => openProgrammeDialog(programme.id)}
+                        onClick={() =>
+                          navigate(
+                            `${dashboardBasePath}/programmes/${programme.id}`,
+                          )
+                        }
                         className="rounded-2xl border border-border p-5 text-left transition hover:border-vahani-blue/40 hover:bg-muted/30"
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -778,7 +1249,8 @@ export default function TutorDashboard() {
                               {programme.title}
                             </p>
                             <p className="mt-1 text-sm text-muted-foreground">
-                              {programme.description || "No description added yet."}
+                              {programme.description ||
+                                "No description added yet."}
                             </p>
                           </div>
                           <Badge variant="secondary">
@@ -786,9 +1258,15 @@ export default function TutorDashboard() {
                           </Badge>
                         </div>
                         <div className="mt-4 flex flex-wrap gap-3 text-xs text-muted-foreground">
-                          <span>{programme.assignments.length} assignments</span>
-                          <span>{programme.resources?.length || 0} resources</span>
-                          <span>{programme.meetingLinks?.length || 0} meetings</span>
+                          <span>
+                            {programme.assignments.length} assignments
+                          </span>
+                          <span>
+                            {programme.resources?.length || 0} resources
+                          </span>
+                          <span>
+                            {programme.meetingLinks?.length || 0} meetings
+                          </span>
                           <span>Created {formatDate(programme.createdAt)}</span>
                         </div>
                       </button>
@@ -805,7 +1283,8 @@ export default function TutorDashboard() {
                     <div>
                       <CardTitle>Announcements</CardTitle>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        Send programme updates through a dialog and review the history.
+                        Send programme updates through a dialog and review the
+                        history.
                       </p>
                     </div>
                     <Button onClick={() => setShowAnnouncementDialog(true)}>
@@ -846,7 +1325,10 @@ export default function TutorDashboard() {
                       </p>
                     )}
                     {filteredAnnouncements.map((announcement) => (
-                      <div key={announcement.id} className="rounded-xl border border-border p-4">
+                      <div
+                        key={announcement.id}
+                        className="rounded-xl border border-border p-4"
+                      >
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-semibold text-foreground">
                             {announcement.title}
@@ -868,13 +1350,20 @@ export default function TutorDashboard() {
               </Card>
             )}
             {activeSection === "evaluation" && (
-              <div className="grid gap-6 lg:grid-cols-[340px,1fr]">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Evaluation Filters</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
+              <Card>
+                <CardHeader className="space-y-5">
+                  <div>
+                    <CardTitle>Evaluation</CardTitle>
+                    <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+                      Choose a programme first, then select the assignment or
+                      interactive session you want to review. Document
+                      submissions open in a built-in preview here, while audio
+                      and video submissions download directly for review.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="max-w-xl space-y-2">
                       <Label>Select programme</Label>
                       <select
                         className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -882,7 +1371,8 @@ export default function TutorDashboard() {
                         onChange={(event: ChangeEvent<HTMLSelectElement>) => {
                           setSelectedProgrammeId(event.target.value);
                           setSelectedAssignmentId("");
-                          setSelectedStudentId("all");
+                          setEvaluationSearch("");
+                          setEvaluationFilter("all");
                         }}
                       >
                         <option value="">Select a programme</option>
@@ -894,92 +1384,205 @@ export default function TutorDashboard() {
                       </select>
                     </div>
 
-                    {selectedProgrammeId && (
-                      <div className="space-y-2">
-                        <Label>Select assignment</Label>
+                    {selectedProgrammeId ? (
+                      <div className="max-w-xl space-y-2">
+                        <Label>Select assignment or session</Label>
                         <select
                           className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                           value={selectedAssignmentId}
                           onChange={(event: ChangeEvent<HTMLSelectElement>) => {
                             setSelectedAssignmentId(event.target.value);
-                            setSelectedStudentId("all");
+                            setEvaluationSearch("");
+                            setEvaluationFilter("all");
                           }}
                         >
-                          <option value="">Select an assignment</option>
+                          <option value="">Select an item</option>
                           {selectedAssignments.map((assignment) => (
-                            <option key={assignment.id} value={assignment.id}>
-                              {assignment.title}
+                            <option
+                              key={assignment.id}
+                              value={`assignment:${assignment.id}`}
+                            >
+                              Assignment: {assignment.title}
+                            </option>
+                          ))}
+                          {selectedInteractiveSessions.map((session) => (
+                            <option key={session.id} value={`session:${session.id}`}>
+                              Interactive session: {session.title}
                             </option>
                           ))}
                         </select>
                       </div>
-                    )}
+                    ) : null}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  {!selectedProgrammeId ? (
+                    <div className="rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
+                      Select a programme to begin evaluation.
+                    </div>
+                  ) : null}
 
-                    {selectedAssignmentId && (
-                      <div className="space-y-2">
-                        <Label>Select scholar</Label>
-                        <select
-                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                          value={selectedStudentId}
-                          onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                            setSelectedStudentId(event.target.value)
+                  {selectedProgrammeId && !selectedAssignmentId ? (
+                    <div className="rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
+                      Now choose an assignment or interactive session to load
+                      scholar records.
+                    </div>
+                  ) : null}
+
+                  {selectedAssignmentId ? (
+                    <>
+                      <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/20 p-4 xl:flex-row xl:items-center xl:justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">
+                            {selectedAssignmentType === "session"
+                              ? "Interactive session evaluation"
+                              : "Scholar submissions"}
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Use search and the quick filter to narrow the list
+                            before grading or following up.
+                          </p>
+                        </div>
+                        <div className="flex flex-col gap-3 sm:flex-row xl:min-w-[560px]">
+                          <Input
+                            value={evaluationSearch}
+                            onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                              setEvaluationSearch(event.target.value)
+                            }
+                            placeholder="Search scholars by name, email, or batch"
+                            className="sm:flex-1"
+                          />
+                          <select
+                            className="h-10 rounded-md border border-input bg-background px-3 text-sm sm:w-[220px]"
+                            value={evaluationFilter}
+                            onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                              setEvaluationFilter(event.target.value)
+                            }
+                          >
+                            {selectedAssignmentType === "session" ? (
+                              <>
+                                <option value="all">All scholars</option>
+                                <option value="present">Present</option>
+                                <option value="absent">Absent</option>
+                              </>
+                            ) : (
+                              <>
+                                <option value="all">All submissions</option>
+                                <option value="under_evaluation">
+                                  Under evaluation
+                                </option>
+                                <option value="graded">Graded</option>
+                              </>
+                            )}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {selectedAssignmentType === "assignment" ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleOpenEmailForPendingAssignments}
+                            disabled={!selectedAssignmentId}
+                          >
+                            <Mail className="mr-2 h-4 w-4" />
+                            Email not submitted
+                          </Button>
+                        ) : null}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const recipients =
+                              selectedAssignmentType === "session"
+                                ? filteredSessionStudents.map((entry) => ({
+                                    id: entry.user.id,
+                                    name: entry.user.name,
+                                    email: entry.user.email,
+                                  }))
+                                : filteredSubmissions.map((submission) => ({
+                                    id: submission.student.id,
+                                    name: submission.student.name,
+                                    email: submission.student.email,
+                                  }));
+                            openEmailDialogForRecipients(
+                              recipients,
+                              "currently visible scholars",
+                            );
+                          }}
+                          disabled={
+                            selectedAssignmentType === "session"
+                              ? filteredSessionStudents.length === 0
+                              : filteredSubmissions.length === 0
                           }
                         >
-                          <option value="all">All scholars</option>
-                          {Array.from(
-                            new Map(
-                              submissions.map((submission) => [
-                                submission.student.id,
-                                submission.student,
-                              ]),
-                            ).values(),
-                          ).map((student) => (
-                            <option key={student.id} value={student.id}>
-                              {student.name}
-                            </option>
-                          ))}
-                        </select>
+                          <Mail className="mr-2 h-4 w-4" />
+                          Email visible scholars
+                        </Button>
                       </div>
-                    )}
-                  </CardContent>
-                </Card>
+                    </>
+                  ) : null}
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Scholar submissions</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {!selectedProgrammeId && (
-                      <p className="text-sm text-muted-foreground">
-                        Choose a programme to begin evaluation.
-                      </p>
-                    )}
-                    {selectedProgrammeId && !selectedAssignmentId && (
-                      <p className="text-sm text-muted-foreground">
-                        Choose an assignment to load scholar submissions.
-                      </p>
-                    )}
-                    {selectedAssignmentId && filteredSubmissions.length === 0 && (
-                      <p className="text-sm text-muted-foreground">
-                        No submissions match the selected filters yet.
-                      </p>
-                    )}
-                    {filteredSubmissions.map((submission) => (
+                  {selectedAssignmentType === "assignment" &&
+                  filteredSubmissions.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No submissions match the current search or filter.
+                    </p>
+                  ) : null}
+
+                  {selectedAssignmentType === "assignment" &&
+                    filteredSubmissions.map((submission) => (
                       <div
                         key={submission.id}
                         className="space-y-3 rounded-lg border border-border p-4"
                       >
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div>
                             <p className="font-medium text-foreground">
                               {submission.student.name}
                             </p>
                             <p className="text-xs text-muted-foreground">
                               {submission.student.email}
+                              {submission.student.batch
+                                ? ` ? ${submission.student.batch}`
+                                : ""}
                             </p>
                             <p className="text-xs text-muted-foreground">
                               Submitted {formatDateTime(submission.submittedAt)}
                             </p>
+                            {submission.fileUrl ? (
+                              <button
+                                type="button"
+                                className="mt-2 text-xs font-medium text-vahani-blue underline-offset-4 hover:underline"
+                                onClick={() => {
+                                  if (
+                                    submission.assignment.assignmentType ===
+                                    "document"
+                                  ) {
+                                    setPreviewFile({
+                                      url: submission.fileUrl,
+                                      title: `${submission.student.name} ? ${submission.assignment.title}`,
+                                    });
+                                    return;
+                                  }
+
+                                  const link = document.createElement("a");
+                                  link.href = submission.fileUrl;
+                                  link.target = "_blank";
+                                  link.rel = "noreferrer";
+                                  link.download = "";
+                                  document.body.appendChild(link);
+                                  link.click();
+                                  link.remove();
+                                }}
+                              >
+                                {submission.assignment.assignmentType ===
+                                "document"
+                                  ? "Preview submission"
+                                  : "Download submission"}
+                              </button>
+                            ) : null}
                           </div>
                           <Badge variant="outline">{submission.status}</Badge>
                         </div>
@@ -997,61 +1600,314 @@ export default function TutorDashboard() {
                             }
                             className="sm:max-w-[180px]"
                           />
-                          <Button onClick={() => void handleSaveMarks(submission.id)}>
+                          <Button
+                            onClick={() => void handleSaveMarks(submission.id)}
+                          >
                             Save marks
                           </Button>
                         </div>
                       </div>
                     ))}
-                  </CardContent>
-                </Card>
-              </div>
+
+                  {selectedAssignmentType === "session" &&
+                    selectedEvaluationSession && (
+                      <div className="space-y-4">
+                        <div className="rounded-xl border border-border bg-muted/20 p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="font-medium text-foreground">
+                                {selectedEvaluationSession.title}
+                              </p>
+                              <p className="mt-1 text-sm text-muted-foreground">
+                                {formatDateTime(
+                                  selectedEvaluationSession.scheduledAt,
+                                )}
+                              </p>
+                            </div>
+                            <Badge variant="outline">
+                              Max marks {selectedEvaluationSession.maxScore}
+                            </Badge>
+                          </div>
+                        </div>
+
+                        {filteredSessionStudents.length === 0 && (
+                          <p className="text-sm text-muted-foreground">
+                            No scholars match the current search or filter.
+                          </p>
+                        )}
+
+                        {filteredSessionStudents.map((entry) => (
+                          <div
+                            key={entry.user.id}
+                            className="grid gap-3 rounded-lg border border-border p-4 sm:grid-cols-[1fr_160px_140px]"
+                          >
+                            <div>
+                              <p className="font-medium text-foreground">
+                                {entry.user.name}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {entry.user.email}
+                                {entry.user.batch
+                                  ? ` ? ${entry.user.batch}`
+                                  : ""}
+                              </p>
+                            </div>
+                            <select
+                              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                              value={entry.status}
+                              onChange={(
+                                event: ChangeEvent<HTMLSelectElement>,
+                              ) => {
+                                const nextStatus = event.target
+                                  .value as "present" | "absent";
+                                setAttendanceDrafts((current) => ({
+                                  ...current,
+                                  [entry.user.id]: nextStatus,
+                                }));
+                                setAttendanceScoreDrafts((current) => ({
+                                  ...current,
+                                  [entry.user.id]:
+                                    nextStatus === "absent"
+                                      ? "0"
+                                      : current[entry.user.id] ||
+                                        String(
+                                          selectedEvaluationSession.maxScore || 0,
+                                        ),
+                                }));
+                              }}
+                            >
+                              <option value="present">Present</option>
+                              <option value="absent">Absent</option>
+                            </select>
+                            <Input
+                              type="number"
+                              min="0"
+                              max={selectedEvaluationSession.maxScore || 0}
+                              disabled={entry.status === "absent"}
+                              value={entry.status === "absent" ? "0" : entry.score}
+                              onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                                setAttendanceScoreDrafts((current) => ({
+                                  ...current,
+                                  [entry.user.id]: event.target.value,
+                                }))
+                              }
+                            />
+                          </div>
+                        ))}
+
+                        <div className="flex justify-end">
+                          <Button onClick={() => void handleSaveAttendance()}>
+                            Save session evaluation
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                </CardContent>
+              </Card>
+            )}
+
+            {activeSection === "reports" && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Programme reports</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
+                    <select
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                      value={reportProgrammeId}
+                      onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                        setReportProgrammeId(event.target.value)
+                      }
+                    >
+                      <option value="">Select a programme</option>
+                      {programmes.map((programme) => (
+                        <option key={programme.id} value={programme.id}>
+                          {programme.title}
+                        </option>
+                      ))}
+                    </select>
+                    <Button onClick={() => void handleGenerateProgrammeReport()}>
+                      Generate report
+                    </Button>
+                    <div className="flex gap-3">
+                      <Button
+                        variant="outline"
+                        disabled={!reportData || reportData.rows.length === 0}
+                        onClick={() =>
+                          reportData &&
+                          downloadCsvReport(
+                            reportData,
+                            `programme-report-${reportData.programme.title.replace(/\s+/g, "-").toLowerCase()}`,
+                          )
+                        }
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        CSV
+                      </Button>
+                      <Button
+                        variant="outline"
+                        disabled={!reportData || reportData.rows.length === 0}
+                        onClick={() =>
+                          reportData &&
+                          exportReportAsPdf(
+                            reportData,
+                            `${reportData.programme.title} report`,
+                            `programme-report-${reportData.programme.title.replace(/\s+/g, "-").toLowerCase()}`,
+                          )
+                        }
+                      >
+                        PDF
+                      </Button>
+                    </div>
+                  </div>
+
+                  {reportData && (
+                    <div className="space-y-4">
+                      <div className="rounded-xl border border-border p-4">
+                        <p className="font-medium text-foreground">
+                          {reportData.programme.title}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Generated on {formatDateTime(reportData.generatedAt)} with{" "}
+                          {reportData.rows.length} scholar row(s).
+                        </p>
+                      </div>
+
+                      {reportData.rows.length > 0 ? (
+                        <div className="overflow-x-auto rounded-xl border border-border">
+                          <table className="min-w-full divide-y divide-border text-sm">
+                            <thead className="bg-muted/40">
+                              <tr>
+                                {Object.keys(reportData.rows[0]).map((key) => (
+                                  <th
+                                    key={key}
+                                    className="px-4 py-3 text-left font-medium text-foreground"
+                                  >
+                                    {key}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                              {reportData.rows.map((row, index) => (
+                                <tr key={`${reportData.programme.id}-${index}`}>
+                                  {Object.keys(reportData.rows[0]).map((key) => (
+                                    <td
+                                      key={key}
+                                      className="px-4 py-3 text-muted-foreground"
+                                    >
+                                      {String(row[key] ?? "")}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          No scholar rows were returned for this programme yet.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             )}
 
             {activeSection === "queries" && (
-              <div className="grid gap-6 lg:grid-cols-[380px,1fr]">
+              <>
+              <Card>
+                <CardHeader className="gap-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <CardTitle className="flex items-center gap-2">
+                      <MessageSquareText className="h-4 w-4 text-vahani-blue" />
+                      Query Filters
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground">
+                      {filteredQueries.length} of {queries.length} queries shown
+                    </p>
+                  </div>
+                  <div className="grid gap-3 lg:grid-cols-[minmax(0,1.5fr),repeat(3,minmax(0,1fr))]">
+                    <div className="relative">
+                      <Input
+                        value={querySearch}
+                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                          setQuerySearch(event.target.value)
+                        }
+                        placeholder="Search by subject, scholar, programme, or content"
+                        className="pl-4"
+                      />
+                    </div>
+                    <select
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                      value={queryBatchFilter}
+                      onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                        setQueryBatchFilter(event.target.value)
+                      }
+                    >
+                      <option value="all">All batches</option>
+                      {queryBatches.map((batch) => (
+                        <option key={batch} value={batch}>
+                          {batch}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                      value={queryTimeRangeFilter}
+                      onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                        setQueryTimeRangeFilter(
+                          event.target.value as QueryTimeRangeFilter,
+                        )
+                      }
+                    >
+                      <option value="all">All time</option>
+                      <option value="7d">Last 7 days</option>
+                      <option value="30d">Last 30 days</option>
+                      <option value="90d">Last 90 days</option>
+                    </select>
+                    <select
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                      value={queryStatusFilter}
+                      onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                        setQueryStatusFilter(
+                          event.target.value as "all" | QueryStatus,
+                        )
+                      }
+                    >
+                      <option value="all">Any status</option>
+                      <option value="open">Open</option>
+                      <option value="in_progress">In Progress</option>
+                      <option value="resolved">Resolved</option>
+                      <option value="closed">Closed</option>
+                    </select>
+                  </div>
+                </CardHeader>
+              </Card>
+
+              <div
+                className={`grid gap-6 ${
+                  isQueryListCollapsed ? "grid-cols-1" : "lg:grid-cols-[380px,1fr]"
+                }`}
+              >
+                {!isQueryListCollapsed && (
                 <Card>
                   <CardHeader>
-                    <CardTitle>Scholar queries</CardTitle>
+                    <div className="flex items-center justify-between gap-3">
+                      <CardTitle>Scholar queries</CardTitle>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsQueryListCollapsed(true)}
+                      >
+                        Collapse list
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <Input
-                      value={querySearch}
-                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                        setQuerySearch(event.target.value)
-                      }
-                      placeholder="Search by subject, scholar, programme, or content"
-                    />
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <select
-                        className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                        value={queryStatusFilter}
-                        onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                          setQueryStatusFilter(event.target.value as "all" | QueryStatus)
-                        }
-                      >
-                        <option value="all">All statuses</option>
-                        <option value="open">Open</option>
-                        <option value="in_progress">In Progress</option>
-                        <option value="resolved">Resolved</option>
-                        <option value="closed">Closed</option>
-                      </select>
-                      <select
-                        className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                        value={queryBatchFilter}
-                        onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                          setQueryBatchFilter(event.target.value)
-                        }
-                      >
-                        <option value="all">All batches</option>
-                        {queryBatches.map((batch) => (
-                          <option key={batch} value={batch}>
-                            {batch}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
                     <div className="space-y-3">
                       {filteredQueries.length === 0 && (
                         <p className="text-sm text-muted-foreground">
@@ -1078,7 +1934,9 @@ export default function TutorDashboard() {
                                 </p>
                                 <p className="mt-1 text-xs text-muted-foreground">
                                   {query.author.name}
-                                  {query.author.batch ? ` - ${query.author.batch}` : ""}
+                                  {query.author.batch
+                                    ? ` - ${query.author.batch}`
+                                    : ""}
                                 </p>
                               </div>
                               <Button
@@ -1108,7 +1966,9 @@ export default function TutorDashboard() {
                                 {queryStatusLabels[query.status]}
                               </Badge>
                               {query.programme?.title && (
-                                <Badge variant="secondary">{query.programme.title}</Badge>
+                                <Badge variant="secondary">
+                                  {query.programme.title}
+                                </Badge>
                               )}
                             </div>
                           </button>
@@ -1117,10 +1977,23 @@ export default function TutorDashboard() {
                     </div>
                   </CardContent>
                 </Card>
+                )}
 
                 <Card>
                   <CardHeader>
-                    <CardTitle>Query thread</CardTitle>
+                    <div className="flex items-center justify-between gap-3">
+                      <CardTitle>Query thread</CardTitle>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setIsQueryListCollapsed((current) => !current)
+                        }
+                      >
+                        {isQueryListCollapsed ? "Show query list" : "Hide query list"}
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {!selectedQuery && (
@@ -1140,20 +2013,28 @@ export default function TutorDashboard() {
                               {queryStatusLabels[selectedQuery.status]}
                             </Badge>
                             {selectedQuery.programme?.title && (
-                              <Badge variant="outline">{selectedQuery.programme.title}</Badge>
+                              <Badge variant="outline">
+                                {selectedQuery.programme.title}
+                              </Badge>
                             )}
                           </div>
                           <p className="mt-2 text-sm text-muted-foreground">
-                            From {selectedQuery.author.name} ({selectedQuery.author.email})
+                            From {selectedQuery.author.name} (
+                            {selectedQuery.author.email})
                           </p>
                         </div>
 
                         <div className="space-y-3">
                           {selectedQuery.messages.map((message) => (
-                            <div key={message.id} className="rounded-xl border p-4">
+                            <div
+                              key={message.id}
+                              className="rounded-xl border p-4"
+                            >
                               <div className="flex items-center justify-between gap-2">
                                 <p className="text-sm font-semibold text-foreground">
-                                  {message.author.id === user?.id ? "You" : message.author.name}
+                                  {message.author.id === user?.id
+                                    ? "You"
+                                    : message.author.name}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
                                   {formatDateTime(message.createdAt)}
@@ -1172,8 +2053,12 @@ export default function TutorDashboard() {
                             <select
                               className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                               value={queryStatusDraft}
-                              onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                                setQueryStatusDraft(event.target.value as QueryStatus)
+                              onChange={(
+                                event: ChangeEvent<HTMLSelectElement>,
+                              ) =>
+                                setQueryStatusDraft(
+                                  event.target.value as QueryStatus,
+                                )
                               }
                             >
                               <option value="open">Open</option>
@@ -1193,14 +2078,16 @@ export default function TutorDashboard() {
                           <div className="space-y-3 rounded-xl border border-border p-4">
                             <div className="flex items-center gap-2">
                               <CircleHelp className="h-4 w-4 text-vahani-blue" />
-                              <p className="text-sm font-semibold text-foreground">Reply</p>
+                              <p className="text-sm font-semibold text-foreground">
+                                Reply
+                              </p>
                             </div>
                             <Textarea
                               rows={4}
                               value={queryReplyDraft}
-                              onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
-                                setQueryReplyDraft(event.target.value)
-                              }
+                              onChange={(
+                                event: ChangeEvent<HTMLTextAreaElement>,
+                              ) => setQueryReplyDraft(event.target.value)}
                               placeholder="Reply to the scholar or ask for more details."
                             />
                             <Button onClick={() => void handleReplyToQuery()}>
@@ -1214,12 +2101,46 @@ export default function TutorDashboard() {
                   </CardContent>
                 </Card>
               </div>
+              </>
             )}
 
             {activeSection === "students" && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Students</CardTitle>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <CardTitle>Students</CardTitle>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setSelectedEmailStudentIds(
+                            visibleStudents.map((enrollment) => enrollment.user.id),
+                          )
+                        }
+                        disabled={!selectedProgrammeId || visibleStudents.length === 0}
+                      >
+                        Select visible
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedEmailStudentIds([])}
+                        disabled={selectedEmailStudentIds.length === 0}
+                      >
+                        Clear selection
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleOpenEmailForSelectedStudents}
+                        disabled={selectedEmailRecipients.length === 0}
+                      >
+                        <Mail className="mr-2 h-4 w-4" />
+                        Proceed to email
+                      </Button>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-5">
                   <div className="grid gap-3 lg:grid-cols-[280px,1fr]">
@@ -1270,9 +2191,16 @@ export default function TutorDashboard() {
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <p className="font-semibold text-foreground">
-                                {enrollment.user.name}
-                              </p>
+                              <div className="flex items-center gap-2">
+                                <Checkbox
+                                  checked={selectedEmailStudentIds.includes(enrollment.user.id)}
+                                  onCheckedChange={() => toggleEmailStudent(enrollment.user.id)}
+                                  onClick={(event) => event.stopPropagation()}
+                                />
+                                <p className="font-semibold text-foreground">
+                                  {enrollment.user.name}
+                                </p>
+                              </div>
                               <p className="mt-1 text-sm text-muted-foreground">
                                 {enrollment.user.email}
                               </p>
@@ -1281,7 +2209,9 @@ export default function TutorDashboard() {
                           </div>
                           <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
                             <span>{enrollment.user.batch || "No batch"}</span>
-                            <span>Enrolled {formatDate(enrollment.enrolledAt)}</span>
+                            <span>
+                              Enrolled {formatDate(enrollment.enrolledAt)}
+                            </span>
                           </div>
                         </button>
                       ))}
@@ -1293,164 +2223,10 @@ export default function TutorDashboard() {
           </div>
         </main>
       </div>
-      <Dialog open={showProgrammeDialog} onOpenChange={setShowProgrammeDialog}>
-        <DialogContent className="max-w-5xl">
-          <DialogHeader>
-            <DialogTitle>{programmeDetail?.title || "Programme details"}</DialogTitle>
-            <DialogDescription>
-              Review this course and publish assignments, resources, and meetings from one place.
-            </DialogDescription>
-          </DialogHeader>
-
-          {programmeDetail && (
-            <div className="space-y-6">
-              <div className="grid gap-4 md:grid-cols-4">
-                <div className="rounded-xl border border-border p-4">
-                  <p className="text-xs text-muted-foreground">Scholars</p>
-                  <p className="mt-1 font-semibold text-foreground">
-                    {programmeDetail.enrollments.length}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border p-4">
-                  <p className="text-xs text-muted-foreground">Assignments</p>
-                  <p className="mt-1 font-semibold text-foreground">
-                    {programmeDetail.assignments.length}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border p-4">
-                  <p className="text-xs text-muted-foreground">Resources</p>
-                  <p className="mt-1 font-semibold text-foreground">
-                    {programmeDetail.resources?.length || 0}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border p-4">
-                  <p className="text-xs text-muted-foreground">Meetings</p>
-                  <p className="mt-1 font-semibold text-foreground">
-                    {programmeDetail.meetingLinks?.length || 0}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-                <Button
-                  onClick={() => {
-                    setSelectedProgrammeId(programmeDetail.id);
-                    setShowAssignmentDialog(true);
-                  }}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add assignment
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setSelectedProgrammeId(programmeDetail.id);
-                    setShowResourceDialog(true);
-                  }}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Resource material
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setSelectedProgrammeId(programmeDetail.id);
-                    setShowMeetingDialog(true);
-                  }}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Online meeting
-                </Button>
-              </div>
-
-              <div className="grid gap-6 lg:grid-cols-2">
-                <div className="space-y-3">
-                  <h3 className="font-semibold text-foreground">Assignments</h3>
-                  {programmeDetail.assignments.length === 0 && (
-                    <p className="text-sm text-muted-foreground">
-                      No assignments published for this programme yet.
-                    </p>
-                  )}
-                  {programmeDetail.assignments.map((assignment) => (
-                    <button
-                      key={assignment.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedProgrammeId(programmeDetail.id);
-                        setSelectedAssignmentId(assignment.id);
-                        setSelectedStudentId("all");
-                        setActiveSection("evaluation");
-                        setShowProgrammeDialog(false);
-                      }}
-                      className="w-full rounded-xl border border-border p-4 text-left transition hover:bg-muted/30"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="font-medium text-foreground">{assignment.title}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Due {formatDate(assignment.dueDate)}
-                          </p>
-                        </div>
-                        <Badge variant="outline">
-                          {assignment.submissions.length}/{programmeDetail.enrollments.length} submitted
-                        </Badge>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="space-y-5">
-                  <div className="space-y-3">
-                    <h3 className="font-semibold text-foreground">Study materials</h3>
-                    {(programmeDetail.resources || []).length === 0 && (
-                      <p className="text-sm text-muted-foreground">
-                        No resource materials added yet.
-                      </p>
-                    )}
-                    {(programmeDetail.resources || []).map((resource) => (
-                      <div key={resource.id} className="rounded-xl border border-border p-4">
-                        <p className="font-medium text-foreground">{resource.title}</p>
-                        <a
-                          href={resource.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-1 block text-sm text-vahani-blue underline-offset-4 hover:underline"
-                        >
-                          {resource.url}
-                        </a>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="space-y-3">
-                    <h3 className="font-semibold text-foreground">Meeting sessions</h3>
-                    {(programmeDetail.meetingLinks || []).length === 0 && (
-                      <p className="text-sm text-muted-foreground">
-                        No online meetings added yet.
-                      </p>
-                    )}
-                    {(programmeDetail.meetingLinks || []).map((meeting) => (
-                      <div key={meeting.id} className="rounded-xl border border-border p-4">
-                        <p className="font-medium text-foreground">{meeting.title}</p>
-                        <a
-                          href={meeting.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-1 block text-sm text-vahani-blue underline-offset-4 hover:underline"
-                        >
-                          {meeting.url}
-                        </a>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showAssignmentDialog} onOpenChange={setShowAssignmentDialog}>
+      <Dialog
+        open={showAssignmentDialog}
+        onOpenChange={setShowAssignmentDialog}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Add assignment</DialogTitle>
@@ -1484,7 +2260,14 @@ export default function TutorDashboard() {
                     }))
                   }
                 >
-                  {["document", "audio", "video", "quiz", "archive"].map((type) => (
+                  {[
+                    "document",
+                    "audio",
+                    "video",
+                    "quiz",
+                    "archive",
+                    "link_submission",
+                  ].map((type) => (
                     <option key={type} value={type}>
                       {type}
                     </option>
@@ -1532,9 +2315,26 @@ export default function TutorDashboard() {
                 }
               />
             </div>
+            <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">Assignment setup</p>
+              <p className="mt-2">
+                Type:{" "}
+                <span className="font-medium text-foreground">
+                  {assignmentForm.assignmentType}
+                </span>
+              </p>
+              <p className="mt-1">
+                Scholars will upload files for this assignment. Interactive
+                sessions are scheduled separately and use attendance instead of
+                uploads.
+              </p>
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAssignmentDialog(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowAssignmentDialog(false)}
+            >
               Cancel
             </Button>
             <Button onClick={() => void handleCreateAssignment()}>
@@ -1543,12 +2343,118 @@ export default function TutorDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={showSessionDialog} onOpenChange={setShowSessionDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Schedule interactive session</DialogTitle>
+            <DialogDescription>
+              Set the live session details. Scholars will see this in their
+              calendar, and you can later mark both attendance and session marks.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Title</Label>
+                <Input
+                  value={sessionForm.title}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    setSessionForm((current) => ({
+                      ...current,
+                      title: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Scheduled date and time</Label>
+                <Input
+                  type="datetime-local"
+                  value={sessionForm.scheduledAt}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    setSessionForm((current) => ({
+                      ...current,
+                      scheduledAt: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Duration in minutes</Label>
+                <Input
+                  type="number"
+                  min="15"
+                  value={sessionForm.durationMinutes}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    setSessionForm((current) => ({
+                      ...current,
+                      durationMinutes: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Max marks</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={sessionForm.maxScore}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    setSessionForm((current) => ({
+                      ...current,
+                      maxScore: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Meeting URL</Label>
+                <Input
+                  value={sessionForm.meetingUrl}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    setSessionForm((current) => ({
+                      ...current,
+                      meetingUrl: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea
+                rows={4}
+                value={sessionForm.description}
+                onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
+                  setSessionForm((current) => ({
+                    ...current,
+                    description: event.target.value,
+                  }))
+                }
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowSessionDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button onClick={() => void handleCreateInteractiveSession()}>
+              Schedule session
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showResourceDialog} onOpenChange={setShowResourceDialog}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Add resource material</DialogTitle>
             <DialogDescription>
-              Publish a new study material link for scholars.
+              Publish a study material by URL or upload a file to storage.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1574,14 +2480,51 @@ export default function TutorDashboard() {
                     url: event.target.value,
                   }))
                 }
+                placeholder="Paste a public resource link if you are not uploading a file"
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea
+                rows={3}
+                value={resourceForm.description}
+                onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
+                  setResourceForm((current) => ({
+                    ...current,
+                    description: event.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Upload file</Label>
+              <Input
+                type="file"
+                accept=".pdf,.doc,.docx,.ppt,.pptx,.png,.jpg,.jpeg,.mp3,.wav,.mp4,.mov,.zip"
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                  setResourceForm((current) => ({
+                    ...current,
+                    file: event.target.files?.[0] || null,
+                  }))
+                }
+              />
+              {resourceForm.file && (
+                <p className="text-xs text-muted-foreground">
+                  Selected file: {resourceForm.file.name}
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowResourceDialog(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowResourceDialog(false)}
+            >
               Cancel
             </Button>
-            <Button onClick={() => void handleAddResource()}>Add resource</Button>
+            <Button onClick={() => void handleAddResource()}>
+              Add resource
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1621,7 +2564,10 @@ export default function TutorDashboard() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowMeetingDialog(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowMeetingDialog(false)}
+            >
               Cancel
             </Button>
             <Button onClick={() => void handleAddMeeting()}>Add meeting</Button>
@@ -1629,7 +2575,110 @@ export default function TutorDashboard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showAnnouncementDialog} onOpenChange={setShowAnnouncementDialog}>
+      <Dialog
+        open={showAttendanceDialog}
+        onOpenChange={setShowAttendanceDialog}
+      >
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedAttendanceSession?.title || "Mark attendance"}
+            </DialogTitle>
+            <DialogDescription>
+              All scholars start as present. Mark absentees, adjust their session marks, and save.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">
+                {selectedAttendanceSession?.title || "Interactive session"}
+              </p>
+              <p className="mt-1">
+                {formatDateTime(selectedAttendanceSession?.scheduledAt)}
+              </p>
+              <p className="mt-1">
+                Max marks {selectedAttendanceSession?.maxScore ?? 0}
+              </p>
+            </div>
+            <div className="space-y-3">
+              {(selectedProgramme?.enrollments || []).map((enrollment) => (
+                <div
+                  key={enrollment.user.id}
+                  className="grid gap-3 rounded-xl border border-border p-4 sm:grid-cols-[1fr_160px_140px] sm:items-center"
+                >
+                  <div>
+                    <p className="font-medium text-foreground">
+                      {enrollment.user.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {enrollment.user.email}
+                      {enrollment.user.batch
+                        ? ` • ${enrollment.user.batch}`
+                        : ""}
+                    </p>
+                  </div>
+                  <select
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    value={attendanceDrafts[enrollment.user.id] || "present"}
+                    onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                      {
+                        const nextStatus = event.target.value as "present" | "absent";
+                        setAttendanceDrafts((current) => ({
+                          ...current,
+                          [enrollment.user.id]: nextStatus,
+                        }));
+                        setAttendanceScoreDrafts((current) => ({
+                          ...current,
+                          [enrollment.user.id]:
+                            nextStatus === "absent"
+                              ? "0"
+                              : current[enrollment.user.id] || String(selectedAttendanceSession?.maxScore ?? 0),
+                        }));
+                      }
+                    }
+                  >
+                    <option value="present">Present</option>
+                    <option value="absent">Absent</option>
+                  </select>
+                  <Input
+                    type="number"
+                    min="0"
+                    max={selectedAttendanceSession?.maxScore ?? 0}
+                    disabled={(attendanceDrafts[enrollment.user.id] || "present") === "absent"}
+                    value={
+                      (attendanceDrafts[enrollment.user.id] || "present") === "absent"
+                        ? "0"
+                        : attendanceScoreDrafts[enrollment.user.id] || String(selectedAttendanceSession?.maxScore ?? 0)
+                    }
+                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                      setAttendanceScoreDrafts((current) => ({
+                        ...current,
+                        [enrollment.user.id]: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowAttendanceDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button onClick={() => void handleSaveAttendance()}>
+              Update attendance
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showAnnouncementDialog}
+        onOpenChange={setShowAnnouncementDialog}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Send announcement</DialogTitle>
@@ -1685,7 +2734,10 @@ export default function TutorDashboard() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAnnouncementDialog(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowAnnouncementDialog(false)}
+            >
               Cancel
             </Button>
             <Button onClick={() => void handleSendAnnouncement()}>
@@ -1695,10 +2747,60 @@ export default function TutorDashboard() {
         </DialogContent>
       </Dialog>
 
+      <EmailComposerDialog
+        open={showEmailDialog}
+        onOpenChange={setShowEmailDialog}
+        recipients={emailRecipients}
+        recipientLabel={emailRecipientLabel}
+        sending={sendingEmail}
+        onSend={handleSendManagerEmail}
+      />
+
+      <Dialog
+        open={Boolean(previewFile)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPreviewFile(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>{previewFile?.title || "Submission preview"}</DialogTitle>
+            <DialogDescription>
+              Review the uploaded document here without leaving the evaluation
+              flow.
+            </DialogDescription>
+          </DialogHeader>
+          {previewFile ? (
+            <div className="space-y-4">
+              <iframe
+                src={previewFile.url}
+                title={previewFile.title}
+                className="h-[70vh] w-full rounded-xl border border-border bg-background"
+              />
+              <div className="flex justify-end">
+                <Button asChild variant="outline">
+                  <a
+                    href={previewFile.url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open in new tab
+                  </a>
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showStudentDialog} onOpenChange={setShowStudentDialog}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>{selectedStudentDetail?.user.name || "Scholar details"}</DialogTitle>
+            <DialogTitle>
+              {selectedStudentDetail?.user.name || "Scholar details"}
+            </DialogTitle>
             <DialogDescription>
               Review the selected scholar inside the current programme.
             </DialogDescription>

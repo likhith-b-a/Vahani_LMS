@@ -4,6 +4,7 @@ import {
   BellRing,
   BookOpen,
   Download,
+  Mail,
   MessageSquareText,
   Pencil,
   Pin,
@@ -17,11 +18,13 @@ import {
 import vahaniLogo from "@/assets/vahani-logo.png";
 import {
   assignScholarsToProgramme,
+  bulkCreateAdminUsers,
   createAdminProgramme,
   createAdminUser,
   deleteAdminAssignment,
   deleteAdminProgramme,
   deleteAdminUser,
+  downloadAdminUserTemplate,
   getAdminOverview,
   getAdminReport,
   removeScholarFromProgramme,
@@ -35,6 +38,8 @@ import {
   type AdminUser,
   type AdminUserRole,
 } from "@/api/admin";
+import { getAdminWishlist } from "@/api/wishlist";
+import { sendRoleBasedEmail, type EmailRecipient } from "@/api/emails";
 import {
   createAnnouncement,
   getAnnouncements,
@@ -48,6 +53,7 @@ import {
   type SupportQuery,
 } from "@/api/queries";
 import { AdminSidebar } from "@/components/dashboard/AdminSidebar";
+import { EmailComposerDialog } from "@/components/dashboard/EmailComposerDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -84,6 +90,7 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { downloadCsvReport, exportReportAsPdf } from "@/lib/reportExport";
 
 const emptyUserForm = {
   name: "",
@@ -115,9 +122,9 @@ const emptyAnnouncementForm = {
 };
 
 const reportLabels = {
-  enrollment: "Enrollment",
-  progress: "Progress",
-  evaluations: "Evaluations",
+  scholar: "Scholar report",
+  programme: "Programme report",
+  wishlist: "Wishlist report",
 } as const;
 
 const queryStatusLabels: Record<QueryStatus, string> = {
@@ -126,6 +133,8 @@ const queryStatusLabels: Record<QueryStatus, string> = {
   resolved: "Resolved",
   closed: "Closed",
 };
+
+type QueryTimeRangeFilter = "all" | "7d" | "30d" | "90d";
 
 const formatDate = (value?: string | null) =>
   value
@@ -160,32 +169,37 @@ const matchesDateRange = (value: string | null | undefined, from: string, to: st
   return true;
 };
 
+const isWithinTimeRange = (
+  value: string | null | undefined,
+  timeRange: QueryTimeRangeFilter,
+) => {
+  if (timeRange === "all") {
+    return true;
+  }
+  if (!value) {
+    return false;
+  }
+
+  const target = new Date(value).getTime();
+  if (Number.isNaN(target)) {
+    return false;
+  }
+
+  const dayMap: Record<Exclude<QueryTimeRangeFilter, "all">, number> = {
+    "7d": 7,
+    "30d": 30,
+    "90d": 90,
+  };
+
+  return Date.now() - target <= dayMap[timeRange] * 24 * 60 * 60 * 1000;
+};
+
 const roleLabel = (role: AdminUserRole) =>
   role === "programme_manager"
     ? "Programme manager"
     : role === "admin"
       ? "Admin"
       : "Scholar";
-
-const downloadCsv = (report: AdminReportResponse) => {
-  if (!report.rows.length) return;
-  const headers = Object.keys(report.rows[0]);
-  const csv = [
-    headers.join(","),
-    ...report.rows.map((row) =>
-      headers
-        .map((header) => `"${String(row[header] ?? "").replace(/"/g, '""')}"`)
-        .join(","),
-    ),
-  ].join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${report.type}-report-${new Date().toISOString().slice(0, 10)}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
-};
 
 export default function AdminDashboard() {
   const { user } = useAuth();
@@ -203,8 +217,15 @@ export default function AdminDashboard() {
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [userForm, setUserForm] = useState(emptyUserForm);
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
+  const [isBulkUserDialogOpen, setIsBulkUserDialogOpen] = useState(false);
+  const [bulkUserFile, setBulkUserFile] = useState<File | null>(null);
+  const [isDownloadingUserTemplate, setIsDownloadingUserTemplate] = useState(false);
+  const [isImportingUsers, setIsImportingUsers] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [pendingDeleteUser, setPendingDeleteUser] = useState<AdminUser | null>(null);
+  const [selectedEmailUserIds, setSelectedEmailUserIds] = useState<string[]>([]);
+  const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   const [programmeSearch, setProgrammeSearch] = useState("");
   const [programmeDateFrom, setProgrammeDateFrom] = useState("");
@@ -228,14 +249,21 @@ export default function AdminDashboard() {
   const [querySearch, setQuerySearch] = useState("");
   const [queryStatusFilter, setQueryStatusFilter] = useState<"all" | QueryStatus>("all");
   const [queryBatchFilter, setQueryBatchFilter] = useState("all");
+  const [queryTimeRangeFilter, setQueryTimeRangeFilter] =
+    useState<QueryTimeRangeFilter>("all");
   const [selectedQueryId, setSelectedQueryId] = useState("");
   const [queryReplyDraft, setQueryReplyDraft] = useState("");
   const [queryStatusDraft, setQueryStatusDraft] = useState<QueryStatus>("open");
   const [pinnedQueryIds, setPinnedQueryIds] = useState<string[]>([]);
+  const [isQueryListCollapsed, setIsQueryListCollapsed] = useState(false);
 
   const [reportType, setReportType] =
-    useState<keyof typeof reportLabels>("enrollment");
+    useState<keyof typeof reportLabels>("scholar");
   const [reportData, setReportData] = useState<AdminReportResponse | null>(null);
+  const [reportBatchFilter, setReportBatchFilter] = useState("all");
+  const [reportManagerFilter, setReportManagerFilter] = useState("all");
+  const [reportDateFrom, setReportDateFrom] = useState("");
+  const [reportDateTo, setReportDateTo] = useState("");
   const [settingsDraft, setSettingsDraft] = useState<AdminSettings | null>(null);
 
   useEffect(() => {
@@ -349,6 +377,18 @@ export default function AdminDashboard() {
     [userBatchFilter, userRoleFilter, userSearch, users],
   );
 
+  const selectedEmailRecipients = useMemo<EmailRecipient[]>(
+    () =>
+      users
+        .filter((entry) => selectedEmailUserIds.includes(entry.id))
+        .map((entry) => ({
+          id: entry.id,
+          name: entry.name,
+          email: entry.email,
+        })),
+    [selectedEmailUserIds, users],
+  );
+
   const filteredProgrammes = useMemo(
     () =>
       programmes.filter((programme) => {
@@ -425,7 +465,11 @@ export default function AdminDashboard() {
       const matchesSearch = !querySearch.trim() || searchTarget.includes(querySearch.toLowerCase());
       const matchesStatus = queryStatusFilter === "all" || query.status === queryStatusFilter;
       const matchesBatch = queryBatchFilter === "all" || query.author.batch === queryBatchFilter;
-      return matchesSearch && matchesStatus && matchesBatch;
+      const matchesTimeRange = isWithinTimeRange(
+        query.updatedAt || query.createdAt,
+        queryTimeRangeFilter,
+      );
+      return matchesSearch && matchesStatus && matchesBatch && matchesTimeRange;
     });
     return [...nextQueries].sort((left, right) => {
       const leftPinned = pinnedQueryIds.includes(left.id) ? 1 : 0;
@@ -436,7 +480,14 @@ export default function AdminDashboard() {
         new Date(left.updatedAt || left.createdAt).getTime()
       );
     });
-  }, [pinnedQueryIds, queries, queryBatchFilter, querySearch, queryStatusFilter]);
+  }, [
+    pinnedQueryIds,
+    queries,
+    queryBatchFilter,
+    querySearch,
+    queryStatusFilter,
+    queryTimeRangeFilter,
+  ]);
 
   const selectedQuery =
     filteredQueries.find((query) => query.id === selectedQueryId) ||
@@ -518,6 +569,61 @@ export default function AdminDashboard() {
     setIsProgrammeDialogOpen(true);
   };
 
+  const toggleEmailUser = (userId: string) => {
+    setSelectedEmailUserIds((current) =>
+      current.includes(userId)
+        ? current.filter((id) => id !== userId)
+        : [...current, userId],
+    );
+  };
+
+  const handleSelectMatchedUsersForEmail = () => {
+    setSelectedEmailUserIds(filteredUsers.map((entry) => entry.id));
+  };
+
+  const handleSendSelectedUsersEmail = async (payload: {
+    subject: string;
+    body: string;
+    cc: string;
+    bcc: string;
+    attachments: File[];
+  }) => {
+    if (!selectedEmailRecipients.length) {
+      toast({
+        title: "No recipients selected",
+        description: "Select at least one user before composing an email.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setSendingEmail(true);
+      await sendRoleBasedEmail({
+        userIds: selectedEmailRecipients.map((recipient) => recipient.id),
+        subject: payload.subject,
+        body: payload.body,
+        cc: payload.cc,
+        bcc: payload.bcc,
+        attachments: payload.attachments,
+      });
+      setIsEmailDialogOpen(false);
+      setSelectedEmailUserIds([]);
+      toast({
+        title: "Email sent",
+        description: `Sent to ${selectedEmailRecipients.length} recipient${selectedEmailRecipients.length === 1 ? "" : "s"}.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Unable to send email",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
   const handleUserSubmit = async () => {
     if (!userForm.name || !userForm.email || (!editingUserId && !userForm.password)) {
       toast({
@@ -563,6 +669,59 @@ export default function AdminDashboard() {
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleDownloadUserTemplate = async () => {
+    try {
+      setIsDownloadingUserTemplate(true);
+      const templateBlob = await downloadAdminUserTemplate();
+      const url = URL.createObjectURL(templateBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "admin-user-import-template.xlsx";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast({
+        title: "Unable to download template",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloadingUserTemplate(false);
+    }
+  };
+
+  const handleBulkUserImport = async () => {
+    if (!bulkUserFile) {
+      toast({
+        title: "Select a file first",
+        description: "Choose the filled template before importing users.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsImportingUsers(true);
+      const response = await bulkCreateAdminUsers(bulkUserFile);
+      const result = response.data;
+      setIsBulkUserDialogOpen(false);
+      setBulkUserFile(null);
+      await loadOverview();
+      toast({
+        title: "Bulk import completed",
+        description: `${result.createdCount} user(s) created, ${result.skippedCount} skipped.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Unable to import users",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsImportingUsers(false);
     }
   };
 
@@ -750,12 +909,50 @@ export default function AdminDashboard() {
   };
 
   const handleGenerateReport = async () => {
+    if (reportType === "wishlist") {
+      await handleGenerateWishlistReport();
+      return;
+    }
+
     try {
-      const response = await getAdminReport(reportType);
+      const response = await getAdminReport(
+        reportType,
+        reportType === "scholar"
+          ? {
+              batch: reportBatchFilter !== "all" ? reportBatchFilter : undefined,
+            }
+          : reportType === "programme"
+            ? {
+              from: reportDateFrom || undefined,
+              to: reportDateTo || undefined,
+              managerId: reportManagerFilter !== "all" ? reportManagerFilter : undefined,
+            }
+            : undefined,
+      );
       setReportData(response.data as AdminReportResponse);
     } catch (error) {
       toast({
         title: "Unable to generate report",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleGenerateWishlistReport = async () => {
+    try {
+      const response = await getAdminWishlist(
+        reportBatchFilter !== "all" ? reportBatchFilter : undefined,
+      );
+      const rows = Array.isArray(response?.data?.rows) ? response.data.rows : [];
+      setReportData({
+        type: "wishlist",
+        generatedAt: new Date().toISOString(),
+        rows,
+      });
+    } catch (error) {
+      toast({
+        title: "Unable to generate wishlist report",
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
@@ -918,15 +1115,49 @@ export default function AdminDashboard() {
                         Search, filter, inspect, edit, and create platform users from one place.
                       </p>
                     </div>
-                    <Button
-                      onClick={() => {
-                        resetUserForm();
-                        setIsUserDialogOpen(true);
-                      }}
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Create user
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={handleSelectMatchedUsersForEmail}
+                        disabled={filteredUsers.length === 0}
+                      >
+                        <Mail className="mr-2 h-4 w-4" />
+                        Select matched
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setSelectedEmailUserIds([])}
+                        disabled={selectedEmailUserIds.length === 0}
+                      >
+                        Clear selection
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setIsEmailDialogOpen(true)}
+                        disabled={selectedEmailUserIds.length === 0}
+                      >
+                        Proceed to email
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setBulkUserFile(null);
+                          setIsBulkUserDialogOpen(true);
+                        }}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        Add multiple users
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          resetUserForm();
+                          setIsUserDialogOpen(true);
+                        }}
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Create user
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-5">
@@ -989,6 +1220,11 @@ export default function AdminDashboard() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
+                              <Checkbox
+                                checked={selectedEmailUserIds.includes(member.id)}
+                                onCheckedChange={() => toggleEmailUser(member.id)}
+                                onClick={(event) => event.stopPropagation()}
+                              />
                               <p className="font-semibold text-foreground">{member.name}</p>
                               <Badge variant="secondary">{roleLabel(member.role)}</Badge>
                             </div>
@@ -1231,51 +1467,101 @@ export default function AdminDashboard() {
             </TabsContent>
 
             <TabsContent value="queries" className="space-y-6">
-              <div className="grid gap-6 xl:grid-cols-[360px,1fr]">
+              <Card>
+                <CardHeader className="gap-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <CardTitle className="flex items-center gap-2">
+                      <MessageSquareText className="h-4 w-4 text-vahani-blue" />
+                      Query Filters
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground">
+                      {filteredQueries.length} of {queries.length} queries shown
+                    </p>
+                  </div>
+                  <div className="grid gap-3 lg:grid-cols-[minmax(0,1.5fr),repeat(3,minmax(0,1fr))]">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        value={querySearch}
+                        onChange={(event: ChangeEvent<HTMLInputElement>) => setQuerySearch(event.target.value)}
+                        placeholder="Search by subject, scholar, programme, or content"
+                        className="pl-9"
+                      />
+                    </div>
+                    <Select
+                      value={queryBatchFilter}
+                      onValueChange={setQueryBatchFilter}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All batches" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All batches</SelectItem>
+                        {scholarBatches.map((batch) => (
+                          <SelectItem key={batch} value={batch}>
+                            {batch}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      value={queryTimeRangeFilter}
+                      onValueChange={(value: QueryTimeRangeFilter) =>
+                        setQueryTimeRangeFilter(value)
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Any time" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All time</SelectItem>
+                        <SelectItem value="7d">Last 7 days</SelectItem>
+                        <SelectItem value="30d">Last 30 days</SelectItem>
+                        <SelectItem value="90d">Last 90 days</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      value={queryStatusFilter}
+                      onValueChange={(value: "all" | QueryStatus) =>
+                        setQueryStatusFilter(value)
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Any status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Any status</SelectItem>
+                        <SelectItem value="open">Open</SelectItem>
+                        <SelectItem value="in_progress">In progress</SelectItem>
+                        <SelectItem value="resolved">Resolved</SelectItem>
+                        <SelectItem value="closed">Closed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </CardHeader>
+              </Card>
+
+              <div
+                className={`grid gap-6 ${
+                  isQueryListCollapsed ? "grid-cols-1" : "xl:grid-cols-[360px,1fr]"
+                }`}
+              >
+                {!isQueryListCollapsed && (
                 <Card>
                   <CardHeader>
-                    <CardTitle>Admin queries</CardTitle>
+                    <div className="flex items-center justify-between gap-3">
+                      <CardTitle>Admin queries</CardTitle>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsQueryListCollapsed(true)}
+                      >
+                        Collapse list
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="space-y-3">
-                      <div className="relative">
-                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                          value={querySearch}
-                          onChange={(event: ChangeEvent<HTMLInputElement>) => setQuerySearch(event.target.value)}
-                          placeholder="Search queries by subject, scholar, programme, or content"
-                          className="pl-9"
-                        />
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <Select value={queryStatusFilter} onValueChange={(value: "all" | QueryStatus) => setQueryStatusFilter(value)}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="All statuses" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All statuses</SelectItem>
-                            <SelectItem value="open">Open</SelectItem>
-                            <SelectItem value="in_progress">In progress</SelectItem>
-                            <SelectItem value="resolved">Resolved</SelectItem>
-                            <SelectItem value="closed">Closed</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Select value={queryBatchFilter} onValueChange={setQueryBatchFilter}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="All batches" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All batches</SelectItem>
-                            {scholarBatches.map((batch) => (
-                              <SelectItem key={batch} value={batch}>
-                                {batch}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
                     <div className="space-y-3">
                       {filteredQueries.map((query) => (
                         <button
@@ -1325,10 +1611,23 @@ export default function AdminDashboard() {
                     </div>
                   </CardContent>
                 </Card>
+                )}
 
                 <Card>
                   <CardHeader>
-                    <CardTitle>Query thread</CardTitle>
+                    <div className="flex items-center justify-between gap-3">
+                      <CardTitle>Query thread</CardTitle>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setIsQueryListCollapsed((current) => !current)
+                        }
+                      >
+                        {isQueryListCollapsed ? "Show query list" : "Hide query list"}
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {!selectedQuery ? (
@@ -1419,9 +1718,9 @@ export default function AdminDashboard() {
                   <CardTitle>Export reports</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="flex flex-col gap-3 sm:flex-row">
+                  <div className="grid gap-3 lg:grid-cols-4">
                     <Select value={reportType} onValueChange={(value: keyof typeof reportLabels) => setReportType(value)}>
-                      <SelectTrigger className="sm:w-72">
+                      <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -1432,15 +1731,92 @@ export default function AdminDashboard() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Button onClick={() => void handleGenerateReport()}>
+                    {(reportType === "scholar" || reportType === "wishlist") && (
+                      <Select value={reportBatchFilter} onValueChange={setReportBatchFilter}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="All batches" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All batches</SelectItem>
+                          {scholarBatches.map((batch) => (
+                            <SelectItem key={batch} value={batch}>
+                              {batch}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {reportType === "programme" && (
+                      <>
+                        <Input type="date" value={reportDateFrom} onChange={(event: ChangeEvent<HTMLInputElement>) => setReportDateFrom(event.target.value)} />
+                        <Input type="date" value={reportDateTo} onChange={(event: ChangeEvent<HTMLInputElement>) => setReportDateTo(event.target.value)} />
+                        <Select value={reportManagerFilter} onValueChange={setReportManagerFilter}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="All managers" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All managers</SelectItem>
+                            {programmeManagers.map((manager) => (
+                              <SelectItem key={manager.id} value={manager.id}>
+                                {manager.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <Button onClick={() => void (reportType === "wishlist" ? handleGenerateWishlistReport() : handleGenerateReport())}>
                       <BarChart3 className="mr-2 h-4 w-4" />
-                      Generate report
+                      {reportType === "wishlist" ? "Generate wishlist report" : "Generate report"}
                     </Button>
-                    <Button variant="outline" disabled={!reportData || reportData.rows.length === 0} onClick={() => reportData && downloadCsv(reportData)}>
+                    <Button variant="outline" disabled={!reportData || reportData.rows.length === 0} onClick={() => reportData && downloadCsvReport(reportData, `${reportType}-report`)}>
                       <Download className="mr-2 h-4 w-4" />
                       Export CSV
                     </Button>
+                    <Button variant="outline" disabled={!reportData || reportData.rows.length === 0} onClick={() => reportData && exportReportAsPdf(reportData, reportLabels[reportType], `${reportType}-report`)}>
+                      Export PDF
+                    </Button>
                   </div>
+                  {reportData && (
+                    <div className="space-y-4">
+                      <div className="rounded-xl border border-border p-4">
+                        <p className="text-sm font-medium text-foreground">{reportLabels[reportType]}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Generated on {formatDateTime(reportData.generatedAt)} with {reportData.rows.length} row(s).
+                        </p>
+                      </div>
+                      {reportData.rows.length > 0 ? (
+                        <div className="overflow-x-auto rounded-xl border border-border">
+                          <table className="min-w-full divide-y divide-border text-sm">
+                            <thead className="bg-muted/40">
+                              <tr>
+                                {Object.keys(reportData.rows[0]).map((key) => (
+                                  <th key={key} className="px-4 py-3 text-left font-medium text-foreground">
+                                    {key}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                              {reportData.rows.slice(0, 10).map((row, index) => (
+                                <tr key={`${reportData.type}-${index}`}>
+                                  {Object.keys(reportData.rows[0]).map((key) => (
+                                    <td key={key} className="px-4 py-3 text-muted-foreground">
+                                      {String(row[key] ?? "")}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No rows matched the selected filters.</p>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -1500,6 +1876,78 @@ export default function AdminDashboard() {
           </Tabs>
         </div>
       </main>
+      <Dialog
+        open={isBulkUserDialogOpen}
+        onOpenChange={(open: boolean) => {
+          setIsBulkUserDialogOpen(open);
+          if (!open) {
+            setBulkUserFile(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Add multiple users</DialogTitle>
+            <DialogDescription>
+              Download the template, fill in one row per user, then upload the completed
+              sheet to create users in bulk.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-5">
+            <div className="rounded-2xl border border-border bg-muted/20 p-4">
+              <p className="text-sm font-medium text-foreground">Template columns</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                The template includes: <span className="font-medium">name</span>,{" "}
+                <span className="font-medium">email</span>,{" "}
+                <span className="font-medium">password</span>,{" "}
+                <span className="font-medium">role</span>,{" "}
+                <span className="font-medium">batch</span>,{" "}
+                <span className="font-medium">phoneNumber</span>, and{" "}
+                <span className="font-medium">creditsEarned</span>.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void handleDownloadUserTemplate()}
+                disabled={isDownloadingUserTemplate}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                {isDownloadingUserTemplate ? "Downloading..." : "Download template"}
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="bulk-user-import">Upload filled sheet</Label>
+              <Input
+                id="bulk-user-import"
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                  setBulkUserFile(event.target.files?.[0] || null)
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Required columns are name, email, password, and role. Allowed roles are
+                scholar, programme_manager, and admin.
+              </p>
+              {bulkUserFile && (
+                <p className="text-sm text-foreground">Selected file: {bulkUserFile.name}</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsBulkUserDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => void handleBulkUserImport()} disabled={isImportingUsers}>
+              {isImportingUsers ? "Importing..." : "Upload users"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={isUserDialogOpen}
         onOpenChange={(open: boolean) => {
@@ -1927,6 +2375,15 @@ export default function AdminDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <EmailComposerDialog
+        open={isEmailDialogOpen}
+        onOpenChange={setIsEmailDialogOpen}
+        recipients={selectedEmailRecipients}
+        recipientLabel={`${selectedEmailRecipients.length} selected user${selectedEmailRecipients.length === 1 ? "" : "s"}`}
+        sending={sendingEmail}
+        onSend={handleSendSelectedUsersEmail}
+      />
 
       <AlertDialog open={!!pendingDeleteUser} onOpenChange={(open: boolean) => !open && setPendingDeleteUser(null)}>
         <AlertDialogContent>

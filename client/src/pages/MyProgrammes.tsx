@@ -101,7 +101,11 @@ const MyProgrammes = () => {
   }, [programmes, search]);
 
   const ongoing = useMemo(
-    () => filteredProgrammes.filter((programme) => programme.status === "active"),
+    () =>
+      filteredProgrammes.filter(
+        (programme) =>
+          programme.status === "active" || programme.status === "uncompleted",
+      ),
     [filteredProgrammes],
   );
   const completed = useMemo(
@@ -236,8 +240,14 @@ const MyProgrammes = () => {
                     <ProgrammeCard
                       key={programme.id}
                       programme={programme}
-                      badgeLabel="Ongoing"
-                      badgeClassName="bg-primary/10 text-primary"
+                      badgeLabel={
+                        programme.status === "uncompleted" ? "Uncompleted" : "Ongoing"
+                      }
+                      badgeClassName={
+                        programme.status === "uncompleted"
+                          ? "bg-red-500/10 text-red-600"
+                          : "bg-primary/10 text-primary"
+                      }
                       onViewDetails={() =>
                         navigate(`/my-programmes/${encodeURIComponent(programme.id)}`)
                       }

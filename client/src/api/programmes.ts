@@ -32,6 +32,7 @@ export interface Programme {
   title: string;
   description: string;
   createdAt: string;
+  resultsPublishedAt?: string | null;
   selfEnrollmentEnabled?: boolean;
   spotlightTitle?: string;
   spotlightMessage?: string;
@@ -46,6 +47,21 @@ export interface Programme {
     title: string;
     url: string;
     createdAt: string;
+  }>;
+  interactiveSessions?: Array<{
+    id: string;
+    title: string;
+    description?: string | null;
+    scheduledAt: string;
+    durationMinutes?: number | null;
+    meetingUrl?: string | null;
+    attendances?: Array<{
+      id: string;
+      status: "present" | "absent";
+      markedAt: string;
+      userId: string;
+      interactiveSessionId: string;
+    }>;
   }>;
   programmeManagerId: string | null;
   programmeManager: ProgrammeManager | null;

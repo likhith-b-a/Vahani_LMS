@@ -1,4 +1,4 @@
-import { fetchWithAuth } from "./fetchWithAuth";
+import { BASE_URL, fetchWithAuth } from "./fetchWithAuth";
 
 export type AdminUserRole = "scholar" | "programme_manager" | "admin";
 
@@ -113,9 +113,25 @@ export interface AdminSettings {
 }
 
 export interface AdminReportResponse {
-  type: "enrollment" | "progress" | "evaluations";
+  type: "scholar" | "programme" | "wishlist";
   generatedAt: string;
   rows: Array<Record<string, string | number | null>>;
+}
+
+export interface AdminBulkUserImportResponse {
+  createdCount: number;
+  skippedCount: number;
+  created: Array<{
+    id: string;
+    name: string;
+    email: string;
+    role: AdminUserRole;
+  }>;
+  skipped: Array<{
+    row: number;
+    email: string;
+    reason: string;
+  }>;
 }
 
 export interface AdminUserPayload {
@@ -158,6 +174,38 @@ export const createAdminUser = async (payload: AdminUserPayload) => {
     method: "POST",
     body: JSON.stringify(payload),
   });
+};
+
+export const downloadAdminUserTemplate = async () => {
+  const response = await fetch(`${BASE_URL}/admin/users/template`, {
+    method: "GET",
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    let message = "Unable to download template";
+
+    try {
+      const data = await response.json();
+      message = data?.message || message;
+    } catch {
+      // Ignore JSON parsing failure and use the default message.
+    }
+
+    throw new Error(message);
+  }
+
+  return response.blob();
+};
+
+export const bulkCreateAdminUsers = async (file: File) => {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  return fetchWithAuth("/admin/users/bulk", {
+    method: "POST",
+    body: formData,
+  }) as Promise<{ data: AdminBulkUserImportResponse; message: string }>;
 };
 
 export const updateAdminUser = async (
@@ -234,9 +282,22 @@ export const deleteAdminAssignment = async (assignmentId: string) => {
 };
 
 export const getAdminReport = async (
-  type: "enrollment" | "progress" | "evaluations",
+  type: "scholar" | "programme",
+  filters?: {
+    batch?: string;
+    from?: string;
+    to?: string;
+    managerId?: string;
+  },
 ) => {
-  return fetchWithAuth(`/admin/reports?type=${encodeURIComponent(type)}`, {
+  const query = new URLSearchParams({ type });
+
+  if (filters?.batch) query.set("batch", filters.batch);
+  if (filters?.from) query.set("from", filters.from);
+  if (filters?.to) query.set("to", filters.to);
+  if (filters?.managerId) query.set("managerId", filters.managerId);
+
+  return fetchWithAuth(`/admin/reports?${query.toString()}`, {
     method: "GET",
   });
 };

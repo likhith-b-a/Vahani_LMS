@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   addDays,
   addMonths,
@@ -14,6 +14,8 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useAssignments } from "@/contexts/AssignmentsContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { getMyProgrammes, type Programme } from "@/api/programmes";
+import { useToast } from "@/hooks/use-toast";
 
 type CalendarEvent = {
   id: string;
@@ -32,39 +34,81 @@ const eventStyles: Record<CalendarEvent["type"], string> = {
 };
 
 export function SmartCalendar() {
+  const { toast } = useToast();
   const { assignments, loading } = useAssignments();
   const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(new Date()));
   const [selectedProgrammeId, setSelectedProgrammeId] = useState("all");
+  const [programmes, setProgrammes] = useState<Programme[]>([]);
+
+  useEffect(() => {
+    const loadProgrammes = async () => {
+      try {
+        const response = await getMyProgrammes();
+        const nextProgrammes = Array.isArray(response?.data?.programmes)
+          ? (response.data.programmes as Programme[])
+          : [];
+        setProgrammes(nextProgrammes);
+      } catch (error) {
+        toast({
+          title: "Unable to load interactive sessions",
+          description: error instanceof Error ? error.message : "Please try again.",
+          variant: "destructive",
+        });
+      }
+    };
+
+    void loadProgrammes();
+  }, [toast]);
 
   const programmeOptions = useMemo(
     () =>
       Array.from(
         new Map(
-          assignments.map((assignment) => [
-            assignment.programme.id,
-            assignment.programme,
-          ]),
+          [
+            ...assignments.map((assignment) => [
+              assignment.programme.id,
+              assignment.programme,
+            ]),
+            ...programmes.map((programme) => [
+              programme.id,
+              {
+                id: programme.id,
+                title: programme.title,
+              },
+            ]),
+          ],
         ).values(),
       ),
-    [assignments],
+    [assignments, programmes],
   );
 
   const calendarEvents = useMemo<CalendarEvent[]>(
-    () =>
-      assignments
-        .filter((assignment) => assignment.dueDate)
+    () => [
+      ...assignments
+        .filter(
+          (assignment) =>
+            assignment.dueDate && assignment.assignmentType !== "interactive_session",
+        )
         .map((assignment) => ({
           id: assignment.id,
           title: assignment.title,
           date: assignment.dueDate,
           programmeId: assignment.programme.id,
           programmeTitle: assignment.programme.title,
-          type:
-            assignment.assignmentType === "interactive_session"
-              ? "interactive_session"
-              : "assignment",
+          type: "assignment",
         })),
-    [assignments],
+      ...programmes.flatMap((programme) =>
+        (programme.interactiveSessions || []).map((session) => ({
+          id: session.id,
+          title: session.title,
+          date: session.scheduledAt,
+          programmeId: programme.id,
+          programmeTitle: programme.title,
+          type: "interactive_session" as const,
+        })),
+      ),
+    ],
+    [assignments, programmes],
   );
 
   const filteredEvents = useMemo(

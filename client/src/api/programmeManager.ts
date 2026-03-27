@@ -47,11 +47,30 @@ export interface ManagedProgrammeAssignment {
   }>;
 }
 
+export interface ManagedInteractiveSessionAttendance {
+  id: string;
+  status: "present" | "absent";
+  score: number | null;
+  user: ManagedStudent;
+}
+
+export interface ManagedInteractiveSession {
+  id: string;
+  title: string;
+  description: string | null;
+  scheduledAt: string;
+  durationMinutes: number | null;
+  maxScore: number;
+  meetingUrl: string | null;
+  attendances: ManagedInteractiveSessionAttendance[];
+}
+
 export interface ManagedProgramme {
   id: string;
   title: string;
   description: string | null;
   createdAt: string;
+  resultsPublishedAt?: string | null;
   selfEnrollmentEnabled?: boolean;
   spotlightTitle?: string;
   spotlightMessage?: string;
@@ -76,6 +95,7 @@ export interface ManagedProgramme {
     user: ManagedStudent;
   }>;
   assignments: ManagedProgrammeAssignment[];
+  interactiveSessions: ManagedInteractiveSession[];
 }
 
 export interface CreateAssignmentPayload {
@@ -87,6 +107,15 @@ export interface CreateAssignmentPayload {
   isGraded?: boolean;
   allowLateSubmission?: boolean;
   allowResubmission?: boolean;
+}
+
+export interface CreateInteractiveSessionPayload {
+  title: string;
+  description?: string;
+  scheduledAt: string;
+  durationMinutes?: number;
+  maxScore?: number;
+  meetingUrl?: string;
 }
 
 export const getManagedProgrammes = async () => {
@@ -128,11 +157,23 @@ export const createProgrammeAssignment = async (
 
 export const addProgrammeResource = async (
   programmeId: string,
-  payload: { title: string; url: string },
+  payload: { title: string; url?: string; description?: string; file?: File | null },
 ) => {
+  const formData = new FormData();
+  formData.append("title", payload.title);
+  if (payload.url?.trim()) {
+    formData.append("url", payload.url.trim());
+  }
+  if (payload.description?.trim()) {
+    formData.append("description", payload.description.trim());
+  }
+  if (payload.file) {
+    formData.append("file", payload.file);
+  }
+
   return fetchWithAuth(`/programmes/managed/${programmeId}/resources`, {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: formData,
   });
 };
 
@@ -143,6 +184,48 @@ export const addProgrammeMeetingLink = async (
   return fetchWithAuth(`/programmes/managed/${programmeId}/meeting-links`, {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+};
+
+export const createInteractiveSession = async (
+  programmeId: string,
+  payload: CreateInteractiveSessionPayload,
+) => {
+  return fetchWithAuth(`/programmes/managed/${programmeId}/interactive-sessions`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+};
+
+export const markInteractiveSessionAttendance = async (
+  sessionId: string,
+  attendance: Array<{ userId: string; status: "present" | "absent"; score: number }>,
+) => {
+  return fetchWithAuth(`/programmes/managed/interactive-sessions/${sessionId}/attendance`, {
+    method: "PUT",
+    body: JSON.stringify({ attendance }),
+  });
+};
+
+export const publishProgrammeResults = async (programmeId: string) => {
+  return fetchWithAuth(`/programmes/managed/${programmeId}/publish-results`, {
+    method: "POST",
+  });
+};
+
+export interface ProgrammeManagerReportResponse {
+  type: "programme_manager";
+  generatedAt: string;
+  programme: {
+    id: string;
+    title: string;
+  };
+  rows: Array<Record<string, string | number | null>>;
+}
+
+export const getManagedProgrammeReport = async (programmeId: string) => {
+  return fetchWithAuth(`/programmes/managed/${programmeId}/report`, {
+    method: "GET",
   });
 };
 

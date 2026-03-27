@@ -118,6 +118,7 @@ function AssignmentCard({
   onSubmit: (assignment: EnrichedAssignment) => void;
 }) {
   const badge = getAssignmentBadge(assignment);
+  const requiresAttendance = assignment.assignmentType === "interactive_session";
 
   return (
     <Card className="border-border/80">
@@ -144,9 +145,14 @@ function AssignmentCard({
               </span>
               <span>Due {format(new Date(assignment.dueDate), "dd MMM yyyy, hh:mm a")}</span>
               <span>Max score {assignment.maxScore}</span>
-              <span>
-                Accepts {assignment.acceptedFileTypes.join(", ")}
-              </span>
+              {!requiresAttendance && (
+                <span>
+                  Accepts {assignment.acceptedFileTypes.join(", ")}
+                </span>
+              )}
+              {requiresAttendance && (
+                <span>Attendance is marked by your programme manager</span>
+              )}
               {assignment.status === "PENDING" && (
                 <span>
                   {formatDistanceToNowStrict(new Date(assignment.dueDate), {
@@ -168,17 +174,28 @@ function AssignmentCard({
             </div>
 
             {assignment.submission?.fileUrl && (
-              <p className="text-xs text-muted-foreground break-all">
-                Latest file: {assignment.submission.fileUrl}
-              </p>
+              <a
+                href={assignment.submission.fileUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-primary underline-offset-4 hover:underline break-all"
+              >
+                Open latest submission
+              </a>
             )}
           </div>
 
           <div className="flex items-center gap-2">
-            <Button size="sm" onClick={() => onSubmit(assignment)}>
-              <Upload className="mr-2 h-4 w-4" />
-              {assignment.submission ? "Resubmit" : "Submit"}
-            </Button>
+            {requiresAttendance ? (
+              <Button size="sm" variant="outline" disabled>
+                Attendance only
+              </Button>
+            ) : (
+              <Button size="sm" onClick={() => onSubmit(assignment)}>
+                <Upload className="mr-2 h-4 w-4" />
+                {assignment.submission ? "Resubmit" : "Submit"}
+              </Button>
+            )}
           </div>
         </div>
       </CardContent>

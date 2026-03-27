@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
+  CalendarCheck,
   CheckCircle2,
   Mail,
   Save,
+  Trophy,
   User,
   Users,
 } from "lucide-react";
@@ -18,61 +20,50 @@ import { Progress } from "@/components/ui/progress";
 import { useAssignments } from "@/contexts/AssignmentsContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { getMyProfile, updateMyProfile } from "@/api/profile";
+import { getMyProfile, updateMyProfile, type MyProfileResponse } from "@/api/profile";
+import { getMyProgrammes, type Programme } from "@/api/programmes";
 
-interface ProfileProgramme {
-  id: string;
-  title: string;
-  description: string | null;
-  createdAt: string;
-  status: string;
-  enrolledAt: string;
-  programmeManagerId: string | null;
-  programmeManager: {
-    id: string;
-    name: string;
-    email: string;
-  } | null;
-}
-
-interface ProfileData {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  enrollments: ProfileProgramme[];
-}
-
-const formatDate = (value?: string | null) => {
-  if (!value) {
-    return "No date";
-  }
-
-  return new Date(value).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-};
+const formatDate = (value?: string | null) =>
+  value
+    ? new Date(value).toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : "No date";
 
 export default function Profile() {
   const { user, setAuthData } = useAuth();
   const { toast } = useToast();
   const { assignments, isLoading: assignmentsLoading } = useAssignments();
-  const [profile, setProfile] = useState<ProfileData | null>(null);
+
+  const [profile, setProfile] = useState<MyProfileResponse | null>(null);
+  const [programmes, setProgrammes] = useState<Programme[]>([]);
   const [name, setName] = useState("");
+  const [batch, setBatch] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadProfile = async () => {
       setLoading(true);
-
       try {
-        const response = await getMyProfile();
-        const profileData = response.data as ProfileData;
+        const [profileResponse, programmesResponse] = await Promise.all([
+          getMyProfile(),
+          getMyProgrammes(),
+        ]);
+
+        const profileData = profileResponse.data as MyProfileResponse;
         setProfile(profileData);
         setName(profileData.name);
+        setBatch(profileData.batch || "");
+        setPhoneNumber(profileData.phoneNumber || "");
+        setProgrammes(
+          Array.isArray(programmesResponse?.data?.programmes)
+            ? (programmesResponse.data.programmes as Programme[])
+            : [],
+        );
       } catch (error) {
         toast({
           title: "Failed to load profile",
@@ -101,10 +92,45 @@ export default function Profile() {
     };
   }, [assignments]);
 
+  const programmeStats = useMemo(() => {
+    const active = profile?.enrollments.filter((programme) => programme.status === "active").length || 0;
+    const completed =
+      profile?.enrollments.filter((programme) => programme.status === "completed").length || 0;
+    const uncompleted =
+      profile?.enrollments.filter((programme) => programme.status === "uncompleted").length || 0;
+
+    return {
+      active,
+      completed,
+      uncompleted,
+    };
+  }, [profile?.enrollments]);
+
+  const attendanceStats = useMemo(() => {
+    const sessions = programmes.flatMap((programme) => programme.interactiveSessions || []);
+    const pastSessions = sessions.filter(
+      (session) => new Date(session.scheduledAt).getTime() <= Date.now(),
+    );
+    const marked = pastSessions.filter((session) => session.attendances?.[0]);
+    const present = marked.filter(
+      (session) => session.attendances?.[0]?.status === "present",
+    );
+    const certificateReady = programmes.filter((programme) => programme.certificateAvailable).length;
+
+    return {
+      totalSessions: sessions.length,
+      attendanceRate:
+        marked.length > 0 ? Math.round((present.length / marked.length) * 100) : 0,
+      certificateReady,
+    };
+  }, [programmes]);
+
   const completionPercent = useMemo(() => {
     const fields = [
       profile?.name,
       profile?.email,
+      profile?.phoneNumber,
+      profile?.batch,
       profile?.enrollments.length ? "programmes" : "",
       assignmentStats.total > 0 ? "assignments" : "",
     ];
@@ -132,22 +158,31 @@ export default function Profile() {
 
     try {
       setSaving(true);
-      const response = await updateMyProfile({ name: name.trim() });
-      const updatedProfile = response.data as ProfileData;
+      const response = await updateMyProfile({
+        name: name.trim(),
+        batch: batch.trim(),
+        phoneNumber: phoneNumber.trim(),
+      });
+      const updatedProfile = response.data as MyProfileResponse;
       setProfile(updatedProfile);
       setName(updatedProfile.name);
+      setBatch(updatedProfile.batch || "");
+      setPhoneNumber(updatedProfile.phoneNumber || "");
 
       if (user) {
         setAuthData({
           ...user,
           name: updatedProfile.name,
+          batch: updatedProfile.batch || null,
+          phoneNumber: updatedProfile.phoneNumber || null,
+          creditsEarned: updatedProfile.creditsEarned || 0,
           enrollments: user.enrollments,
         });
       }
 
       toast({
-        title: "Profile Updated",
-        description: "Your profile has been saved successfully.",
+        title: "Profile updated",
+        description: "Your scholar profile has been saved successfully.",
       });
     } catch (error) {
       toast({
@@ -171,7 +206,7 @@ export default function Profile() {
             <div>
               <h1 className="text-2xl font-bold tracking-tight">My Profile</h1>
               <p className="text-sm text-muted-foreground">
-                View your scholar profile, programme access, and assignment progress.
+                Review your scholar identity, learning progress, credits, and programme journey.
               </p>
             </div>
 
@@ -187,7 +222,7 @@ export default function Profile() {
               </CardContent>
             </Card>
 
-            <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
               <Card>
                 <CardHeader>
                   <CardTitle>Scholar Identity</CardTitle>
@@ -217,7 +252,6 @@ export default function Profile() {
                         id="profile-name"
                         value={name}
                         onChange={(event) => setName(event.target.value)}
-                        placeholder="Enter your full name"
                         disabled={loading}
                       />
                     </div>
@@ -229,6 +263,47 @@ export default function Profile() {
                         disabled
                         className="bg-muted/50"
                       />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="profile-batch">Batch</Label>
+                      <Input
+                        id="profile-batch"
+                        value={batch}
+                        onChange={(event) => setBatch(event.target.value)}
+                        placeholder="2026-A"
+                        disabled={loading}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="profile-phone">Phone Number</Label>
+                      <Input
+                        id="profile-phone"
+                        value={phoneNumber}
+                        onChange={(event) => setPhoneNumber(event.target.value)}
+                        placeholder="+91 90000 00000"
+                        disabled={loading}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="rounded-xl border border-border p-4">
+                      <p className="text-xs text-muted-foreground">Credits Earned</p>
+                      <p className="mt-2 text-2xl font-bold">
+                        {profile?.creditsEarned ?? 0}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border p-4">
+                      <p className="text-xs text-muted-foreground">Batch</p>
+                      <p className="mt-2 text-base font-semibold">
+                        {profile?.batch || "Not added"}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border p-4">
+                      <p className="text-xs text-muted-foreground">Phone</p>
+                      <p className="mt-2 text-base font-semibold">
+                        {profile?.phoneNumber || "Not added"}
+                      </p>
                     </div>
                   </div>
 
@@ -252,40 +327,79 @@ export default function Profile() {
                 <CardContent className="grid gap-4 sm:grid-cols-2">
                   <div className="rounded-xl border border-border p-4">
                     <div className="mb-2 flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Programmes</span>
+                      <span className="text-xs text-muted-foreground">Active Programmes</span>
                       <BookOpen size={16} className="text-vahani-blue" />
                     </div>
-                    <p className="text-2xl font-bold">
-                      {profile?.enrollments.length ?? 0}
-                    </p>
+                    <p className="text-2xl font-bold">{programmeStats.active}</p>
                   </div>
                   <div className="rounded-xl border border-border p-4">
                     <div className="mb-2 flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Pending Tasks</span>
-                      <User size={16} className="text-accent" />
-                    </div>
-                    <p className="text-2xl font-bold">
-                      {assignmentsLoading ? "..." : assignmentStats.pending}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-border p-4">
-                    <div className="mb-2 flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Submitted</span>
+                      <span className="text-xs text-muted-foreground">Completed</span>
                       <CheckCircle2 size={16} className="text-success" />
                     </div>
+                    <p className="text-2xl font-bold">{programmeStats.completed}</p>
+                  </div>
+                  <div className="rounded-xl border border-border p-4">
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Attendance Rate</span>
+                      <CalendarCheck size={16} className="text-vahani-gold" />
+                    </div>
                     <p className="text-2xl font-bold">
-                      {assignmentsLoading ? "..." : assignmentStats.submitted}
+                      {attendanceStats.totalSessions ? `${attendanceStats.attendanceRate}%` : "--"}
                     </p>
                   </div>
                   <div className="rounded-xl border border-border p-4">
                     <div className="mb-2 flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Graded</span>
-                      <Mail size={16} className="text-vahani-gold" />
+                      <span className="text-xs text-muted-foreground">Certificates Ready</span>
+                      <Trophy size={16} className="text-accent" />
                     </div>
-                    <p className="text-2xl font-bold">
-                      {assignmentsLoading ? "..." : assignmentStats.graded}
-                    </p>
+                    <p className="text-2xl font-bold">{attendanceStats.certificateReady}</p>
                   </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-4">
+              <Card>
+                <CardContent className="pt-5">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Pending Tasks</span>
+                    <User size={16} className="text-accent" />
+                  </div>
+                  <p className="text-2xl font-bold">
+                    {assignmentsLoading ? "..." : assignmentStats.pending}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-5">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Submitted</span>
+                    <Mail size={16} className="text-vahani-blue" />
+                  </div>
+                  <p className="text-2xl font-bold">
+                    {assignmentsLoading ? "..." : assignmentStats.submitted}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-5">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Graded</span>
+                    <CheckCircle2 size={16} className="text-success" />
+                  </div>
+                  <p className="text-2xl font-bold">
+                    {assignmentsLoading ? "..." : assignmentStats.graded}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-5">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Uncompleted</span>
+                    <Users size={16} className="text-muted-foreground" />
+                  </div>
+                  <p className="text-2xl font-bold">{programmeStats.uncompleted}</p>
                 </CardContent>
               </Card>
             </div>
@@ -293,38 +407,54 @@ export default function Profile() {
             <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
               <Card>
                 <CardHeader>
-                  <CardTitle>My Programmes</CardTitle>
+                  <CardTitle>Programme Journey</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {loading ? (
                     <p className="text-sm text-muted-foreground">Loading programmes...</p>
                   ) : profile?.enrollments.length ? (
-                    profile.enrollments.map((programme) => (
-                      <div
-                        key={programme.id}
-                        className="rounded-xl border border-border p-4"
-                      >
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
-                            <p className="font-semibold text-foreground">
-                              {programme.title}
-                            </p>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                              {programme.description || "No description available."}
-                            </p>
+                    profile.enrollments.map((programme) => {
+                      const detailedProgramme = programmes.find((entry) => entry.id === programme.id);
+                      const programmeSessions = detailedProgramme?.interactiveSessions || [];
+                      const presentCount = programmeSessions.filter(
+                        (session) => session.attendances?.[0]?.status === "present",
+                      ).length;
+                      const attendanceRate =
+                        programmeSessions.length > 0
+                          ? Math.round((presentCount / programmeSessions.length) * 100)
+                          : null;
+
+                      return (
+                        <div
+                          key={programme.id}
+                          className="rounded-xl border border-border p-4"
+                        >
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <p className="font-semibold text-foreground">{programme.title}</p>
+                              <p className="mt-1 text-sm text-muted-foreground">
+                                {programme.description || "No description available."}
+                              </p>
+                            </div>
+                            <Badge variant="outline" className="capitalize">
+                              {programme.status}
+                            </Badge>
                           </div>
-                          <Badge variant="outline" className="capitalize">
-                            {programme.status}
-                          </Badge>
+                          <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
+                            <span>Joined {formatDate(programme.enrolledAt)}</span>
+                            <span>Manager: {programme.programmeManager?.name || "Unassigned"}</span>
+                            {attendanceRate !== null ? (
+                              <span>Attendance {attendanceRate}%</span>
+                            ) : (
+                              <span>No sessions marked yet</span>
+                            )}
+                            {detailedProgramme?.certificateAvailable ? (
+                              <span>Certificate available</span>
+                            ) : null}
+                          </div>
                         </div>
-                        <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
-                          <span>Joined {formatDate(programme.enrolledAt)}</span>
-                          <span>
-                            Manager: {programme.programmeManager?.name || "Unassigned"}
-                          </span>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <p className="text-sm text-muted-foreground">
                       You are not enrolled in any programmes yet.
@@ -346,9 +476,7 @@ export default function Profile() {
                       >
                         <div className="mb-2 flex items-center gap-2">
                           <Users size={16} className="text-muted-foreground" />
-                          <p className="font-medium text-foreground">
-                            {programme.title}
-                          </p>
+                          <p className="font-medium text-foreground">{programme.title}</p>
                         </div>
                         <p className="text-sm">
                           {programme.programmeManager?.name || "No manager assigned"}

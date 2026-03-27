@@ -22,6 +22,9 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
+  batch?: string | null;
+  phoneNumber?: string | null;
+  creditsEarned?: number;
   refreshToken?: string;
   enrollments?: Enrollment[];
   accessToken?: string;

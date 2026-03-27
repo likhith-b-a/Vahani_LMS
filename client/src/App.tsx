@@ -12,6 +12,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Index";
 import AdminDashboard from "./pages/AdminDashboard";
 import TutorDashboard from "./pages/TutorDashboard";
+import ManagerProgrammeDetail from "./pages/ManagerProgrammeDetail";
 import CourseRegistration from "./pages/CourseRegistration";
 import Certificates from "./pages/Certificates";
 import Attendance from "./pages/Attendance";
@@ -23,6 +24,7 @@ import MyProgrammes from "./pages/MyProgrammes";
 import ProgrammeDetail from "./pages/ProgrammeDetail";
 import Queries from "./pages/Queries";
 import Updates from "./pages/Updates";
+import Wishlist from "./pages/Wishlist";
 
 const queryClient = new QueryClient();
 
@@ -119,6 +121,14 @@ const App = () => (
                 }
               />
               <Route
+                path="/wishlist"
+                element={
+                  <ProtectedRoute allowedRoles={["scholar"]}>
+                    <Wishlist />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/updates"
                 element={
                   <ProtectedRoute allowedRoles={["scholar"]}>
@@ -143,10 +153,26 @@ const App = () => (
                 }
               />
               <Route
+                path="/programme-manager/programmes/:id"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <ManagerProgrammeDetail />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/tutor"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
                     <TutorDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tutor/programmes/:id"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <ManagerProgrammeDetail />
                   </ProtectedRoute>
                 }
               />
