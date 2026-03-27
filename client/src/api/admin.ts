@@ -121,6 +121,7 @@ export interface AdminReportResponse {
 export interface AdminBulkUserImportResponse {
   createdCount: number;
   skippedCount: number;
+  emailFailureCount: number;
   created: Array<{
     id: string;
     name: string;
@@ -131,6 +132,10 @@ export interface AdminBulkUserImportResponse {
     row: number;
     email: string;
     reason: string;
+  }>;
+  emailFailures: Array<{
+    row: number;
+    email: string;
   }>;
 }
 

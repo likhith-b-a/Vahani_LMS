@@ -278,4 +278,50 @@ const sendComposedEmail = async ({
   });
 };
 
-export { sendMail, sendResetMail, sendComposedEmail };
+const sendLoginCredentialsMail = async ({
+  email,
+  name,
+  password,
+}) => {
+  const safeName = escapeHtml(name || "there");
+  const safeEmail = escapeHtml(email);
+  const safePassword = escapeHtml(password);
+  const portalUrl =
+    process.env.FRONTEND_URL ||
+    process.env.frontend_url ||
+    "http://localhost:5173";
+
+  const html = `<!DOCTYPE html>
+    <html lang="en">
+      <body style="margin:0;background:#f6f8fb;padding:24px;font-family:Arial,sans-serif;color:#1f2937;">
+        <div style="max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
+          <div style="padding:24px 28px;background:#0f4c81;color:#ffffff;">
+            <h1 style="margin:0;font-size:20px;">Welcome to Vahani LMS</h1>
+            <p style="margin:8px 0 0;font-size:13px;opacity:0.9;">Your login credentials are ready</p>
+          </div>
+          <div style="padding:28px;">
+            <p style="margin:0 0 16px;">Hello ${safeName},</p>
+            <p style="margin:0 0 16px;line-height:1.7;">
+              Your account has been created for the Vahani LMS portal. Kindly use the credentials below to log in.
+            </p>
+            <div style="border:1px solid #e5e7eb;border-radius:12px;padding:18px 20px;background:#f9fafb;">
+              <p style="margin:0 0 10px;"><strong>Email:</strong> ${safeEmail}</p>
+              <p style="margin:0;"><strong>Password:</strong> ${safePassword}</p>
+            </div>
+            <p style="margin:18px 0 0;line-height:1.7;">
+              Login URL: <a href="${escapeHtml(portalUrl)}">${escapeHtml(portalUrl)}</a>
+            </p>
+          </div>
+        </div>
+      </body>
+    </html>`;
+
+  await sendEmail({
+    to: [email],
+    subject: "Your Vahani LMS login credentials",
+    html,
+    text: `Hello ${name || "there"}, your Vahani LMS account has been created. Email: ${email}. Password: ${password}. Kindly use these credentials to log in at ${portalUrl}.`,
+  });
+};
+
+export { sendMail, sendResetMail, sendComposedEmail, sendLoginCredentialsMail };

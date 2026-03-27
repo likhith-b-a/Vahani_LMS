@@ -238,9 +238,12 @@ export default function AdminDashboard() {
   const [editingProgrammeId, setEditingProgrammeId] = useState<string | null>(null);
   const [programmeForm, setProgrammeForm] = useState(emptyProgrammeForm);
   const [isProgrammeDialogOpen, setIsProgrammeDialogOpen] = useState(false);
+  const [programmeDialogBatchFilter, setProgrammeDialogBatchFilter] = useState("all");
+  const [programmeDialogScholarIds, setProgrammeDialogScholarIds] = useState<string[]>([]);
   const [selectedProgrammeId, setSelectedProgrammeId] = useState("");
   const [isProgrammeDetailOpen, setIsProgrammeDetailOpen] = useState(false);
   const [selectedScholarIds, setSelectedScholarIds] = useState<string[]>([]);
+  const [programmeDetailBatchFilter, setProgrammeDetailBatchFilter] = useState("all");
   const [pendingDeleteProgramme, setPendingDeleteProgramme] =
     useState<AdminProgramme | null>(null);
   const [pendingDeleteAssignmentId, setPendingDeleteAssignmentId] = useState<string | null>(null);
@@ -422,6 +425,24 @@ export default function AdminDashboard() {
     [scholars, selectedProgramme],
   );
 
+  const filteredProgrammeDialogScholars = useMemo(
+    () =>
+      scholars.filter(
+        (scholar) =>
+          programmeDialogBatchFilter === "all" || scholar.batch === programmeDialogBatchFilter,
+      ),
+    [programmeDialogBatchFilter, scholars],
+  );
+
+  const filteredAvailableScholars = useMemo(
+    () =>
+      availableScholars.filter(
+        (scholar) =>
+          programmeDetailBatchFilter === "all" || scholar.batch === programmeDetailBatchFilter,
+      ),
+    [availableScholars, programmeDetailBatchFilter],
+  );
+
   const announcementAudienceUsers = useMemo(
     () =>
       users.filter((entry) => {
@@ -541,6 +562,8 @@ export default function AdminDashboard() {
   const resetProgrammeForm = () => {
     setEditingProgrammeId(null);
     setProgrammeForm(emptyProgrammeForm);
+    setProgrammeDialogBatchFilter("all");
+    setProgrammeDialogScholarIds([]);
   };
 
   const openEditUserDialog = (member: AdminUser) => {
@@ -640,8 +663,9 @@ export default function AdminDashboard() {
     }
 
     try {
+      let responseMessage = "The user record has been saved.";
       if (editingUserId) {
-        await updateAdminUser(editingUserId, {
+        const response = await updateAdminUser(editingUserId, {
           name: userForm.name,
           email: userForm.email,
           role: userForm.role,
@@ -650,8 +674,9 @@ export default function AdminDashboard() {
           creditsEarned: Number(userForm.creditsEarned || 0),
           ...(userForm.password ? { password: userForm.password } : {}),
         });
+        responseMessage = response?.message || responseMessage;
       } else {
-        await createAdminUser({
+        const response = await createAdminUser({
           name: userForm.name,
           email: userForm.email,
           password: userForm.password,
@@ -660,13 +685,14 @@ export default function AdminDashboard() {
           phoneNumber: userForm.phoneNumber,
           creditsEarned: Number(userForm.creditsEarned || 0),
         });
+        responseMessage = response?.message || responseMessage;
       }
       setIsUserDialogOpen(false);
       resetUserForm();
       await loadOverview();
       toast({
         title: editingUserId ? "User updated" : "User created",
-        description: "The user record has been saved.",
+        description: responseMessage,
       });
     } catch (error) {
       toast({
@@ -717,7 +743,11 @@ export default function AdminDashboard() {
       await loadOverview();
       toast({
         title: "Bulk import completed",
-        description: `${result.createdCount} user(s) created, ${result.skippedCount} skipped.`,
+        description:
+          `${result.createdCount} user(s) created, ${result.skippedCount} skipped.` +
+          (result.emailFailureCount > 0
+            ? ` ${result.emailFailureCount} credentials email(s) could not be sent.`
+            : ""),
       });
     } catch (error) {
       toast({
@@ -753,7 +783,12 @@ export default function AdminDashboard() {
       if (editingProgrammeId) {
         await updateAdminProgramme(editingProgrammeId, payload);
       } else {
-        await createAdminProgramme(payload);
+        const response = await createAdminProgramme(payload);
+        const createdProgramme = response?.data as AdminProgramme | undefined;
+
+        if (createdProgramme?.id && programmeDialogScholarIds.length > 0) {
+          await assignScholarsToProgramme(createdProgramme.id, programmeDialogScholarIds);
+        }
       }
       setIsProgrammeDialogOpen(false);
       resetProgrammeForm();
@@ -825,6 +860,7 @@ export default function AdminDashboard() {
     try {
       await assignScholarsToProgramme(selectedProgramme.id, selectedScholarIds);
       setSelectedScholarIds([]);
+      setProgrammeDetailBatchFilter("all");
       await loadOverview();
       toast({
         title: "Scholars added",
@@ -1183,12 +1219,14 @@ export default function AdminDashboard() {
                     <div className="space-y-3">
                       {filteredProgrammes.map((programme) => (
                         <button
-                          key={programme.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedProgrammeId(programme.id);
-                            setIsProgrammeDetailOpen(true);
-                          }}
+                        key={programme.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedProgrammeId(programme.id);
+                          setProgrammeDetailBatchFilter("all");
+                          setSelectedScholarIds([]);
+                          setIsProgrammeDetailOpen(true);
+                        }}
                           className="w-full rounded-2xl border border-border p-4 text-left transition hover:border-vahani-blue/40 hover:bg-muted/40"
                         >
                           <div className="flex items-start justify-between gap-3">
@@ -1752,50 +1790,120 @@ export default function AdminDashboard() {
             <DialogTitle>{editingProgrammeId ? "Edit programme" : "Create programme"}</DialogTitle>
             <DialogDescription>Add programme details and assign a manager.</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label>Title</Label>
-              <Input value={programmeForm.title} onChange={(event: ChangeEvent<HTMLInputElement>) => setProgrammeForm((current) => ({ ...current, title: event.target.value }))} />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label>Description</Label>
-              <Textarea value={programmeForm.description} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setProgrammeForm((current) => ({ ...current, description: event.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Credits</Label>
-              <Input type="number" min="0" value={programmeForm.credits} onChange={(event: ChangeEvent<HTMLInputElement>) => setProgrammeForm((current) => ({ ...current, credits: event.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Programme manager</Label>
-              <Select value={programmeForm.programmeManagerId || "unassigned"} onValueChange={(value: string) => setProgrammeForm((current) => ({ ...current, programmeManagerId: value === "unassigned" ? "" : value }))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {programmeManagers.map((manager) => (
-                    <SelectItem key={manager.id} value={manager.id}>
-                      {manager.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center justify-between rounded-lg border border-border p-4 sm:col-span-2">
-              <div>
-                <p className="font-medium text-foreground">Scholar self-enrollment</p>
-                <p className="text-xs text-muted-foreground">Allow scholars to enroll themselves.</p>
+          <div className="space-y-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>Title</Label>
+                <Input value={programmeForm.title} onChange={(event: ChangeEvent<HTMLInputElement>) => setProgrammeForm((current) => ({ ...current, title: event.target.value }))} />
               </div>
-              <Switch checked={programmeForm.selfEnrollmentEnabled} onCheckedChange={(value) => setProgrammeForm((current) => ({ ...current, selfEnrollmentEnabled: value }))} />
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>Description</Label>
+                <Textarea value={programmeForm.description} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setProgrammeForm((current) => ({ ...current, description: event.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Credits</Label>
+                <Input type="number" min="0" value={programmeForm.credits} onChange={(event: ChangeEvent<HTMLInputElement>) => setProgrammeForm((current) => ({ ...current, credits: event.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Programme manager</Label>
+                <Select value={programmeForm.programmeManagerId || "unassigned"} onValueChange={(value: string) => setProgrammeForm((current) => ({ ...current, programmeManagerId: value === "unassigned" ? "" : value }))}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                    {programmeManagers.map((manager) => (
+                      <SelectItem key={manager.id} value={manager.id}>
+                        {manager.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-border p-4 sm:col-span-2">
+                <div>
+                  <p className="font-medium text-foreground">Scholar self-enrollment</p>
+                  <p className="text-xs text-muted-foreground">Allow scholars to enroll themselves.</p>
+                </div>
+                <Switch checked={programmeForm.selfEnrollmentEnabled} onCheckedChange={(value) => setProgrammeForm((current) => ({ ...current, selfEnrollmentEnabled: value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Spotlight title</Label>
+                <Input value={programmeForm.spotlightTitle} onChange={(event: ChangeEvent<HTMLInputElement>) => setProgrammeForm((current) => ({ ...current, spotlightTitle: event.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Spotlight message</Label>
+                <Textarea value={programmeForm.spotlightMessage} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setProgrammeForm((current) => ({ ...current, spotlightMessage: event.target.value }))} />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>Spotlight title</Label>
-              <Input value={programmeForm.spotlightTitle} onChange={(event: ChangeEvent<HTMLInputElement>) => setProgrammeForm((current) => ({ ...current, spotlightTitle: event.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Spotlight message</Label>
-              <Textarea value={programmeForm.spotlightMessage} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setProgrammeForm((current) => ({ ...current, spotlightMessage: event.target.value }))} />
-            </div>
+
+            {!editingProgrammeId && (
+              <div className="space-y-3 rounded-xl border border-border p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 className="font-semibold text-foreground">Add scholars while creating</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Optionally pre-enroll scholars now. You can still add more later.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Select value={programmeDialogBatchFilter} onValueChange={setProgrammeDialogBatchFilter}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="All batches" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All batches</SelectItem>
+                        {scholarBatches.map((batch) => (
+                          <SelectItem key={batch} value={batch}>
+                            {batch}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setProgrammeDialogScholarIds(
+                          filteredProgrammeDialogScholars.map((scholar) => scholar.id),
+                        )
+                      }
+                      disabled={filteredProgrammeDialogScholars.length === 0}
+                    >
+                      Select matched
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                  {filteredProgrammeDialogScholars.map((scholar) => (
+                    <label key={scholar.id} className="flex items-center gap-3 rounded-xl border border-border p-3">
+                      <Checkbox
+                        checked={programmeDialogScholarIds.includes(scholar.id)}
+                        onCheckedChange={() =>
+                          setProgrammeDialogScholarIds((current) =>
+                            current.includes(scholar.id)
+                              ? current.filter((id) => id !== scholar.id)
+                              : [...current, scholar.id],
+                          )
+                        }
+                      />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">{scholar.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {scholar.email}
+                          {scholar.batch ? ` • ${scholar.batch}` : ""}
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+                  {filteredProgrammeDialogScholars.length === 0 && (
+                    <p className="text-sm text-muted-foreground">No scholars match this batch filter.</p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsProgrammeDialogOpen(false)}>
@@ -1847,14 +1955,45 @@ export default function AdminDashboard() {
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-foreground">Add scholars</h3>
-                  <Button size="sm" onClick={() => void handleAssignScholars()} disabled={selectedScholarIds.length === 0}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add scholars
-                  </Button>
+                  <div>
+                    <h3 className="font-semibold text-foreground">Add scholars</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Filter by batch to quickly select and enroll large groups.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Select value={programmeDetailBatchFilter} onValueChange={setProgrammeDetailBatchFilter}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="All batches" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All batches</SelectItem>
+                        {scholarBatches.map((batch) => (
+                          <SelectItem key={batch} value={batch}>
+                            {batch}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setSelectedScholarIds(filteredAvailableScholars.map((scholar) => scholar.id))
+                      }
+                      disabled={filteredAvailableScholars.length === 0}
+                    >
+                      Select matched
+                    </Button>
+                    <Button size="sm" onClick={() => void handleAssignScholars()} disabled={selectedScholarIds.length === 0}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add scholars
+                    </Button>
+                  </div>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {availableScholars.map((scholar) => (
+                  {filteredAvailableScholars.map((scholar) => (
                     <label key={scholar.id} className="flex items-center gap-3 rounded-xl border border-border p-3">
                       <Checkbox
                         checked={selectedScholarIds.includes(scholar.id)}
@@ -1872,6 +2011,11 @@ export default function AdminDashboard() {
                       </div>
                     </label>
                   ))}
+                  {filteredAvailableScholars.length === 0 && (
+                    <div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-muted-foreground sm:col-span-2">
+                      No available scholars match this batch filter.
+                    </div>
+                  )}
                 </div>
               </div>
 

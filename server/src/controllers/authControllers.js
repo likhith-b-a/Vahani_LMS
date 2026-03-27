@@ -16,9 +16,9 @@ const isPasswordCorrect = async (password, hashedPassword) => {
     return false;
   }
 
-  if (password === hashedPassword) {
-    return true;
-  }
+  // if (password === hashedPassword) {
+  //   return true;
+  // }
 
   return bcrypt.compare(password, hashedPassword);
 };

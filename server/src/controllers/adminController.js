@@ -1,5 +1,6 @@
 import db from "../db.js";
 import XLSX from "xlsx";
+import bcrypt from "bcrypt";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/AsyncHandler.js";
@@ -8,10 +9,12 @@ import {
   updateAdminSettings,
 } from "../utils/adminSettingsStore.js";
 import { serializeAssignment } from "../utils/assignmentMetadata.js";
+import { logger } from "../utils/logger.js";
 import {
   removeProgrammeMetadata,
 } from "../utils/programmeMetadataStore.js";
 import { createNotification } from "../utils/notifications.js";
+import { sendLoginCredentialsMail } from "../utils/sendMail.js";
 
 const adminUserTemplateHeaders = [
   "name",
@@ -287,11 +290,13 @@ const createAdminUser = asyncHandler(async (req, res) => {
     throw new ApiError(409, "User already exists");
   }
 
+  const hashedPassword = await bcrypt.hash(password, 10);
+
   const user = await db.user.create({
     data: {
       name,
       email,
-      password,
+      password: hashedPassword,
       role,
       batch: batch || null,
       phoneNumber: phoneNumber || null,
@@ -302,10 +307,27 @@ const createAdminUser = asyncHandler(async (req, res) => {
     },
   });
 
+  let message = "User created successfully";
+
+  try {
+    await sendLoginCredentialsMail({
+      email,
+      name,
+      password,
+    });
+  } catch (error) {
+    logger.warn("User created but credentials email failed", {
+      userId: user.id,
+      email,
+      message: error.message,
+    });
+    message = "User created successfully, but the credentials email could not be sent";
+  }
+
   return res
     .status(201)
     .json(
-      new ApiResponse(201, normalizeUser(user), "User created successfully"),
+      new ApiResponse(201, normalizeUser(user), message),
     );
 });
 
@@ -355,6 +377,7 @@ const bulkCreateAdminUsers = asyncHandler(async (req, res) => {
   const seenEmails = new Set();
   const created = [];
   const skipped = [];
+  const emailFailures = [];
 
   for (let index = 0; index < rows.length; index += 1) {
     const rawRow = rows[index] || {};
@@ -429,7 +452,7 @@ const bulkCreateAdminUsers = asyncHandler(async (req, res) => {
       data: {
         name,
         email,
-        password,
+        password: await bcrypt.hash(password, 10),
         role,
         batch: batch || null,
         phoneNumber: phoneNumber || null,
@@ -444,6 +467,24 @@ const bulkCreateAdminUsers = asyncHandler(async (req, res) => {
     });
 
     created.push(user);
+
+    try {
+      await sendLoginCredentialsMail({
+        email,
+        name,
+        password,
+      });
+    } catch (error) {
+      logger.warn("Bulk user created but credentials email failed", {
+        userId: user.id,
+        email,
+        message: error.message,
+      });
+      emailFailures.push({
+        row: excelRowNumber,
+        email,
+      });
+    }
   }
 
   return res.status(201).json(
@@ -452,11 +493,15 @@ const bulkCreateAdminUsers = asyncHandler(async (req, res) => {
       {
         createdCount: created.length,
         skippedCount: skipped.length,
+        emailFailureCount: emailFailures.length,
         created,
         skipped,
+        emailFailures,
       },
       created.length > 0
-        ? "Bulk user import completed"
+        ? emailFailures.length > 0
+          ? "Bulk user import completed, but some credentials emails could not be sent"
+          : "Bulk user import completed"
         : "No users were imported from the uploaded file",
     ),
   );
@@ -507,7 +552,9 @@ const updateAdminUser = asyncHandler(async (req, res) => {
     data: {
       ...(name ? { name } : {}),
       ...(email ? { email } : {}),
-      ...(password ? { password } : {}),
+      ...(password
+        ? { password: await bcrypt.hash(password, 10) }
+        : {}),
       ...(role ? { role } : {}),
       ...(batch !== undefined ? { batch: batch || null } : {}),
       ...(phoneNumber !== undefined ? { phoneNumber: phoneNumber || null } : {}),
