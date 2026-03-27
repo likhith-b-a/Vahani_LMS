@@ -16,6 +16,7 @@ enum UserRole {
 enum EnrollmentStatus {
   active
   completed
+  uncompleted
   dropped
 }
 
@@ -68,6 +69,11 @@ enum QueryTargetType {
   admin
 }
 
+enum AttendanceStatus {
+  present
+  absent
+}
+
 model User {
   id                        String                  @id @default(uuid())
   name                      String
@@ -98,6 +104,8 @@ model User {
   assignedQueries           SupportQuery[]          @relation("QueryAssignee")
   queryMessages             SupportQueryMessage[]   @relation("QueryMessageAuthor")
   updatedSettings           SystemSetting[]         @relation("SettingsUpdatedBy")
+  createdInteractiveSessions InteractiveSession[]   @relation("InteractiveSessionCreator")
+  interactiveSessionAttendances InteractiveSessionAttendance[]
 }
 
 model Programme {
@@ -108,6 +116,7 @@ model Programme {
   selfEnrollmentEnabled     Boolean                 @default(false)
   spotlightTitle            String?
   spotlightMessage          String?
+  resultsPublishedAt        DateTime?
   createdAt                 DateTime                @default(now())
   updatedAt                 DateTime                @updatedAt
 
@@ -122,6 +131,7 @@ model Programme {
   wishlists                 ProgrammeWishlist[]
   certificates              Certificate[]
   queries                   SupportQuery[]
+  interactiveSessions       InteractiveSession[]
 }
 
 model Enrollment {
@@ -207,6 +217,42 @@ model ProgrammeResource {
 
   programme                 Programme               @relation(fields: [programmeId], references: [id], onDelete: Cascade)
   createdBy                 User?                   @relation("ResourceCreator", fields: [createdById], references: [id], onDelete: SetNull)
+}
+
+model InteractiveSession {
+  id                        String                        @id @default(uuid())
+  title                     String
+  description               String?
+  scheduledAt               DateTime
+  durationMinutes           Int?                          @default(60)
+  maxScore                  Int                           @default(0)
+  meetingUrl                String?
+  createdAt                 DateTime                      @default(now())
+  updatedAt                 DateTime                      @updatedAt
+
+  programmeId               String
+  createdById               String?
+
+  programme                 Programme                     @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  createdBy                 User?                         @relation("InteractiveSessionCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  attendances               InteractiveSessionAttendance[]
+}
+
+model InteractiveSessionAttendance {
+  id                        String            @id @default(uuid())
+  status                    AttendanceStatus  @default(present)
+  score                     Int?
+  markedAt                  DateTime          @default(now())
+  createdAt                 DateTime          @default(now())
+  updatedAt                 DateTime          @updatedAt
+
+  interactiveSessionId      String
+  userId                    String
+
+  interactiveSession        InteractiveSession @relation(fields: [interactiveSessionId], references: [id], onDelete: Cascade)
+  user                      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([interactiveSessionId, userId])
 }
 
 model Announcement {
@@ -299,16 +345,17 @@ model Certificate {
 
 model ProgrammeWishlist {
   id                        String                  @id @default(uuid())
+  requestedTitle            String
   note                      String?
   createdAt                 DateTime                @default(now())
 
-  programmeId               String
+  programmeId               String?
   userId                    String
 
-  programme                 Programme               @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  programme                 Programme?              @relation(fields: [programmeId], references: [id], onDelete: Cascade)
   user                      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([programmeId, userId])
+  @@unique([userId, requestedTitle])
 }
 
 model SupportQuery {

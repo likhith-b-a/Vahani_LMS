@@ -1,13 +1,16 @@
 import { Router } from "express";
 import { isAuthenticated } from "../middlewares/isAuthenticated.js";
 import { isAuthorized } from "../middlewares/isAuthorized.js";
+import { uploadMemory } from "../middlewares/multer.js";
 import {
   assignScholarsToProgramme,
+  bulkCreateAdminUsers,
   createAdminProgramme,
   createAdminUser,
   deleteAdminAssignment,
   deleteAdminProgramme,
   deleteAdminUser,
+  downloadAdminUserTemplate,
   getAdminOverview,
   getAdminProgrammes,
   getAdminReports,
@@ -24,7 +27,9 @@ const router = Router();
 router.use(isAuthenticated, isAuthorized("admin"));
 
 router.get("/overview", getAdminOverview);
+router.get("/users/template", downloadAdminUserTemplate);
 router.get("/users", getAdminUsers);
+router.post("/users/bulk", uploadMemory.single("file"), bulkCreateAdminUsers);
 router.post("/users", createAdminUser);
 router.patch("/users/:userId", updateAdminUser);
 router.delete("/users/:userId", deleteAdminUser);

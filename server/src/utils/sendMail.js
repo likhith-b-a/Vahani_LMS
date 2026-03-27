@@ -1,3 +1,4 @@
+import sgMail from "@sendgrid/mail";
 import { createTransport } from "nodemailer";
 
 const createMailTransport = () =>
@@ -11,24 +12,159 @@ const createMailTransport = () =>
     },
   });
 
-const sendMail = async (email, subject, data) => {
+const escapeHtml = (value = "") =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const getMailFrom = () =>
+  process.env.MAIL_FROM ||
+  process.env.SENDGRID_FROM_EMAIL ||
+  process.env.GMAIL ||
+  "no-reply@vahani.lms";
+
+const normalizeEmailList = (value) => {
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((entry) => String(entry).split(","))
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+
+  return String(value)
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+};
+
+const normalizeAttachments = (attachments = []) =>
+  Array.isArray(attachments)
+    ? attachments
+        .filter((file) => file?.content)
+        .map((file) => ({
+          filename: file.filename || "attachment",
+          type: file.type || "application/octet-stream",
+          disposition: "attachment",
+          content:
+            typeof file.content === "string"
+              ? file.content
+              : Buffer.from(file.content).toString("base64"),
+        }))
+    : [];
+
+const sendWithSendGrid = async ({
+  to,
+  cc = [],
+  bcc = [],
+  subject,
+  text,
+  html,
+  attachments = [],
+}) => {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
+  await sgMail.send({
+    from: getMailFrom(),
+    to,
+    cc: cc.length ? cc : undefined,
+    bcc: bcc.length ? bcc : undefined,
+    subject,
+    text,
+    html,
+    attachments: normalizeAttachments(attachments),
+  });
+};
+
+const sendWithNodemailer = async ({
+  to,
+  cc = [],
+  bcc = [],
+  subject,
+  text,
+  html,
+  attachments = [],
+}) => {
   const transport = createMailTransport();
+
+  await transport.sendMail({
+    from: getMailFrom(),
+    to,
+    cc: cc.length ? cc : undefined,
+    bcc: bcc.length ? bcc : undefined,
+    subject,
+    text,
+    html,
+    attachments: attachments.map((file) => ({
+      filename: file.filename || "attachment",
+      content:
+        typeof file.content === "string"
+          ? Buffer.from(file.content, "base64")
+          : file.content,
+      contentType: file.type || "application/octet-stream",
+    })),
+  });
+};
+
+const sendEmail = async ({
+  to,
+  cc,
+  bcc,
+  subject,
+  text,
+  html,
+  attachments = [],
+}) => {
+  const normalizedTo = normalizeEmailList(to);
+  const normalizedCc = normalizeEmailList(cc);
+  const normalizedBcc = normalizeEmailList(bcc);
+
+  if (!normalizedTo.length) {
+    throw new Error("At least one recipient is required");
+  }
+
+  const payload = {
+    to: normalizedTo,
+    cc: normalizedCc,
+    bcc: normalizedBcc,
+    subject,
+    text,
+    html,
+    attachments,
+  };
+
+  if (process.env.SENDGRID_API_KEY) {
+    await sendWithSendGrid(payload);
+    return;
+  }
+
+  await sendWithNodemailer(payload);
+};
+
+const sendMail = async (email, subject, data) => {
   const html = `<!DOCTYPE html>
     <html lang="en">
       <body style="font-family: Arial, sans-serif; background:#f7f7fb; padding:24px;">
         <div style="max-width:560px; margin:0 auto; background:#fff; border-radius:12px; padding:32px; border:1px solid #e7e7ef;">
           <h2 style="margin:0 0 12px; color:#1f3c88;">Password Reset OTP</h2>
           <p style="margin:0 0 16px; color:#555;">Use the one-time password below to reset your password.</p>
-          <div style="font-size:28px; letter-spacing:8px; font-weight:700; color:#111; margin:24px 0;">${data.otp}</div>
-          <p style="margin:0 0 8px; color:#555;">This OTP will expire in ${data.expiresInMinutes || 10} minutes.</p>
+          <div style="font-size:28px; letter-spacing:8px; font-weight:700; color:#111; margin:24px 0;">${escapeHtml(data.otp)}</div>
+          <p style="margin:0 0 8px; color:#555;">This OTP will expire in ${escapeHtml(
+            data.expiresInMinutes || 10,
+          )} minutes.</p>
           <p style="margin:0; color:#777;">If you did not request this, you can ignore this email.</p>
         </div>
       </body>
     </html>`;
 
-  await transport.sendMail({
-    from: process.env.GMAIL,
-    to: email,
+  await sendEmail({
+    to: [email],
     subject,
     html,
     text: `Your OTP is ${data.otp}. It expires in ${data.expiresInMinutes || 10} minutes.`,
@@ -36,8 +172,6 @@ const sendMail = async (email, subject, data) => {
 };
 
 const sendResetMail = async (email, subject, data) => {
-  const transport = createMailTransport();
-
   const html = `<!DOCTYPE html>
                 <html lang="en">
                 <head>
@@ -100,12 +234,48 @@ const sendResetMail = async (email, subject, data) => {
                   </div>
                 </body>
                 </html>`;
-  await transport.sendMail({
-    from: process.env.GMAIL,
-    to: email,
+
+  await sendEmail({
+    to: [email],
     subject,
     html,
+    text: `Reset your password by visiting ${process.env.frontend_url}reset-password/${data.token}`,
   });
 };
 
-export { sendMail, sendResetMail };
+const sendComposedEmail = async ({
+  to,
+  cc,
+  bcc,
+  subject,
+  body,
+  attachments = [],
+}) => {
+  const escapedBody = escapeHtml(body).replace(/\r?\n/g, "<br />");
+  const html = `<!DOCTYPE html>
+    <html lang="en">
+      <body style="margin:0;background:#f6f8fb;padding:24px;font-family:Arial,sans-serif;color:#1f2937;">
+        <div style="max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
+          <div style="padding:24px 28px;background:#0f4c81;color:#ffffff;">
+            <h1 style="margin:0;font-size:20px;">Vahani LMS</h1>
+            <p style="margin:8px 0 0;font-size:13px;opacity:0.9;">Message sent from the LMS communication center</p>
+          </div>
+          <div style="padding:28px;">
+            <div style="font-size:15px;line-height:1.7;">${escapedBody}</div>
+          </div>
+        </div>
+      </body>
+    </html>`;
+
+  await sendEmail({
+    to,
+    cc,
+    bcc,
+    subject,
+    text: body,
+    html,
+    attachments,
+  });
+};
+
+export { sendMail, sendResetMail, sendComposedEmail };

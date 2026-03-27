@@ -13,7 +13,7 @@ const router = Router();
 router.use(isAuthenticated);
 router.get("/me", isAuthorized("scholar"), getMyWishlist);
 router.post("/", isAuthorized("scholar"), addToWishlist);
-router.delete("/:programmeId", isAuthorized("scholar"), removeFromWishlist);
+router.delete("/:wishlistId", isAuthorized("scholar"), removeFromWishlist);
 router.get("/admin/all", isAuthorized("admin"), getAdminWishlist);
 
 export default router;

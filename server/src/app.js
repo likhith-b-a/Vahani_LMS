@@ -28,6 +28,7 @@ import announcementRoutes from "./routes/announcementRoutes.js";
 import wishlistRoutes from "./routes/wishlistRoutes.js";
 import certificateRoutes from "./routes/certificateRoutes.js";
 import queryRoutes from "./routes/queryRoutes.js";
+import emailRoutes from "./routes/emailRoutes.js";
 
 // app.use("/",programmeRoutes);
 app.use("/assignments",assignmentRoutes);
@@ -38,6 +39,7 @@ app.use("/announcements", announcementRoutes);
 app.use("/wishlist", wishlistRoutes);
 app.use("/certificates", certificateRoutes);
 app.use("/queries", queryRoutes);
+app.use("/emails", emailRoutes);
 app.use("/", authRoutes);
 
 // // 404 handler - must be after all route definitions

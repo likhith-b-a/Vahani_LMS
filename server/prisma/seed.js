@@ -17,6 +17,8 @@ const seed = async () => {
   await db.certificate.deleteMany();
   await db.programmeWishlist.deleteMany();
   await db.programmeResource.deleteMany();
+  await db.interactiveSessionAttendance.deleteMany();
+  await db.interactiveSession.deleteMany();
   await db.submission.deleteMany();
   await db.assignment.deleteMany();
   await db.enrollment.deleteMany();
@@ -178,18 +180,6 @@ const seed = async () => {
         createdById: "u2",
       },
       {
-        id: "a2",
-        title: "Interactive Demo",
-        description: "Walk through the deployed demo in a live session.",
-        dueDate: addDays(5),
-        type: "interactive_session",
-        acceptedFileTypes: [],
-        isGraded: false,
-        meetingUrl: "https://meet.example.com/fullstack-demo",
-        programmeId: "p1",
-        createdById: "u2",
-      },
-      {
         id: "a3",
         title: "Arrays Workbook",
         description: "Solve the worksheet problems and upload your notes.",
@@ -267,6 +257,48 @@ const seed = async () => {
         fileUrl: "public/uploads/quiz-sara.pdf",
         submittedAt: addDays(3),
         isLate: true,
+      },
+    ],
+  });
+
+  await db.interactiveSession.createMany({
+    data: [
+      {
+        id: "is1",
+        programmeId: "p1",
+        createdById: "u2",
+        title: "Interactive Demo",
+        description: "Walk through the deployed demo in a live session.",
+        scheduledAt: addDays(-1),
+        durationMinutes: 90,
+        meetingUrl: "https://meet.example.com/fullstack-demo",
+      },
+      {
+        id: "is2",
+        programmeId: "p2",
+        createdById: "u3",
+        title: "Linked Lists live problem solving",
+        description: "Live coding and doubt clearing session.",
+        scheduledAt: addDays(3),
+        durationMinutes: 60,
+        meetingUrl: "https://meet.example.com/data-structures-live",
+      },
+    ],
+  });
+
+  await db.interactiveSessionAttendance.createMany({
+    data: [
+      {
+        id: "isa1",
+        interactiveSessionId: "is1",
+        userId: "u4",
+        status: "present",
+      },
+      {
+        id: "isa2",
+        interactiveSessionId: "is1",
+        userId: "u5",
+        status: "absent",
       },
     ],
   });
@@ -461,12 +493,12 @@ const seed = async () => {
     {
       id: "n7",
       type: "meeting",
-      title: "New meeting link in Full Stack Web Dev",
-      message: "Mentor office hours",
-      actorId: "u2",
-      programmeId: "p1",
-      actionUrl: "/my-programmes/p1",
-      recipients: ["u4", "u5"],
+      title: "Interactive session scheduled in Data Structures",
+      message: "Linked Lists live problem solving",
+      actorId: "u3",
+      programmeId: "p2",
+      actionUrl: "/my-programmes/p2",
+      recipients: ["u4", "u6"],
     },
     {
       id: "n8",

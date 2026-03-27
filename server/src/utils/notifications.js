@@ -1,6 +1,8 @@
 import db from "../db.js";
 
 const dedupeIds = (ids = []) => [...new Set(ids.filter(Boolean))];
+const normalizeMetadata = (metadata) =>
+  metadata === undefined ? undefined : JSON.parse(JSON.stringify(metadata));
 
 const createNotification = async ({
   type,
@@ -26,7 +28,7 @@ const createNotification = async ({
       title,
       message,
       actionUrl: actionUrl || null,
-      metadata: metadata || undefined,
+      metadata: normalizeMetadata(metadata),
       actorId: actorId || null,
       programmeId: programmeId || null,
       assignmentId: assignmentId || null,
@@ -45,7 +47,7 @@ const getProgrammeScholarIds = async (programmeId) => {
     where: {
       programmeId,
       status: {
-        in: ["active", "completed"],
+        in: ["active", "completed", "uncompleted"],
       },
     },
     select: {

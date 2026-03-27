@@ -12,6 +12,7 @@ import {
   createNotification,
   getProgrammeScholarIds,
 } from "../utils/notifications.js";
+import { uploadBufferToS3 } from "../utils/s3.js";
 
 const getUserAssignments = asyncHandler(async (req, res) => {
   const userId = req.user?.id || req.params.userId;
@@ -127,6 +128,13 @@ const createAssignment = asyncHandler(async (req, res) => {
 
   const normalizedAssignmentType =
     typeof assignmentType === "string" ? assignmentType : "document";
+
+  if (normalizedAssignmentType === "interactive_session") {
+    throw new ApiError(
+      400,
+      "Interactive sessions should be created from the interactive session scheduler",
+    );
+  }
 
   const assignment = await db.assignment.create({
     data: {
@@ -388,7 +396,7 @@ const bulkEvaluateSubmissions = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Assignment not found for this programme manager");
   }
 
-  const workbook = XLSX.readFile(req.file.path);
+  const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
   const worksheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
 
@@ -560,6 +568,20 @@ const submitAssignment = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Assignment not found");
   }
 
+  const assignmentRecord = await db.assignment.findUnique({
+    where: { id: assignmentId },
+    select: {
+      type: true,
+    },
+  });
+
+  if (assignmentRecord?.type === "interactive_session") {
+    throw new ApiError(
+      400,
+      "Interactive sessions do not require scholar submissions. Attendance is marked by the programme manager.",
+    );
+  }
+
   const fileExtension = path.extname(req.file.originalname || "").toLowerCase();
 
   if (
@@ -596,7 +618,12 @@ const submitAssignment = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Resubmissions are not allowed for this assignment");
   }
 
-  const filePath = req.file.path;
+  const uploadedFile = await uploadBufferToS3({
+    buffer: req.file.buffer,
+    mimeType: req.file.mimetype,
+    originalName: req.file.originalname,
+    folder: `submissions/${assignment.programmeId}/${assignmentId}`,
+  });
   const submittedAt = new Date();
   const isLate =
     !!assignment.dueDate &&
@@ -610,14 +637,14 @@ const submitAssignment = asyncHandler(async (req, res) => {
     ? await db.submission.update({
         where: { id: existingSubmission.id },
         data: {
-          fileUrl: filePath,
+          fileUrl: uploadedFile.url,
           submittedAt,
           isLate,
         },
       })
     : await db.submission.create({
         data: {
-          fileUrl: filePath,
+          fileUrl: uploadedFile.url,
           assignmentId,
           userId,
           submittedAt,

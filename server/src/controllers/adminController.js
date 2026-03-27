@@ -1,4 +1,5 @@
 import db from "../db.js";
+import XLSX from "xlsx";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/AsyncHandler.js";
@@ -11,6 +12,16 @@ import {
   removeProgrammeMetadata,
 } from "../utils/programmeMetadataStore.js";
 import { createNotification } from "../utils/notifications.js";
+
+const adminUserTemplateHeaders = [
+  "name",
+  "email",
+  "password",
+  "role",
+  "batch",
+  "phoneNumber",
+  "creditsEarned",
+];
 
 const normalizeUser = (user) => ({
   id: user.id,
@@ -296,6 +307,159 @@ const createAdminUser = asyncHandler(async (req, res) => {
     .json(
       new ApiResponse(201, normalizeUser(user), "User created successfully"),
     );
+});
+
+const downloadAdminUserTemplate = asyncHandler(async (req, res) => {
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.aoa_to_sheet([adminUserTemplateHeaders]);
+
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Users");
+
+  const fileBuffer = XLSX.write(workbook, {
+    type: "buffer",
+    bookType: "xlsx",
+  });
+
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  res.setHeader(
+    "Content-Disposition",
+    'attachment; filename="admin-user-import-template.xlsx"',
+  );
+
+  return res.status(200).send(fileBuffer);
+});
+
+const bulkCreateAdminUsers = asyncHandler(async (req, res) => {
+  if (!req.file?.buffer) {
+    throw new ApiError(400, "Upload an Excel file to import users");
+  }
+
+  const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+  const firstSheetName = workbook.SheetNames[0];
+
+  if (!firstSheetName) {
+    throw new ApiError(400, "The uploaded file does not contain any sheets");
+  }
+
+  const worksheet = workbook.Sheets[firstSheetName];
+  const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new ApiError(400, "The uploaded file does not contain any user rows");
+  }
+
+  const allowedRoles = new Set(["scholar", "programme_manager", "admin"]);
+  const seenEmails = new Set();
+  const created = [];
+  const skipped = [];
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const rawRow = rows[index] || {};
+    const excelRowNumber = index + 2;
+    const name = String(rawRow.name || "").trim();
+    const email = String(rawRow.email || "").trim().toLowerCase();
+    const password = String(rawRow.password || "").trim();
+    const role = String(rawRow.role || "").trim();
+    const batch = String(rawRow.batch || "").trim();
+    const phoneNumber = String(rawRow.phoneNumber || "").trim();
+    const creditsEarnedValue = String(rawRow.creditsEarned || "").trim();
+    const creditsEarned =
+      creditsEarnedValue === "" ? 0 : Number(creditsEarnedValue);
+
+    if (!name || !email || !password || !role) {
+      skipped.push({
+        row: excelRowNumber,
+        email: email || "",
+        reason: "Missing one or more required values: name, email, password, role",
+      });
+      continue;
+    }
+
+    if (!allowedRoles.has(role)) {
+      skipped.push({
+        row: excelRowNumber,
+        email,
+        reason: "Role must be scholar, programme_manager, or admin",
+      });
+      continue;
+    }
+
+    if (seenEmails.has(email)) {
+      skipped.push({
+        row: excelRowNumber,
+        email,
+        reason: "Duplicate email in the uploaded file",
+      });
+      continue;
+    }
+
+    if (Number.isNaN(creditsEarned) || creditsEarned < 0) {
+      skipped.push({
+        row: excelRowNumber,
+        email,
+        reason: "creditsEarned must be a valid non-negative number",
+      });
+      continue;
+    }
+
+    seenEmails.add(email);
+
+    const existingUser = await db.user.findUnique({
+      where: {
+        email,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (existingUser) {
+      skipped.push({
+        row: excelRowNumber,
+        email,
+        reason: "User already exists",
+      });
+      continue;
+    }
+
+    const user = await db.user.create({
+      data: {
+        name,
+        email,
+        password,
+        role,
+        batch: batch || null,
+        phoneNumber: phoneNumber || null,
+        creditsEarned,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+      },
+    });
+
+    created.push(user);
+  }
+
+  return res.status(201).json(
+    new ApiResponse(
+      201,
+      {
+        createdCount: created.length,
+        skippedCount: skipped.length,
+        created,
+        skipped,
+      },
+      created.length > 0
+        ? "Bulk user import completed"
+        : "No users were imported from the uploaded file",
+    ),
+  );
 });
 
 const updateAdminUser = asyncHandler(async (req, res) => {
@@ -862,108 +1026,182 @@ const deleteAdminAssignment = asyncHandler(async (req, res) => {
 });
 
 const getAdminReports = asyncHandler(async (req, res) => {
-  const reportType = String(req.query.type || "enrollment");
+  const reportType = String(req.query.type || "scholar");
+  const batch = typeof req.query.batch === "string" ? req.query.batch : "";
+  const from = typeof req.query.from === "string" ? req.query.from : "";
+  const to = typeof req.query.to === "string" ? req.query.to : "";
+  const managerId =
+    typeof req.query.managerId === "string" ? req.query.managerId : "";
 
-  if (!["enrollment", "progress", "evaluations"].includes(reportType)) {
+  if (!["scholar", "programme"].includes(reportType)) {
     throw new ApiError(400, "Invalid report type");
   }
 
   let rows = [];
 
-  if (reportType === "enrollment") {
-    const enrollments = await db.enrollment.findMany({
+  if (reportType === "scholar") {
+    const scholars = await db.user.findMany({
+      where: {
+        role: "scholar",
+        ...(batch && batch !== "all" ? { batch } : {}),
+      },
       include: {
-        user: {
-          select: {
-            name: true,
-            email: true,
-          },
-        },
-        programme: {
-          select: {
-            title: true,
-          },
-        },
-      },
-      orderBy: {
-        enrolledAt: "desc",
-      },
-    });
-
-    rows = enrollments.map((enrollment) => ({
-      scholarName: enrollment.user.name,
-      scholarEmail: enrollment.user.email,
-      programme: enrollment.programme.title,
-      status: enrollment.status,
-      enrolledAt: enrollment.enrolledAt,
-    }));
-  }
-
-  if (reportType === "progress") {
-    const programmes = await db.programme.findMany({
-      include: {
-        assignments: {
-          include: {
-            submissions: true,
-          },
-        },
-        enrollments: true,
-      },
-      orderBy: {
-        title: "asc",
-      },
-    });
-
-    rows = programmes.map((programme) => ({
-      programme: programme.title,
-      scholars: programme.enrollments.length,
-      assignments: programme.assignments.length,
-      submissions: programme.assignments.reduce(
-        (count, assignment) => count + assignment.submissions.length,
-        0,
-      ),
-      gradedSubmissions: programme.assignments.reduce(
-        (count, assignment) =>
-          count +
-          assignment.submissions.filter((submission) => submission.score !== null)
-            .length,
-        0,
-      ),
-    }));
-  }
-
-  if (reportType === "evaluations") {
-    const submissions = await db.submission.findMany({
-      include: {
-        user: {
-          select: {
-            name: true,
-            email: true,
-          },
-        },
-        assignment: {
+        enrollments: {
           include: {
             programme: {
-              select: {
-                title: true,
+              include: {
+                assignments: {
+                  select: {
+                    maxScore: true,
+                    submissions: {
+                      select: {
+                        userId: true,
+                        score: true,
+                      },
+                    },
+                  },
+                },
+                interactiveSessions: {
+                  select: {
+                    maxScore: true,
+                    attendances: {
+                      select: {
+                        userId: true,
+                        score: true,
+                      },
+                    },
+                  },
+                },
               },
             },
           },
         },
       },
-      orderBy: {
-        submittedAt: "desc",
-      },
+      orderBy: { name: "asc" },
     });
 
-    rows = submissions.map((submission) => ({
-      scholarName: submission.user.name,
-      scholarEmail: submission.user.email,
-      programme: submission.assignment.programme.title,
-      assignment: submission.assignment.title,
-      submittedAt: submission.submittedAt,
-      score: submission.score,
-      status: submission.score === null ? "SUBMITTED" : "GRADED",
+    const maxProgrammes = Math.max(
+      1,
+      ...scholars.map((scholar) => scholar.enrollments.length),
+    );
+
+    rows = scholars.flatMap((scholar) => {
+      const programmeColumnsTop = {};
+      const programmeColumnsBottom = {};
+
+      for (let index = 0; index < maxProgrammes; index += 1) {
+        const enrollment = scholar.enrollments[index];
+        const columnLabel = `Programme ${index + 1}`;
+
+        if (!enrollment) {
+          programmeColumnsTop[columnLabel] = "";
+          programmeColumnsBottom[columnLabel] = "";
+          continue;
+        }
+
+        const assignmentTotal = enrollment.programme.assignments.reduce(
+          (sum, assignment) => sum + (assignment.maxScore || 0),
+          0,
+        );
+        const assignmentScored = enrollment.programme.assignments.reduce(
+          (sum, assignment) =>
+            sum +
+            (assignment.submissions.find((entry) => entry.userId === scholar.id)?.score || 0),
+          0,
+        );
+        const sessionTotal = enrollment.programme.interactiveSessions.reduce(
+          (sum, session) => sum + (session.maxScore || 0),
+          0,
+        );
+        const sessionScored = enrollment.programme.interactiveSessions.reduce(
+          (sum, session) =>
+            sum +
+            (session.attendances.find((entry) => entry.userId === scholar.id)?.score || 0),
+          0,
+        );
+        const totalPossible = assignmentTotal + sessionTotal;
+        const totalScored = assignmentScored + sessionScored;
+
+        programmeColumnsTop[columnLabel] =
+          `${enrollment.programme.title} [${enrollment.status}]`;
+        programmeColumnsBottom[columnLabel] =
+          enrollment.status === "completed" || enrollment.status === "uncompleted"
+            ? `${totalScored}/${totalPossible || 0}`
+            : "";
+      }
+
+      return [
+        {
+          id: scholar.id,
+          name: scholar.name,
+          email: scholar.email,
+          phoneNumber: scholar.phoneNumber || "",
+          batch: scholar.batch || "",
+          creditsEarned: scholar.creditsEarned,
+          ...programmeColumnsTop,
+        },
+        {
+          id: "",
+          name: "",
+          email: "",
+          phoneNumber: "",
+          batch: "",
+          creditsEarned: "",
+          ...programmeColumnsBottom,
+        },
+      ];
+    });
+  }
+
+  if (reportType === "programme") {
+    const createdAtFilter = {
+      ...(from ? { gte: new Date(from) } : {}),
+      ...(to
+        ? (() => {
+            const end = new Date(to);
+            end.setHours(23, 59, 59, 999);
+            return { lte: end };
+          })()
+        : {}),
+    };
+
+    const programmes = await db.programme.findMany({
+      where: {
+        ...(Object.keys(createdAtFilter).length > 0 ? { createdAt: createdAtFilter } : {}),
+        ...(managerId && managerId !== "all" ? { programmeManagerId: managerId } : {}),
+      },
+      include: {
+        enrollments: true,
+        programmeManager: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        assignments: { select: { id: true } },
+        interactiveSessions: { select: { id: true } },
+      },
+      orderBy: { title: "asc" },
+    });
+
+    rows = programmes.map((programme) => ({
+      id: programme.id,
+      title: programme.title,
+      description: programme.description || "",
+      credits: programme.credits ?? "",
+      enrollmentType: programme.selfEnrollmentEnabled ? "Self-enrollable" : "Compulsory",
+      managerId: programme.programmeManager?.id || "",
+      managerName: programme.programmeManager?.name || "Unassigned",
+      managerEmail: programme.programmeManager?.email || "",
+      totalScholarsEnrolled: programme.enrollments.length,
+      completedScholars: programme.enrollments.filter((entry) => entry.status === "completed").length,
+      uncompletedScholars: programme.enrollments.filter((entry) => entry.status === "uncompleted").length,
+      activeScholars: programme.enrollments.filter((entry) => entry.status === "active").length,
+      assignmentCount: programme.assignments.length,
+      interactiveSessionCount: programme.interactiveSessions.length,
+      createdAt: programme.createdAt.toISOString(),
+      resultsPublishedAt: programme.resultsPublishedAt?.toISOString() || "",
     }));
   }
 
@@ -998,11 +1236,13 @@ const updateSystemSettings = asyncHandler(async (req, res) => {
 
 export {
   assignScholarsToProgramme,
+  bulkCreateAdminUsers,
   createAdminProgramme,
   createAdminUser,
   deleteAdminAssignment,
   deleteAdminProgramme,
   deleteAdminUser,
+  downloadAdminUserTemplate,
   getAdminOverview,
   getAdminProgrammes,
   getAdminReports,

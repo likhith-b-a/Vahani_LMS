@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { isAuthenticated } from "../middlewares/isAuthenticated.js";
 import { isAuthorized } from "../middlewares/isAuthorized.js";
-import { upload } from "../middlewares/multer.js";
+import { uploadMemory } from "../middlewares/multer.js";
 import {
   bulkEvaluateSubmissions,
   createAssignment,
@@ -37,17 +37,15 @@ router.post(
   "/managed/assignments/:assignmentId/bulk-evaluate",
   isAuthenticated,
   isAuthorized("programme_manager"),
-  upload.single("file"),
+  uploadMemory.single("file"),
   bulkEvaluateSubmissions,
 );
 router.get("/:programmeId", isAuthenticated, getAssignmentsByProgramme);
-// router.post("/:assignmentId/submit", isAuthenticated, submitAssignment);
-
 router.post(
   "/:assignmentId/submit",
   isAuthenticated,
-  // isAuthorized("scholar"),
-  upload.single("file"), // 👈 important
+  uploadMemory.single("file"),
   submitAssignment,
 );
+
 export default router;
