@@ -116,6 +116,74 @@ const normalizeOverviewProgramme = (programme) => ({
   assignmentsCount: programme.assignmentsCount,
 });
 
+const adminProgrammeSelect = {
+  id: true,
+  title: true,
+  description: true,
+  credits: true,
+  createdAt: true,
+  selfEnrollmentEnabled: true,
+  spotlightTitle: true,
+  spotlightMessage: true,
+  programmeManagerId: true,
+  programmeManager: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+  },
+  enrollments: {
+    select: {
+      id: true,
+      status: true,
+      enrolledAt: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+  },
+  assignments: {
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      dueDate: true,
+      maxScore: true,
+      type: true,
+      acceptedFileTypes: true,
+      submissions: {
+        select: {
+          id: true,
+          score: true,
+        },
+      },
+    },
+    orderBy: {
+      dueDate: "asc",
+    },
+  },
+  resources: {
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      resourceType: true,
+      url: true,
+      fileUrl: true,
+    },
+  },
+  wishlists: {
+    select: {
+      id: true,
+    },
+  },
+};
+
 const getAdminSummary = asyncHandler(async (req, res) => {
   const cacheKey = `admin:summary:${req.user.id}`;
   const cachedResponse = getCachedResponse(cacheKey);
@@ -131,7 +199,6 @@ const getAdminSummary = asyncHandler(async (req, res) => {
     submissionStats,
     activeEnrollments,
     programmes,
-    settings,
   ] =
     await Promise.all([
       db.user.groupBy({
@@ -180,7 +247,6 @@ const getAdminSummary = asyncHandler(async (req, res) => {
         },
         take: 8,
       }),
-      getAdminSettings(),
     ]);
 
   const roleCountMap = Object.fromEntries(
@@ -208,12 +274,11 @@ const getAdminSummary = asyncHandler(async (req, res) => {
           assignmentsCount: programme._count.assignments,
         }),
       ),
-      settings,
     },
     "Admin summary fetched successfully",
   );
 
-  setCachedResponse(cacheKey, response, 20_000);
+  setCachedResponse(cacheKey, response, 300_000);
   return res.status(200).json(response);
 });
 
@@ -271,61 +336,7 @@ const getAdminOverview = asyncHandler(async (req, res) => {
       },
     }),
     db.programme.findMany({
-      include: {
-        programmeManager: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        enrollments: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-              },
-            },
-          },
-        },
-        assignments: {
-          select: {
-            id: true,
-            title: true,
-            description: true,
-            dueDate: true,
-            maxScore: true,
-            type: true,
-            acceptedFileTypes: true,
-            submissions: {
-              select: {
-                id: true,
-                score: true,
-              },
-            },
-          },
-          orderBy: {
-            dueDate: "asc",
-          },
-        },
-        resources: {
-          select: {
-            id: true,
-            title: true,
-            description: true,
-            resourceType: true,
-            url: true,
-            fileUrl: true,
-          },
-        },
-        wishlists: {
-          select: {
-            id: true,
-          },
-        },
-      },
+      select: adminProgrammeSelect,
       orderBy: {
         createdAt: "desc",
       },
@@ -376,7 +387,7 @@ const getAdminOverview = asyncHandler(async (req, res) => {
     "Admin overview fetched successfully",
   );
 
-  setCachedResponse(cacheKey, response, 20_000);
+  setCachedResponse(cacheKey, response, 60_000);
   return res.status(200).json(response);
 });
 
@@ -803,61 +814,30 @@ const deleteAdminUser = asyncHandler(async (req, res) => {
 });
 
 const getAdminProgrammes = asyncHandler(async (req, res) => {
+  const cacheKey = `admin:programmes:${req.user.id}`;
+  const cachedResponse = getCachedResponse(cacheKey);
+
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
+  }
+
   const programmes = await db.programme.findMany({
-    include: {
-      programmeManager: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-        },
-      },
-      enrollments: {
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
-        },
-      },
-      assignments: {
-        include: {
-          submissions: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                },
-              },
-            },
-          },
-        },
-        orderBy: {
-          dueDate: "asc",
-        },
-      },
-      resources: true,
-      wishlists: true,
-    },
+    select: adminProgrammeSelect,
     orderBy: {
       createdAt: "desc",
     },
   });
 
-  return res.status(200).json(
-    new ApiResponse(
-      200,
-      {
-        programmes: programmes.map((programme) => normalizeProgramme(programme)),
-      },
-      "Programmes fetched successfully",
-    ),
+  const response = new ApiResponse(
+    200,
+    {
+      programmes: programmes.map((programme) => normalizeProgramme(programme)),
+    },
+    "Programmes fetched successfully",
   );
+
+  setCachedResponse(cacheKey, response, 60_000);
+  return res.status(200).json(response);
 });
 
 const createAdminProgramme = asyncHandler(async (req, res) => {

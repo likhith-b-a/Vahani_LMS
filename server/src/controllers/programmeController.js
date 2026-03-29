@@ -115,7 +115,7 @@ const getMyProgrammes = asyncHandler(async (req, res) => {
     "programmes fetched successfully",
   );
 
-  setCachedResponse(cacheKey, response, 20_000);
+  setCachedResponse(cacheKey, response, 60_000);
   return res.status(200).json(response);
 });
 
@@ -183,7 +183,7 @@ const getMyProgrammeSchedule = asyncHandler(async (req, res) => {
     "Programme schedule fetched successfully",
   );
 
-  setCachedResponse(cacheKey, response, 20_000);
+  setCachedResponse(cacheKey, response, 60_000);
   return res.status(200).json(response);
 });
 
@@ -222,6 +222,15 @@ const getProgrammeDetail = asyncHandler(async (req, res) => {
         },
       },
       resources: {
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          resourceType: true,
+          url: true,
+          fileUrl: true,
+          createdAt: true,
+        },
         orderBy: {
           createdAt: "desc",
         },
@@ -265,7 +274,7 @@ const getProgrammeDetail = asyncHandler(async (req, res) => {
     "programmeData fetched successfully",
   );
 
-  setCachedResponse(cacheKey, response, 20_000);
+  setCachedResponse(cacheKey, response, 60_000);
   return res.status(200).json(response);
 });
 
@@ -287,89 +296,12 @@ const getManagedProgrammes = asyncHandler(async (req, res) => {
       description: true,
       createdAt: true,
       resultsPublishedAt: true,
-      selfEnrollmentEnabled: true,
-      spotlightTitle: true,
-      spotlightMessage: true,
-      programmeManagerId: true,
-      programmeManager: {
+      _count: {
         select: {
-          id: true,
-          name: true,
-          email: true,
-        },
-      },
-      enrollments: {
-        select: {
-          id: true,
-          status: true,
-          enrolledAt: true,
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              batch: true,
-            },
-          },
-        },
-      },
-      assignments: {
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          dueDate: true,
-          maxScore: true,
-          type: true,
-          acceptedFileTypes: true,
-          submissions: {
-            select: {
-              id: true,
-              userId: true,
-              score: true,
-              submittedAt: true,
-              fileUrl: true,
-            },
-          },
-        },
-        orderBy: {
-          dueDate: "asc",
-        },
-      },
-      resources: {
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          resourceType: true,
-          url: true,
-          fileUrl: true,
-          createdAt: true,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      },
-      interactiveSessions: {
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          scheduledAt: true,
-          durationMinutes: true,
-          maxScore: true,
-          meetingUrl: true,
-          attendances: {
-            select: {
-              id: true,
-              userId: true,
-              status: true,
-              score: true,
-            },
-          },
-        },
-        orderBy: {
-          scheduledAt: "asc",
+          enrollments: true,
+          assignments: true,
+          interactiveSessions: true,
+          resources: true,
         },
       },
     },
@@ -381,19 +313,23 @@ const getManagedProgrammes = asyncHandler(async (req, res) => {
   const response = new ApiResponse(
     200,
     {
-      programmes: programmes.map((programme) =>
-        withProgrammeMetadataSync({
-          ...programme,
-          assignments: programme.assignments.map((assignment) =>
-            serializeAssignment(assignment),
-          ),
-        }),
-      ),
+      programmes: programmes.map((programme) => ({
+        id: programme.id,
+        title: programme.title,
+        description: programme.description,
+        createdAt: programme.createdAt,
+        resultsPublishedAt: programme.resultsPublishedAt,
+        scholarsCount: programme._count.enrollments,
+        assignmentsCount: programme._count.assignments,
+        interactiveSessionsCount: programme._count.interactiveSessions,
+        resourcesCount: programme._count.resources,
+        meetingsCount: 0,
+      })),
     },
     "Managed programmes fetched successfully",
   );
 
-  setCachedResponse(cacheKey, response, 20_000);
+  setCachedResponse(cacheKey, response, 60_000);
   return res.status(200).json(response);
 });
 
@@ -522,7 +458,7 @@ const getManagedProgrammeDetail = asyncHandler(async (req, res) => {
     "Managed programme detail fetched successfully",
   );
 
-  setCachedResponse(cacheKey, response, 20_000);
+  setCachedResponse(cacheKey, response, 60_000);
   return res.status(200).json(response);
 });
 
@@ -1051,11 +987,18 @@ const getManagedProgrammeReport = asyncHandler(async (req, res) => {
     "Programme report generated successfully",
   );
 
-  setCachedResponse(cacheKey, response, 20_000);
+  setCachedResponse(cacheKey, response, 60_000);
   return res.status(200).json(response);
 });
 
 const getDiscoverableProgrammes = asyncHandler(async (req, res) => {
+  const cacheKey = `programmes:discover:${req.user.id}`;
+  const cachedResponse = getCachedResponse(cacheKey);
+
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
+  }
+
   const enrolled = await db.enrollment.findMany({
     where: {
       userId: req.user.id,
@@ -1067,7 +1010,14 @@ const getDiscoverableProgrammes = asyncHandler(async (req, res) => {
 
   const enrolledProgrammeIds = new Set(enrolled.map((item) => item.programmeId));
   const programmes = await db.programme.findMany({
-    include: {
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      createdAt: true,
+      selfEnrollmentEnabled: true,
+      spotlightTitle: true,
+      spotlightMessage: true,
       programmeManager: {
         select: {
           id: true,
@@ -1075,14 +1025,10 @@ const getDiscoverableProgrammes = asyncHandler(async (req, res) => {
           email: true,
         },
       },
-      enrollments: {
+      _count: {
         select: {
-          id: true,
-        },
-      },
-      assignments: {
-        include: {
-          submissions: true,
+          enrollments: true,
+          assignments: true,
         },
       },
     },
@@ -1102,20 +1048,21 @@ const getDiscoverableProgrammes = asyncHandler(async (req, res) => {
       selfEnrollmentEnabled: programme.selfEnrollmentEnabled,
       spotlightTitle: programme.spotlightTitle || "",
       spotlightMessage: programme.spotlightMessage || "",
-      assignmentsCount: programme.assignments.length,
-      scholarsCount: programme.enrollments.length,
+      assignmentsCount: programme._count.assignments,
+      scholarsCount: programme._count.enrollments,
       enrolled: enrolledProgrammeIds.has(programme.id),
     }));
 
-  return res.status(200).json(
-    new ApiResponse(
-      200,
-      {
-        programmes: discoverableProgrammes,
-      },
-      "Discoverable programmes fetched successfully",
-    ),
+  const response = new ApiResponse(
+    200,
+    {
+      programmes: discoverableProgrammes,
+    },
+    "Discoverable programmes fetched successfully",
   );
+
+  setCachedResponse(cacheKey, response, 60_000);
+  return res.status(200).json(response);
 });
 
 const getWishlistProgrammeCatalog = asyncHandler(async (req, res) => {

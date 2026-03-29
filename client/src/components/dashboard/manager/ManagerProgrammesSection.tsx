@@ -1,5 +1,5 @@
 import { type ChangeEvent } from "react";
-import { type ManagedProgramme } from "@/api/programmeManager";
+import { type ManagedProgrammeSummary } from "@/api/programmeManager";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ interface ManagerProgrammesSectionProps {
   onProgrammeDateFromChange: (value: string) => void;
   programmeDateTo: string;
   onProgrammeDateToChange: (value: string) => void;
-  filteredProgrammes: ManagedProgramme[];
+  filteredProgrammes: ManagedProgrammeSummary[];
   onOpenProgramme: (programmeId: string) => void;
   formatDate: (value?: string | null) => string;
 }
@@ -72,12 +72,12 @@ export function ManagerProgrammesSection({
                     {programme.description || "No description added yet."}
                   </p>
                 </div>
-                <Badge variant="secondary">{programme.enrollments.length} scholars</Badge>
+                <Badge variant="secondary">{programme.scholarsCount} scholars</Badge>
               </div>
               <div className="mt-4 flex flex-wrap gap-3 text-xs text-muted-foreground">
-                <span>{programme.assignments.length} assignments</span>
-                <span>{programme.resources?.length || 0} resources</span>
-                <span>{programme.meetingLinks?.length || 0} meetings</span>
+                <span>{programme.assignmentsCount} assignments</span>
+                <span>{programme.resourcesCount || 0} resources</span>
+                <span>{programme.meetingsCount || 0} meetings</span>
                 <span>Created {formatDate(programme.createdAt)}</span>
               </div>
             </button>

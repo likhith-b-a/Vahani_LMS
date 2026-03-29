@@ -21,11 +21,13 @@ import {
   createInteractiveSession,
   evaluateProgrammeSubmission,
   getManagedAssignmentSubmissions,
+  getManagedProgrammeDetail,
   getManagedProgrammes,
   getManagedProgrammeReport,
   markInteractiveSessionAttendance,
   type ProgrammeManagerReportResponse,
   type ManagedProgramme,
+  type ManagedProgrammeSummary,
   type ManagedSubmission,
 } from "@/api/programmeManager";
 import {
@@ -177,7 +179,8 @@ export default function TutorDashboard() {
 
   const [activeSection, setActiveSection] = useState("overview");
   const [loading, setLoading] = useState(true);
-  const [programmes, setProgrammes] = useState<ManagedProgramme[]>([]);
+  const [programmes, setProgrammes] = useState<ManagedProgrammeSummary[]>([]);
+  const [selectedProgramme, setSelectedProgramme] = useState<ManagedProgramme | null>(null);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [queries, setQueries] = useState<SupportQuery[]>([]);
 
@@ -254,17 +257,42 @@ export default function TutorDashboard() {
     window.localStorage.setItem("manager:pinnedQueries", JSON.stringify(pinnedQueryIds));
   }, [pinnedQueryIds]);
 
+  const loadSelectedProgramme = useCallback(
+    async (programmeId: string) => {
+      if (!programmeId) {
+        setSelectedProgramme(null);
+        return;
+      }
+
+      try {
+        const response = await getManagedProgrammeDetail(programmeId);
+        setSelectedProgramme((response?.data?.programme as ManagedProgramme) || null);
+      } catch (error) {
+        toast({
+          title: "Unable to load programme details",
+          description: error instanceof Error ? error.message : "Please try again.",
+          variant: "destructive",
+        });
+        setSelectedProgramme(null);
+      }
+    },
+    [toast],
+  );
+
   const loadProgrammes = useCallback(
     async (preferredProgrammeId?: string) => {
       try {
         setLoading(true);
         const response = await getManagedProgrammes();
         const nextProgrammes = Array.isArray(response?.data?.programmes)
-          ? (response.data.programmes as ManagedProgramme[])
+          ? (response.data.programmes as ManagedProgrammeSummary[])
           : [];
+        const nextProgrammeId =
+          preferredProgrammeId || selectedProgrammeId || nextProgrammes[0]?.id || "";
         setProgrammes(nextProgrammes);
-        setSelectedProgrammeId((current) => preferredProgrammeId || current || nextProgrammes[0]?.id || "");
-        setReportProgrammeId((current) => current || preferredProgrammeId || nextProgrammes[0]?.id || "");
+        setSelectedProgrammeId(nextProgrammeId);
+        setReportProgrammeId((current) => current || nextProgrammeId);
+        await loadSelectedProgramme(nextProgrammeId);
       } catch (error) {
         toast({
           title: "Unable to load programmes",
@@ -275,7 +303,7 @@ export default function TutorDashboard() {
         setLoading(false);
       }
     },
-    [toast],
+    [loadSelectedProgramme, selectedProgrammeId, toast],
   );
 
   const loadAnnouncements = useCallback(async () => {
@@ -386,8 +414,10 @@ export default function TutorDashboard() {
     void loadQueryDetail();
   }, [activeSection, selectedQueryId]);
 
-  const selectedProgramme =
-    programmes.find((programme) => programme.id === selectedProgrammeId) || null;
+  useEffect(() => {
+    void loadSelectedProgramme(selectedProgrammeId);
+  }, [loadSelectedProgramme, selectedProgrammeId]);
+
   const selectedAssignmentType = selectedAssignmentId.startsWith("session:")
     ? "session"
     : selectedAssignmentId.startsWith("assignment:")
@@ -415,21 +445,16 @@ export default function TutorDashboard() {
     null;
   const selectedAttendanceSession = useMemo(
     () =>
-      programmes
-        .flatMap((programme) => programme.interactiveSessions || [])
-        .find((session) => session.id === attendanceSessionId) || null,
-    [attendanceSessionId, programmes],
+      selectedProgramme?.interactiveSessions.find(
+        (session) => session.id === attendanceSessionId,
+      ) || null,
+    [attendanceSessionId, selectedProgramme],
   );
   const selectedEvaluationSession =
     selectedInteractiveSessions.find((session) => session.id === selectedSessionKey) || null;
 
   const totalStudents = useMemo(
-    () =>
-      new Set(
-        programmes.flatMap((programme) =>
-          programme.enrollments.map((enrollment) => enrollment.user.id),
-        ),
-      ).size,
+    () => programmes.reduce((sum, programme) => sum + programme.scholarsCount, 0),
     [programmes],
   );
 
@@ -437,7 +462,7 @@ export default function TutorDashboard() {
     () =>
       programmes.reduce(
         (sum, programme) =>
-          sum + (programme.resources?.length || 0) + (programme.meetingLinks?.length || 0),
+          sum + (programme.resourcesCount || 0) + (programme.meetingsCount || 0),
         0,
       ),
     [programmes],

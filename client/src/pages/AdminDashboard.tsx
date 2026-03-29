@@ -26,6 +26,7 @@ import {
   downloadAdminUserTemplate,
   getAdminProgrammes,
   getAdminReport,
+  getAdminSettings,
   getAdminSummary,
   getAdminUsers,
   removeScholarFromProgramme,
@@ -303,7 +304,6 @@ export default function AdminDashboard() {
       const response = await getAdminSummary();
       const nextSummary = response.data as AdminSummary;
       setSummary(nextSummary);
-      setSettingsDraft(nextSummary.settings);
       setSelectedProgrammeId((current) => current || nextSummary.programmes[0]?.id || "");
     } catch (error) {
       toast({
@@ -340,6 +340,19 @@ export default function AdminDashboard() {
     } catch (error) {
       toast({
         title: "Unable to load programmes",
+        description: error instanceof Error ? error.message : "Please try again shortly.",
+        variant: "destructive",
+      });
+    }
+  }, [toast]);
+
+  const loadSettings = useCallback(async () => {
+    try {
+      const response = await getAdminSettings();
+      setSettingsDraft(response.data as AdminSettings);
+    } catch (error) {
+      toast({
+        title: "Unable to load settings",
         description: error instanceof Error ? error.message : "Please try again shortly.",
         variant: "destructive",
       });
@@ -398,6 +411,12 @@ export default function AdminDashboard() {
       void loadAnnouncements();
     }
   }, [activeTab, loadAnnouncements]);
+
+  useEffect(() => {
+    if (activeTab === "settings" && !settingsDraft) {
+      void loadSettings();
+    }
+  }, [activeTab, loadSettings, settingsDraft]);
 
   useEffect(() => {
     if (activeTab === "queries") {

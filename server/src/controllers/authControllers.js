@@ -10,6 +10,11 @@ import {
   getPasswordResetOtp,
   setPasswordResetOtp,
 } from "../utils/passwordResetStore.js";
+import {
+  clearCachedResponse,
+  getCachedResponse,
+  setCachedResponse,
+} from "../utils/responseCache.js";
 
 const getCookieOptions = () => {
   const isProduction = process.env.NODE_ENV === "production";
@@ -287,15 +292,55 @@ const changePassword = asyncHandler(async (req, res) => {
 });
 
 const getCurrentUserProfile = asyncHandler(async (req, res) => {
+  const cacheKey = `profile:${req.user.id}`;
+  const cachedResponse = getCachedResponse(cacheKey);
+
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
+  }
+
+  if (req.user.role !== "scholar") {
+    const response = new ApiResponse(
+      200,
+      {
+        id: req.user.id,
+        name: req.user.name,
+        email: req.user.email,
+        role: req.user.role,
+        batch: null,
+        phoneNumber: null,
+        creditsEarned: 0,
+        enrollments: [],
+      },
+      "Profile fetched successfully",
+    );
+
+    setCachedResponse(cacheKey, response, 300_000);
+    return res.status(200).json(response);
+  }
+
   const user = await db.user.findUnique({
     where: {
       id: req.user.id,
     },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      batch: true,
+      phoneNumber: true,
+      creditsEarned: true,
       enrollments: {
-        include: {
+        select: {
+          id: true,
+          status: true,
+          enrolledAt: true,
           programme: {
-            include: {
+            select: {
+              id: true,
+              title: true,
+              description: true,
               programmeManager: {
                 select: {
                   id: true,
@@ -314,23 +359,22 @@ const getCurrentUserProfile = asyncHandler(async (req, res) => {
     throw new ApiError(404, "User not found");
   }
 
-  delete user.password;
-
-  return res.status(200).json(
-    new ApiResponse(
-      200,
-      {
-        ...user,
-        enrollments: user.enrollments.map((enrollment) => ({
-          ...enrollment.programme,
-          enrollmentId: enrollment.id,
-          status: enrollment.status,
-          enrolledAt: enrollment.enrolledAt,
-        })),
-      },
-      "Profile fetched successfully",
-    ),
+  const response = new ApiResponse(
+    200,
+    {
+      ...user,
+      enrollments: user.enrollments.map((enrollment) => ({
+        ...enrollment.programme,
+        enrollmentId: enrollment.id,
+        status: enrollment.status,
+        enrolledAt: enrollment.enrolledAt,
+      })),
+    },
+    "Profile fetched successfully",
   );
+
+  setCachedResponse(cacheKey, response, 300_000);
+  return res.status(200).json(response);
 });
 
 const updateCurrentUserProfile = asyncHandler(async (req, res) => {
@@ -369,6 +413,7 @@ const updateCurrentUserProfile = asyncHandler(async (req, res) => {
   });
 
   delete updatedUser.password;
+  clearCachedResponse(`profile:${req.user.id}`);
 
   return res.status(200).json(
     new ApiResponse(

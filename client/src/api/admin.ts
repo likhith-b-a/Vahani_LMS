@@ -111,7 +111,6 @@ export interface AdminSummary {
     enrollmentsCount: number;
     assignmentsCount: number;
   }>;
-  settings: AdminSettings;
 }
 
 export interface AdminSettings {

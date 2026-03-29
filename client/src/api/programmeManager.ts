@@ -65,6 +65,19 @@ export interface ManagedInteractiveSession {
   attendances: ManagedInteractiveSessionAttendance[];
 }
 
+export interface ManagedProgrammeSummary {
+  id: string;
+  title: string;
+  description: string | null;
+  createdAt: string;
+  resultsPublishedAt?: string | null;
+  scholarsCount: number;
+  assignmentsCount: number;
+  interactiveSessionsCount: number;
+  resourcesCount: number;
+  meetingsCount: number;
+}
+
 export interface ManagedProgramme {
   id: string;
   title: string;
