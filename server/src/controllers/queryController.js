@@ -3,6 +3,11 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/AsyncHandler.js";
 import { createNotification } from "../utils/notifications.js";
+import {
+  clearCachedResponse,
+  getCachedResponse,
+  setCachedResponse,
+} from "../utils/responseCache.js";
 
 const createQuery = asyncHandler(async (req, res) => {
   const { programmeId, targetType, subject, message } = req.body;
@@ -78,12 +83,21 @@ const createQuery = asyncHandler(async (req, res) => {
     });
   }
 
+  clearCachedResponse("queries:");
+
   return res.status(201).json(
     new ApiResponse(201, supportQuery, "Query created successfully"),
   );
 });
 
 const getQueries = asyncHandler(async (req, res) => {
+  const cacheKey = `queries:${req.user.role}:${req.user.id}`;
+  const cachedResponse = getCachedResponse(cacheKey);
+
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
+  }
+
   const where =
     req.user.role === "scholar"
       ? { authorId: req.user.id }
@@ -140,9 +154,14 @@ const getQueries = asyncHandler(async (req, res) => {
     },
   });
 
-  return res.status(200).json(
-    new ApiResponse(200, { queries }, "Queries fetched successfully"),
+  const response = new ApiResponse(
+    200,
+    { queries },
+    "Queries fetched successfully",
   );
+
+  setCachedResponse(cacheKey, response, 10_000);
+  return res.status(200).json(response);
 });
 
 const replyToQuery = asyncHandler(async (req, res) => {
@@ -211,6 +230,8 @@ const replyToQuery = asyncHandler(async (req, res) => {
     });
   }
 
+  clearCachedResponse("queries:");
+
   return res.status(201).json(
     new ApiResponse(201, reply, "Query reply added successfully"),
   );
@@ -265,6 +286,8 @@ const updateQueryStatus = asyncHandler(async (req, res) => {
     programmeId: updatedQuery.programmeId,
     actionUrl: "/dashboard",
   });
+
+  clearCachedResponse("queries:");
 
   return res.status(200).json(
     new ApiResponse(200, updatedQuery, "Query status updated successfully"),

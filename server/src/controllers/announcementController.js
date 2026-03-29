@@ -3,6 +3,11 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/AsyncHandler.js";
 import { createNotification } from "../utils/notifications.js";
+import {
+  clearCachedResponse,
+  getCachedResponse,
+  setCachedResponse,
+} from "../utils/responseCache.js";
 
 const resolveRecipients = async ({
   actor,
@@ -39,21 +44,19 @@ const resolveRecipients = async ({
   }
 
   if (actor.role === "programme_manager") {
-    const where = {
-      role: "scholar",
-      ...(targetBatch ? { batch: targetBatch } : {}),
-      enrollments: {
-        some: {
-          ...(programmeId ? { programmeId } : {}),
-          programme: {
-            programmeManagerId: actor.id,
+    const users = await db.user.findMany({
+      where: {
+        role: "scholar",
+        ...(targetBatch ? { batch: targetBatch } : {}),
+        enrollments: {
+          some: {
+            ...(programmeId ? { programmeId } : {}),
+            programme: {
+              programmeManagerId: actor.id,
+            },
           },
         },
       },
-    };
-
-    const users = await db.user.findMany({
-      where,
       select: {
         id: true,
       },
@@ -101,9 +104,7 @@ const resolveRecipients = async ({
       };
     }
 
-    return {
-      role,
-    };
+    return { role };
   });
 
   const users = await db.user.findMany({
@@ -142,7 +143,10 @@ const createAnnouncement = asyncHandler(async (req, res) => {
     });
 
     if (!programme) {
-      throw new ApiError(403, "You can only announce within your managed programmes");
+      throw new ApiError(
+        403,
+        "You can only announce within your managed programmes",
+      );
     }
   }
 
@@ -171,8 +175,13 @@ const createAnnouncement = asyncHandler(async (req, res) => {
         })),
       },
     },
-    include: {
-      recipients: true,
+    select: {
+      id: true,
+      title: true,
+      message: true,
+      programmeId: true,
+      targetBatch: true,
+      createdAt: true,
     },
   });
 
@@ -186,6 +195,8 @@ const createAnnouncement = asyncHandler(async (req, res) => {
     announcementId: announcement.id,
     actionUrl: programmeId ? `/my-programmes/${programmeId}` : "/dashboard",
   });
+
+  clearCachedResponse("announcements:");
 
   return res.status(201).json(
     new ApiResponse(
@@ -208,16 +219,26 @@ const createAnnouncement = asyncHandler(async (req, res) => {
 });
 
 const getAnnouncements = asyncHandler(async (req, res) => {
-  let announcements;
+  const cacheKey = `announcements:${req.user.role}:${req.user.id}`;
+  const cachedResponse = getCachedResponse(cacheKey);
+
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
+  }
 
   if (req.user.role === "scholar") {
-    announcements = await db.announcementRecipient.findMany({
+    const announcements = await db.announcementRecipient.findMany({
       where: {
         userId: req.user.id,
       },
-      include: {
+      select: {
         announcement: {
-          include: {
+          select: {
+            id: true,
+            title: true,
+            message: true,
+            targetBatch: true,
+            createdAt: true,
             createdBy: {
               select: {
                 id: true,
@@ -241,32 +262,38 @@ const getAnnouncements = asyncHandler(async (req, res) => {
       },
     });
 
-    return res.status(200).json(
-      new ApiResponse(
-        200,
-        {
-          announcements: announcements.map((item) => item.announcement),
-        },
-        "Announcements fetched successfully",
-      ),
+    const response = new ApiResponse(
+      200,
+      {
+        announcements: announcements.map((item) => item.announcement),
+      },
+      "Announcements fetched successfully",
     );
+
+    setCachedResponse(cacheKey, response, 15_000);
+    return res.status(200).json(response);
   }
 
-  announcements = await db.announcement.findMany({
+  const announcements = await db.announcement.findMany({
     where: {
       createdById: req.user.id,
     },
-      include: {
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
+    select: {
+      id: true,
+      title: true,
+      message: true,
+      targetBatch: true,
+      createdAt: true,
+      createdBy: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
         },
-        recipients: {
-          include: {
-            user: {
+      },
+      recipients: {
+        select: {
+          user: {
             select: {
               id: true,
               name: true,
@@ -288,15 +315,16 @@ const getAnnouncements = asyncHandler(async (req, res) => {
     },
   });
 
-  return res.status(200).json(
-    new ApiResponse(
-      200,
-      {
-        announcements,
-      },
-      "Announcements fetched successfully",
-    ),
+  const response = new ApiResponse(
+    200,
+    {
+      announcements,
+    },
+    "Announcements fetched successfully",
   );
+
+  setCachedResponse(cacheKey, response, 15_000);
+  return res.status(200).json(response);
 });
 
 export { createAnnouncement, getAnnouncements };

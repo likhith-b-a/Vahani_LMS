@@ -43,6 +43,8 @@ export interface CreateAnnouncementPayload {
 export const getAnnouncements = async () => {
   return fetchWithAuth("/announcements", {
     method: "GET",
+    cacheTtlMs: 15_000,
+    cacheKey: "announcements:list",
   });
 };
 

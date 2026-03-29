@@ -344,8 +344,20 @@ export default function AdminDashboard() {
   }, [toast]);
 
   useEffect(() => {
-    void Promise.all([loadOverview(), loadAnnouncements(), loadQueries()]);
-  }, [loadAnnouncements, loadOverview, loadQueries]);
+    void loadOverview();
+  }, [loadOverview]);
+
+  useEffect(() => {
+    if (activeTab === "announcements") {
+      void loadAnnouncements();
+    }
+  }, [activeTab, loadAnnouncements]);
+
+  useEffect(() => {
+    if (activeTab === "queries") {
+      void loadQueries();
+    }
+  }, [activeTab, loadQueries]);
 
   const users = useMemo(() => overview?.users ?? [], [overview?.users]);
   const programmes = useMemo(() => overview?.programmes ?? [], [overview?.programmes]);

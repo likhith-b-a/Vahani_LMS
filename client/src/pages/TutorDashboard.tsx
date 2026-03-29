@@ -350,8 +350,20 @@ export default function TutorDashboard() {
   );
 
   useEffect(() => {
-    void Promise.all([loadProgrammes(), loadAnnouncements(), loadQueries()]);
-  }, [loadAnnouncements, loadProgrammes, loadQueries]);
+    void loadProgrammes();
+  }, [loadProgrammes]);
+
+  useEffect(() => {
+    if (activeSection === "announcements") {
+      void loadAnnouncements();
+    }
+  }, [activeSection, loadAnnouncements]);
+
+  useEffect(() => {
+    if (activeSection === "queries") {
+      void loadQueries();
+    }
+  }, [activeSection, loadQueries]);
 
   const selectedProgramme =
     programmes.find((programme) => programme.id === selectedProgrammeId) || null;

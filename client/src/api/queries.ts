@@ -44,6 +44,8 @@ export interface SupportQuery {
 export const getMyQueries = async () => {
   return fetchWithAuth("/queries", {
     method: "GET",
+    cacheTtlMs: 10_000,
+    cacheKey: "queries:list",
   });
 };
 

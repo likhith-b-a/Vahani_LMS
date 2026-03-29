@@ -426,7 +426,7 @@ const loginUser = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Email and password required");
   }
 
-  let user = await db.user.findUnique({
+  const account = await db.user.findUnique({
     where: { email },
     select: {
       id: true,
@@ -434,48 +434,68 @@ const loginUser = asyncHandler(async (req, res) => {
       email: true,
       role: true,
       password: true,
-      batch: true,
-      phoneNumber: true,
-      creditsEarned: true,
-      enrollments: {
-        include: {
-          programme: {
-            select: {
-              id: true,
-              title: true,
-              description: true,
-              createdAt: true,
-              programmeManagerId: true,
-              programmeManager: {
-                select: {
-                  name: true,
-                  email: true,
-                },
-              },
-            },
-          },
-        },
-      },
     },
   });
 
-  if (!user) {
+  if (!account) {
     throw new ApiError(401, "User not found");
   }
-  const isValid = await isPasswordCorrect(password, user.password);
+
+  const isValid = await isPasswordCorrect(password, account.password);
   if (!isValid) {
     throw new ApiError(401, "Invalid credentials");
   }
 
+  const user = await db.user.findUnique({
+    where: { id: account.id },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      batch: true,
+      phoneNumber: true,
+      creditsEarned: true,
+      enrollments:
+        account.role === "scholar"
+          ? {
+              include: {
+                programme: {
+                  select: {
+                    id: true,
+                    title: true,
+                    description: true,
+                    createdAt: true,
+                    programmeManagerId: true,
+                    programmeManager: {
+                      select: {
+                        name: true,
+                        email: true,
+                      },
+                    },
+                  },
+                },
+              },
+            }
+          : false,
+    },
+  });
+
   const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(
-    user.id,
+    account.id,
   );
-  user.enrollments = user.enrollments.map((e) => ({
-    ...e.programme,
-    status: e.status,
-  }));
-  delete user.password;
-  user.accessToken = accessToken;
+  const responseUser = {
+    ...user,
+    enrollments:
+      account.role === "scholar"
+        ? (user.enrollments || []).map((e) => ({
+            ...e.programme,
+            status: e.status,
+          }))
+        : [],
+    accessToken,
+    refreshToken,
+  };
 
   const options = {
     ...getCookieOptions(),
@@ -489,7 +509,7 @@ const loginUser = asyncHandler(async (req, res) => {
       new ApiResponse(
         200,
         {
-          user: user,
+          user: responseUser,
         },
         "User logged in successfully",
       ),

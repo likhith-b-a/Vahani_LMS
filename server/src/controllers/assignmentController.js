@@ -12,6 +12,11 @@ import {
   createNotification,
   getProgrammeScholarIds,
 } from "../utils/notifications.js";
+import {
+  clearCachedResponse,
+  getCachedResponse,
+  setCachedResponse,
+} from "../utils/responseCache.js";
 import { uploadBufferToS3 } from "../utils/s3.js";
 
 const getUserAssignments = asyncHandler(async (req, res) => {
@@ -19,6 +24,13 @@ const getUserAssignments = asyncHandler(async (req, res) => {
 
   if (!userId) {
     throw new ApiError(400, "User ID is required");
+  }
+
+  const cacheKey = `assignments:user:${userId}`;
+  const cachedResponse = getCachedResponse(cacheKey);
+
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
   }
 
   const assignments = await db.assignment.findMany({
@@ -75,15 +87,14 @@ const getUserAssignments = asyncHandler(async (req, res) => {
           : "SUBMITTED",
   }));
 
-  return res
-    .status(200)
-    .json(
-      new ApiResponse(
-        200,
-        formattedAssignments,
-        "Assignments fetched successfully",
-      ),
-    );
+  const response = new ApiResponse(
+    200,
+    formattedAssignments,
+    "Assignments fetched successfully",
+  );
+
+  setCachedResponse(cacheKey, response, 15_000);
+  return res.status(200).json(response);
 });
 
 const createAssignment = asyncHandler(async (req, res) => {
@@ -160,6 +171,10 @@ const createAssignment = asyncHandler(async (req, res) => {
   });
 
   const scholarIds = await getProgrammeScholarIds(programmeId);
+  clearCachedResponse("assignments:user:");
+  clearCachedResponse("programmes:mine:");
+  clearCachedResponse("programme:detail:");
+  clearCachedResponse(`programmes:managed:${req.user.id}`);
   await createNotification({
     type: "assignment",
     title: `New assignment: ${assignment.title}`,
@@ -348,6 +363,10 @@ const evaluateSubmission = asyncHandler(async (req, res) => {
     actionUrl: "/assignments",
   });
 
+  clearCachedResponse(`assignments:user:${submission.user.id}`);
+  clearCachedResponse(`programmes:mine:${submission.user.id}`);
+  clearCachedResponse(`programme:detail:${submission.user.id}:`);
+
   return res
     .status(200)
     .json(
@@ -480,6 +499,10 @@ const bulkEvaluateSubmissions = asyncHandler(async (req, res) => {
       assignmentId,
       actionUrl: `/assignments?programmeId=${managedAssignment.programme.id}`,
     });
+
+    clearCachedResponse(`assignments:user:${submission.userId}`);
+    clearCachedResponse(`programmes:mine:${submission.userId}`);
+    clearCachedResponse(`programme:detail:${submission.userId}:`);
 
     results.updated += 1;
   }
@@ -648,6 +671,10 @@ const submitAssignment = asyncHandler(async (req, res) => {
           isLate,
         },
       });
+
+  clearCachedResponse(`assignments:user:${userId}`);
+  clearCachedResponse(`programmes:mine:${userId}`);
+  clearCachedResponse(`programme:detail:${userId}:`);
 
   return res
     .status(200)

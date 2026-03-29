@@ -14,6 +14,11 @@ import {
   removeProgrammeMetadata,
 } from "../utils/programmeMetadataStore.js";
 import { createNotification } from "../utils/notifications.js";
+import {
+  clearCachedResponse,
+  getCachedResponse,
+  setCachedResponse,
+} from "../utils/responseCache.js";
 import { sendLoginCredentialsMail } from "../utils/sendMail.js";
 
 const adminUserTemplateHeaders = [
@@ -100,6 +105,13 @@ const normalizeProgramme = (programme) => {
 };
 
 const getAdminOverview = asyncHandler(async (req, res) => {
+  const cacheKey = `admin:overview:${req.user.id}`;
+  const cachedResponse = getCachedResponse(cacheKey);
+
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
+  }
+
   const [
     users,
     programmes,
@@ -109,10 +121,24 @@ const getAdminOverview = asyncHandler(async (req, res) => {
     settings,
   ] = await Promise.all([
     db.user.findMany({
-      include: {
-        managedProgrammes: true,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        batch: true,
+        phoneNumber: true,
+        creditsEarned: true,
+        managedProgrammes: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
         enrollments: {
-          include: {
+          select: {
+            id: true,
+            status: true,
             programme: {
               select: {
                 id: true,
@@ -121,7 +147,11 @@ const getAdminOverview = asyncHandler(async (req, res) => {
             },
           },
         },
-        submissions: true,
+        submissions: {
+          select: {
+            id: true,
+          },
+        },
       },
       orderBy: {
         name: "asc",
@@ -148,16 +178,18 @@ const getAdminOverview = asyncHandler(async (req, res) => {
           },
         },
         assignments: {
-          include: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            dueDate: true,
+            maxScore: true,
+            type: true,
+            acceptedFileTypes: true,
             submissions: {
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                  },
-                },
+              select: {
+                id: true,
+                score: true,
               },
             },
           },
@@ -165,8 +197,21 @@ const getAdminOverview = asyncHandler(async (req, res) => {
             dueDate: "asc",
           },
         },
-        resources: true,
-        wishlists: true,
+        resources: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            resourceType: true,
+            url: true,
+            fileUrl: true,
+          },
+        },
+        wishlists: {
+          select: {
+            id: true,
+          },
+        },
       },
       orderBy: {
         createdAt: "desc",
@@ -190,35 +235,36 @@ const getAdminOverview = asyncHandler(async (req, res) => {
   );
   const admins = users.filter((user) => user.role === "admin");
 
-  return res.status(200).json(
-    new ApiResponse(
-      200,
-      {
-        stats: {
-          totalUsers: users.length,
-          scholars: scholars.length,
-          programmeManagers: programmeManagers.length,
-          admins: admins.length,
-          programmes: programmes.length,
-          assignments: assignmentsCount,
-          submissions: submissionsCount,
-          gradedSubmissions: gradedSubmissionsCount,
-          activeEnrollments: programmes.reduce(
-            (count, programme) =>
-              count +
-              programme.enrollments.filter(
-                (enrollment) => enrollment.status === "active",
-              ).length,
-            0,
-          ),
-        },
-        users: users.map(normalizeUser),
-        programmes: programmes.map((programme) => normalizeProgramme(programme)),
-        settings,
+  const response = new ApiResponse(
+    200,
+    {
+      stats: {
+        totalUsers: users.length,
+        scholars: scholars.length,
+        programmeManagers: programmeManagers.length,
+        admins: admins.length,
+        programmes: programmes.length,
+        assignments: assignmentsCount,
+        submissions: submissionsCount,
+        gradedSubmissions: gradedSubmissionsCount,
+        activeEnrollments: programmes.reduce(
+          (count, programme) =>
+            count +
+            programme.enrollments.filter(
+              (enrollment) => enrollment.status === "active",
+            ).length,
+          0,
+        ),
       },
-      "Admin overview fetched successfully",
-    ),
+      users: users.map(normalizeUser),
+      programmes: programmes.map((programme) => normalizeProgramme(programme)),
+      settings,
+    },
+    "Admin overview fetched successfully",
   );
+
+  setCachedResponse(cacheKey, response, 20_000);
+  return res.status(200).json(response);
 });
 
 const getAdminUsers = asyncHandler(async (req, res) => {
@@ -323,6 +369,8 @@ const createAdminUser = asyncHandler(async (req, res) => {
     });
     message = "User created successfully, but the credentials email could not be sent";
   }
+
+  clearCachedResponse("admin:");
 
   return res
     .status(201)
@@ -789,6 +837,8 @@ const createAdminProgramme = asyncHandler(async (req, res) => {
     });
   }
 
+  clearCachedResponse("admin:");
+
   return res
     .status(201)
     .json(
@@ -937,6 +987,7 @@ const deleteAdminProgramme = asyncHandler(async (req, res) => {
     },
   });
   await removeProgrammeMetadata(programmeId);
+  clearCachedResponse("admin:");
 
   return res
     .status(200)
@@ -1001,6 +1052,8 @@ const assignScholarsToProgramme = asyncHandler(async (req, res) => {
       }),
     ),
   );
+
+  clearCachedResponse("admin:");
 
   return res.status(200).json(
     new ApiResponse(
@@ -1275,6 +1328,7 @@ const getSystemSettings = asyncHandler(async (req, res) => {
 
 const updateSystemSettings = asyncHandler(async (req, res) => {
   const settings = await updateAdminSettings(req.body || {}, req.user.id);
+  clearCachedResponse("admin:");
 
   return res
     .status(200)

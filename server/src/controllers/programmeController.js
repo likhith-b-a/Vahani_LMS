@@ -8,6 +8,11 @@ import {
   withProgrammeMetadataSync,
 } from "../utils/programmeMetadataStore.js";
 import {
+  clearCachedResponse,
+  getCachedResponse,
+  setCachedResponse,
+} from "../utils/responseCache.js";
+import {
   createNotification,
   getProgrammeScholarIds,
 } from "../utils/notifications.js";
@@ -18,6 +23,13 @@ const getMyProgrammes = asyncHandler(async (req, res) => {
 
   if (!userId) {
     throw new ApiError(400, "Session timed out");
+  }
+
+  const cacheKey = `programmes:mine:${userId}`;
+  const cachedResponse = getCachedResponse(cacheKey);
+
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
   }
 
   const enrollments = await db.enrollment.findMany({
@@ -32,11 +44,6 @@ const getMyProgrammes = asyncHandler(async (req, res) => {
               id: true,
               name: true,
               email: true,
-            },
-          },
-          resources: {
-            orderBy: {
-              createdAt: "desc",
             },
           },
           assignments: {
@@ -73,6 +80,25 @@ const getMyProgrammes = asyncHandler(async (req, res) => {
               scheduledAt: "asc",
             },
           },
+          resources: {
+            where: {
+              resourceType: {
+                in: ["study_material", "meeting_link"],
+              },
+            },
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              resourceType: true,
+              url: true,
+              fileUrl: true,
+              createdAt: true,
+            },
+            orderBy: {
+              createdAt: "desc",
+            },
+          },
         },
       },
     },
@@ -88,19 +114,26 @@ const getMyProgrammes = asyncHandler(async (req, res) => {
     enrolledAt: enrollment.enrolledAt,
   }));
 
-  return res.status(200).json(
-    new ApiResponse(
-      200,
-      {
-        programmes,
-      },
-      "programmes fetched successfully",
-    ),
+  const response = new ApiResponse(
+    200,
+    {
+      programmes,
+    },
+    "programmes fetched successfully",
   );
+
+  setCachedResponse(cacheKey, response, 20_000);
+  return res.status(200).json(response);
 });
 
 const getProgrammeDetail = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const cacheKey = `programme:detail:${req.user.id}:${id}`;
+  const cachedResponse = getCachedResponse(cacheKey);
+
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
+  }
 
   const programmeData = await db.programme.findUnique({
     where: { id },
@@ -158,25 +191,31 @@ const getProgrammeDetail = asyncHandler(async (req, res) => {
     throw new ApiError(400, "No such course found");
   }
 
-  const programmeWithMetadata = await withProgrammeMetadata({
+  const programmeWithMetadata = withProgrammeMetadataSync({
     ...programmeData,
     assignments: programmeData.assignments.map((assignment) =>
       serializeAssignment(assignment),
     ),
   });
 
-  return res
-    .status(200)
-    .json(
-      new ApiResponse(
-        200,
-      programmeWithMetadata,
-      "programmeData fetched successfully",
-    ),
+  const response = new ApiResponse(
+    200,
+    programmeWithMetadata,
+    "programmeData fetched successfully",
   );
+
+  setCachedResponse(cacheKey, response, 20_000);
+  return res.status(200).json(response);
 });
 
 const getManagedProgrammes = asyncHandler(async (req, res) => {
+  const cacheKey = `programmes:managed:${req.user.id}`;
+  const cachedResponse = getCachedResponse(cacheKey);
+
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
+  }
+
   const programmes = await db.programme.findMany({
     where: {
       programmeManagerId: req.user.id,
@@ -250,26 +289,23 @@ const getManagedProgrammes = asyncHandler(async (req, res) => {
     },
   });
 
-  return res
-    .status(200)
-    .json(
-      new ApiResponse(
-        200,
-        {
-          programmes: await Promise.all(
-            programmes.map(async (programme) =>
-              withProgrammeMetadata({
-                ...programme,
-                assignments: programme.assignments.map((assignment) =>
-                  serializeAssignment(assignment),
-                ),
-              }),
-            ),
+  const response = new ApiResponse(
+    200,
+    {
+      programmes: programmes.map((programme) =>
+        withProgrammeMetadataSync({
+          ...programme,
+          assignments: programme.assignments.map((assignment) =>
+            serializeAssignment(assignment),
           ),
-        },
-        "Managed programmes fetched successfully",
+        }),
       ),
-    );
+    },
+    "Managed programmes fetched successfully",
+  );
+
+  setCachedResponse(cacheKey, response, 20_000);
+  return res.status(200).json(response);
 });
 
 const createManagedInteractiveSession = asyncHandler(async (req, res) => {
@@ -319,6 +355,9 @@ const createManagedInteractiveSession = asyncHandler(async (req, res) => {
   });
 
   const scholarIds = await getProgrammeScholarIds(programmeId);
+  clearCachedResponse(`programmes:managed:${req.user.id}`);
+  clearCachedResponse(`programmes:mine:`);
+  clearCachedResponse(`programme:detail:`);
   await createNotification({
     type: "meeting",
     title: `Interactive session scheduled: ${session.title}`,
@@ -435,6 +474,10 @@ const markInteractiveSessionAttendance = asyncHandler(async (req, res) => {
       data: normalizedAttendance,
     });
   }
+
+  clearCachedResponse(`programmes:managed:${req.user.id}`);
+  clearCachedResponse("programmes:mine:");
+  clearCachedResponse("programme:detail:");
 
   return res.status(200).json(
     new ApiResponse(
@@ -634,6 +677,10 @@ const publishProgrammeResults = asyncHandler(async (req, res) => {
       }),
     ),
   );
+
+  clearCachedResponse(`programmes:managed:${req.user.id}`);
+  clearCachedResponse("programmes:mine:");
+  clearCachedResponse("programme:detail:");
 
   return res.status(200).json(
     new ApiResponse(
@@ -999,6 +1046,9 @@ const addManagedProgrammeResource = asyncHandler(async (req, res) => {
   });
 
   const scholarIds = await getProgrammeScholarIds(programmeId);
+  clearCachedResponse(`programmes:managed:${req.user.id}`);
+  clearCachedResponse("programmes:mine:");
+  clearCachedResponse("programme:detail:");
   await createNotification({
     type: "resource",
     title: `New resource in ${programme.title}`,
@@ -1050,6 +1100,9 @@ const addManagedProgrammeMeetingLink = asyncHandler(async (req, res) => {
   });
 
   const scholarIds = await getProgrammeScholarIds(programmeId);
+  clearCachedResponse(`programmes:managed:${req.user.id}`);
+  clearCachedResponse("programmes:mine:");
+  clearCachedResponse("programme:detail:");
   await createNotification({
     type: "meeting",
     title: `New meeting link in ${programme.title}`,
