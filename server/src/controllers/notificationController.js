@@ -8,14 +8,28 @@ const getMyNotifications = asyncHandler(async (req, res) => {
     where: {
       userId: req.user.id,
     },
-    include: {
-      notification: true,
+    select: {
+      isRead: true,
+      notificationId: true,
+      notification: {
+        select: {
+          type: true,
+          title: true,
+          message: true,
+          createdAt: true,
+          programmeId: true,
+          assignmentId: true,
+          actionUrl: true,
+          metadata: true,
+        },
+      },
     },
     orderBy: {
       notification: {
         createdAt: "desc",
       },
     },
+    take: 50,
   });
 
   return res.status(200).json(
@@ -43,13 +57,13 @@ const getMyNotifications = asyncHandler(async (req, res) => {
 
 const markMyNotificationsRead = asyncHandler(async (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
-  const readIds = await markNotificationsAsRead(req.user.id, ids);
+  await markNotificationsAsRead(req.user.id, ids);
 
   return res.status(200).json(
     new ApiResponse(
       200,
       {
-        readIds,
+        readIds: ids,
       },
       "Notifications marked as read",
     ),

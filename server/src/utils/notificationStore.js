@@ -16,7 +16,7 @@ const getReadNotificationIds = async (userId) => {
 
 const markNotificationsAsRead = async (userId, notificationIds) => {
   if (!Array.isArray(notificationIds) || notificationIds.length === 0) {
-    return getReadNotificationIds(userId);
+    return [];
   }
 
   await db.notificationRecipient.updateMany({
@@ -32,7 +32,7 @@ const markNotificationsAsRead = async (userId, notificationIds) => {
     },
   });
 
-  return getReadNotificationIds(userId);
+  return notificationIds;
 };
 
 export { getReadNotificationIds, markNotificationsAsRead };

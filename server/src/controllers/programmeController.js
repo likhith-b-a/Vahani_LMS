@@ -5,6 +5,7 @@ import db from "../db.js";
 import { serializeAssignment } from "../utils/assignmentMetadata.js";
 import {
   withProgrammeMetadata,
+  withProgrammeMetadataSync,
 } from "../utils/programmeMetadataStore.js";
 import {
   createNotification,
@@ -13,56 +14,63 @@ import {
 import { uploadBufferToS3 } from "../utils/s3.js";
 
 const getMyProgrammes = asyncHandler(async (req, res) => {
-  const email = req?.user?.email;
+  const userId = req?.user?.id;
 
-  if (!email) {
+  if (!userId) {
     throw new ApiError(400, "Session timed out");
   }
 
-  const user = await db.user.findUnique({
-    where: { email },
-    select: { id: true },
-  });
-
-  if (!user) {
-    throw new ApiError(404, "User not found");
-  }
-
-  const userData = await db.user.findUnique({
-    where: { email },
-    select: {
-      enrollments: {
+  const enrollments = await db.enrollment.findMany({
+    where: {
+      userId,
+    },
+    include: {
+      programme: {
         include: {
-          programme: {
+          programmeManager: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          resources: {
+            orderBy: {
+              createdAt: "desc",
+            },
+          },
+          assignments: {
             include: {
-              programmeManager: {
+              submissions: {
+                where: {
+                  userId,
+                },
                 select: {
                   id: true,
-                  name: true,
-                  email: true,
+                  fileUrl: true,
+                  score: true,
+                  submittedAt: true,
                 },
               },
-              assignments: {
-                include: {
-                  submissions: {
-                    where: {
-                      userId: user.id,
-                    },
-                  },
+            },
+          },
+          interactiveSessions: {
+            include: {
+              attendances: {
+                where: {
+                  userId,
+                },
+                select: {
+                  id: true,
+                  status: true,
+                  score: true,
+                  markedAt: true,
+                  userId: true,
                 },
               },
-              interactiveSessions: {
-                include: {
-                  attendances: {
-                    where: {
-                      userId: user.id,
-                    },
-                  },
-                },
-                orderBy: {
-                  scheduledAt: "asc",
-                },
-              },
+            },
+            orderBy: {
+              scheduledAt: "asc",
             },
           },
         },
@@ -70,20 +78,15 @@ const getMyProgrammes = asyncHandler(async (req, res) => {
     },
   });
 
-  const programmes = await Promise.all(
-    userData.enrollments.map(async (enrollment) => {
-      const programme = await withProgrammeMetadata(enrollment.programme);
-      return {
-        ...programme,
-        assignments: enrollment.programme.assignments.map((assignment) =>
-          serializeAssignment(assignment),
-        ),
-        interactiveSessions: enrollment.programme.interactiveSessions,
-        status: enrollment.status,
-        enrolledAt: enrollment.enrolledAt,
-      };
-    }),
-  );
+  const programmes = enrollments.map((enrollment) => ({
+    ...withProgrammeMetadataSync(enrollment.programme),
+    assignments: enrollment.programme.assignments.map((assignment) =>
+      serializeAssignment(assignment),
+    ),
+    interactiveSessions: enrollment.programme.interactiveSessions,
+    status: enrollment.status,
+    enrolledAt: enrollment.enrolledAt,
+  }));
 
   return res.status(200).json(
     new ApiResponse(
@@ -115,6 +118,12 @@ const getProgrammeDetail = asyncHandler(async (req, res) => {
             where: {
               userId: req.user.id,
             },
+            select: {
+              id: true,
+              fileUrl: true,
+              score: true,
+              submittedAt: true,
+            },
           },
         },
       },
@@ -128,6 +137,13 @@ const getProgrammeDetail = asyncHandler(async (req, res) => {
           attendances: {
             where: {
               userId: req.user.id,
+            },
+            select: {
+              id: true,
+              status: true,
+              score: true,
+              markedAt: true,
+              userId: true,
             },
           },
         },

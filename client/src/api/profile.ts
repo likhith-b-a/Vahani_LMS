@@ -29,6 +29,8 @@ export interface MyProfileResponse {
 export const getMyProfile = async () => {
   return fetchWithAuth("/me", {
     method: "GET",
+    cacheTtlMs: 45_000,
+    cacheKey: "scholar:profile",
   });
 };
 

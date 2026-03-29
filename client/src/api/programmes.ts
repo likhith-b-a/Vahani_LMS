@@ -75,12 +75,16 @@ export interface Programme {
 export const getMyProgrammes = async () => {
   return fetchWithAuth("/programmes/my-programmes", {
     method: "GET",
+    cacheTtlMs: 45_000,
+    cacheKey: "scholar:my-programmes",
   });
 };
 
 export const getProgrammeDetail = async (programmeId: string) => {
   return fetchWithAuth(`/programmes/${programmeId}`, {
     method: "GET",
+    cacheTtlMs: 30_000,
+    cacheKey: `scholar:programme:${programmeId}`,
   });
 };
 

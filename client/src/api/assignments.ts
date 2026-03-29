@@ -55,6 +55,8 @@ export interface SubmitAssignmentResponse {
 export const getMyAssignments = async () => {
   return fetchWithAuth("/assignments/my-assignments", {
     method: "GET",
+    cacheTtlMs: 30_000,
+    cacheKey: "scholar:my-assignments",
   });
 };
 

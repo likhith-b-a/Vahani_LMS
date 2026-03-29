@@ -162,6 +162,8 @@ export interface AdminProgrammePayload {
 export const getAdminOverview = async () => {
   return fetchWithAuth("/admin/overview", {
     method: "GET",
+    cacheTtlMs: 30_000,
+    cacheKey: "admin:overview",
   });
 };
 
@@ -232,6 +234,8 @@ export const deleteAdminUser = async (userId: string) => {
 export const getAdminProgrammes = async () => {
   return fetchWithAuth("/admin/programmes", {
     method: "GET",
+    cacheTtlMs: 30_000,
+    cacheKey: "admin:programmes",
   });
 };
 
@@ -304,12 +308,16 @@ export const getAdminReport = async (
 
   return fetchWithAuth(`/admin/reports?${query.toString()}`, {
     method: "GET",
+    cacheTtlMs: 15_000,
+    cacheKey: `admin:report:${query.toString()}`,
   });
 };
 
 export const getAdminSettings = async () => {
   return fetchWithAuth("/admin/settings", {
     method: "GET",
+    cacheTtlMs: 60_000,
+    cacheKey: "admin:settings",
   });
 };
 

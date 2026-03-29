@@ -55,7 +55,6 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    await markNotificationsRead(ids);
     setNotifications((current) =>
       current.map((notification) =>
         ids.includes(notification.id)
@@ -63,6 +62,18 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
           : notification,
       ),
     );
+
+    try {
+      await markNotificationsRead(ids);
+    } catch {
+      setNotifications((current) =>
+        current.map((notification) =>
+          ids.includes(notification.id)
+            ? { ...notification, isRead: false }
+            : notification,
+        ),
+      );
+    }
   }, []);
 
   const unreadCount = useMemo(

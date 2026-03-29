@@ -38,6 +38,8 @@ const generateAccessToken = (user) => {
     {
       id: user.id,
       email: user.email,
+      role: user.role,
+      name: user.name,
     },
     process.env.ACCESS_TOKEN_SECRET,
     { expiresIn: "1d" },
@@ -51,7 +53,15 @@ const generateRefreshToken = (user) => {
 };
 
 const generateAccessAndRefreshTokens = async (userId) => {
-  const user = await db.user.findUnique({ where: { id: userId } });
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      role: true,
+      name: true,
+    },
+  });
 
   const accessToken = generateAccessToken(user);
   const refreshToken = generateRefreshToken(user);
@@ -83,7 +93,16 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     throw new ApiError(401, "Invalid refresh token");
   }
 
-  const user = await db.user.findUnique({ where: { id: decoded.id } });
+  const user = await db.user.findUnique({
+    where: { id: decoded.id },
+    select: {
+      id: true,
+      refreshToken: true,
+      email: true,
+      role: true,
+      name: true,
+    },
+  });
 
   if (!user || user.refreshToken !== incomingRefreshToken) {
     throw new ApiError(401, "Refresh token expired or reused");
@@ -409,11 +428,24 @@ const loginUser = asyncHandler(async (req, res) => {
 
   let user = await db.user.findUnique({
     where: { email },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      password: true,
+      batch: true,
+      phoneNumber: true,
+      creditsEarned: true,
       enrollments: {
         include: {
           programme: {
-            include: {
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              createdAt: true,
+              programmeManagerId: true,
               programmeManager: {
                 select: {
                   name: true,

@@ -21,25 +21,16 @@ const getUserAssignments = asyncHandler(async (req, res) => {
     throw new ApiError(400, "User ID is required");
   }
 
-  const enrollments = await db.enrollment.findMany({
-    where: { userId },
-    select: {
-      programmeId: true,
-    },
-  });
-
-  if (!enrollments || enrollments.length === 0) {
-    return res
-      .status(200)
-      .json(new ApiResponse(200, [], "No enrollments found"));
-  }
-
-  const programmeIds = enrollments.map((enrollment) => enrollment.programmeId);
-
   const assignments = await db.assignment.findMany({
     where: {
-      programmeId: {
-        in: programmeIds,
+      programme: {
+        is: {
+          enrollments: {
+            some: {
+              userId,
+            },
+          },
+        },
       },
     },
     include: {
@@ -65,6 +56,12 @@ const getUserAssignments = asyncHandler(async (req, res) => {
       dueDate: "asc",
     },
   });
+
+  if (!assignments.length) {
+    return res
+      .status(200)
+      .json(new ApiResponse(200, [], "No enrollments found"));
+  }
 
   const formattedAssignments = assignments.map((assignment) => ({
     ...serializeAssignment(assignment),

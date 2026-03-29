@@ -121,6 +121,8 @@ export interface CreateInteractiveSessionPayload {
 export const getManagedProgrammes = async () => {
   return fetchWithAuth("/programmes/managed/me", {
     method: "GET",
+    cacheTtlMs: 30_000,
+    cacheKey: "manager:programmes",
   });
 };
 
@@ -226,6 +228,8 @@ export interface ProgrammeManagerReportResponse {
 export const getManagedProgrammeReport = async (programmeId: string) => {
   return fetchWithAuth(`/programmes/managed/${programmeId}/report`, {
     method: "GET",
+    cacheTtlMs: 15_000,
+    cacheKey: `manager:report:${programmeId}`,
   });
 };
 

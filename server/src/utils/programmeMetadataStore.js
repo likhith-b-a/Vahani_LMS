@@ -26,6 +26,11 @@ const buildMetadataFromProgramme = (programme) => {
   };
 };
 
+const withProgrammeMetadataSync = (programme) => ({
+  ...programme,
+  ...buildMetadataFromProgramme(programme),
+});
+
 const getProgrammeMetadata = async (programmeId) => {
   const programme = await db.programme.findUnique({
     where: {
@@ -151,4 +156,5 @@ export {
   removeProgrammeMetadata,
   updateProgrammeMetadata,
   withProgrammeMetadata,
+  withProgrammeMetadataSync,
 };

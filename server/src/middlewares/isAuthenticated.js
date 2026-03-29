@@ -20,6 +20,17 @@ const isAuthenticated = asyncHandler(async (req, res, next) => {
     throw new ApiError(401, "Invalid or expired token");
   }
 
+  if (decoded?.id && decoded?.email && decoded?.role && decoded?.name) {
+    req.user = {
+      id: decoded.id,
+      name: decoded.name,
+      email: decoded.email,
+      role: decoded.role,
+    };
+    next();
+    return;
+  }
+
   const user = await db.user.findUnique({
     where: { id: decoded.id },
     select: {
@@ -34,8 +45,7 @@ const isAuthenticated = asyncHandler(async (req, res, next) => {
     throw new ApiError(401, "User not found");
   }
 
-  req.user = user; // 🔥 attach user to request
-
+  req.user = user;
   next();
 });
 

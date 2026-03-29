@@ -24,6 +24,8 @@ export interface AppNotification {
 export const getMyNotifications = async () => {
   return fetchWithAuth("/notifications/me", {
     method: "GET",
+    cacheTtlMs: 15_000,
+    cacheKey: "scholar:notifications",
   });
 };
 
