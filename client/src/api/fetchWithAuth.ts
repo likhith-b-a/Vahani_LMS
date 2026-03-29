@@ -117,6 +117,7 @@ const performRequest = async (
 
   let res = await fetch(`${BASE_URL}${endpoint}`, {
     ...options,
+    cache: "no-store",
     credentials: "include",
     headers,
   });
@@ -130,6 +131,7 @@ const performRequest = async (
 
     const refreshRes = await fetch(`${BASE_URL}/refresh-token`, {
       method: "POST",
+      cache: "no-store",
       credentials: "include",
     });
 
@@ -144,6 +146,7 @@ const performRequest = async (
 
       res = await fetch(`${BASE_URL}${endpoint}`, {
         ...options,
+        cache: "no-store",
         credentials: "include",
         headers,
       });

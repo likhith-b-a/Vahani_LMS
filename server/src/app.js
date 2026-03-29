@@ -6,6 +6,7 @@ import { requestLogger } from "./middlewares/requestLogger.js";
 import { logger } from "./utils/logger.js";
 
 const app = express();
+app.set("etag", false);
 
 const allowedOrigins = (
   process.env.CORS_ALLOWED_ORIGINS ||
