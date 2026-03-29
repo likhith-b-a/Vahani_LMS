@@ -70,10 +70,8 @@ const getMyNotifications = asyncHandler(async (req, res) => {
 
 const markMyNotificationsRead = asyncHandler(async (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
-  await markNotificationsAsRead(req.user.id, ids);
   clearCachedResponse(`notifications:${req.user.id}`);
-
-  return res.status(200).json(
+  res.status(200).json(
     new ApiResponse(
       200,
       {
@@ -82,6 +80,8 @@ const markMyNotificationsRead = asyncHandler(async (req, res) => {
       "Notifications marked as read",
     ),
   );
+
+  void markNotificationsAsRead(req.user.id, ids).catch(() => {});
 });
 
 export { getMyNotifications, markMyNotificationsRead };

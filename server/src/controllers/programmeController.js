@@ -126,6 +126,77 @@ const getMyProgrammes = asyncHandler(async (req, res) => {
   return res.status(200).json(response);
 });
 
+const getMyProgrammeSchedule = asyncHandler(async (req, res) => {
+  const userId = req?.user?.id;
+
+  if (!userId) {
+    throw new ApiError(400, "Session timed out");
+  }
+
+  const cacheKey = `programmes:schedule:${userId}`;
+  const cachedResponse = getCachedResponse(cacheKey);
+
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
+  }
+
+  const enrollments = await db.enrollment.findMany({
+    where: {
+      userId,
+    },
+    select: {
+      status: true,
+      programme: {
+        select: {
+          id: true,
+          title: true,
+          interactiveSessions: {
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              scheduledAt: true,
+              durationMinutes: true,
+              meetingUrl: true,
+              attendances: {
+                where: {
+                  userId,
+                },
+                select: {
+                  id: true,
+                  status: true,
+                  score: true,
+                  markedAt: true,
+                  userId: true,
+                },
+              },
+            },
+            orderBy: {
+              scheduledAt: "asc",
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const response = new ApiResponse(
+    200,
+    {
+      programmes: enrollments.map((enrollment) => ({
+        id: enrollment.programme.id,
+        title: enrollment.programme.title,
+        status: enrollment.status,
+        interactiveSessions: enrollment.programme.interactiveSessions,
+      })),
+    },
+    "Programme schedule fetched successfully",
+  );
+
+  setCachedResponse(cacheKey, response, 20_000);
+  return res.status(200).json(response);
+});
+
 const getProgrammeDetail = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const cacheKey = `programme:detail:${req.user.id}:${id}`;
@@ -356,8 +427,9 @@ const createManagedInteractiveSession = asyncHandler(async (req, res) => {
 
   const scholarIds = await getProgrammeScholarIds(programmeId);
   clearCachedResponse(`programmes:managed:${req.user.id}`);
-  clearCachedResponse(`programmes:mine:`);
-  clearCachedResponse(`programme:detail:`);
+  clearCachedResponse("programmes:mine:");
+  clearCachedResponse("programmes:schedule:");
+  clearCachedResponse("programme:detail:");
   await createNotification({
     type: "meeting",
     title: `Interactive session scheduled: ${session.title}`,
@@ -477,6 +549,7 @@ const markInteractiveSessionAttendance = asyncHandler(async (req, res) => {
 
   clearCachedResponse(`programmes:managed:${req.user.id}`);
   clearCachedResponse("programmes:mine:");
+  clearCachedResponse("programmes:schedule:");
   clearCachedResponse("programme:detail:");
 
   return res.status(200).json(
@@ -680,6 +753,7 @@ const publishProgrammeResults = asyncHandler(async (req, res) => {
 
   clearCachedResponse(`programmes:managed:${req.user.id}`);
   clearCachedResponse("programmes:mine:");
+  clearCachedResponse("programmes:schedule:");
   clearCachedResponse("programme:detail:");
 
   return res.status(200).json(
@@ -1048,6 +1122,7 @@ const addManagedProgrammeResource = asyncHandler(async (req, res) => {
   const scholarIds = await getProgrammeScholarIds(programmeId);
   clearCachedResponse(`programmes:managed:${req.user.id}`);
   clearCachedResponse("programmes:mine:");
+  clearCachedResponse("programmes:schedule:");
   clearCachedResponse("programme:detail:");
   await createNotification({
     type: "resource",
@@ -1132,6 +1207,7 @@ export {
   getManagedProgrammes,
   getManagedProgrammeReport,
   getMyProgrammes,
+  getMyProgrammeSchedule,
   getProgrammeDetail,
   getWishlistProgrammeCatalog,
   markInteractiveSessionAttendance,

@@ -24,16 +24,18 @@ import {
   deleteAdminProgramme,
   deleteAdminUser,
   downloadAdminUserTemplate,
-  getAdminOverview,
+  getAdminProgrammes,
   getAdminReport,
+  getAdminSummary,
+  getAdminUsers,
   removeScholarFromProgramme,
   updateAdminProgramme,
   updateAdminSettings,
   updateAdminUser,
-  type AdminOverview,
   type AdminProgramme,
   type AdminReportResponse,
   type AdminSettings,
+  type AdminSummary,
   type AdminUser,
   type AdminUserRole,
 } from "@/api/admin";
@@ -210,7 +212,9 @@ export default function AdminDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
 
-  const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [summary, setSummary] = useState<AdminSummary | null>(null);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [programmes, setProgrammes] = useState<AdminProgramme[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [queries, setQueries] = useState<SupportQuery[]>([]);
   const [loading, setLoading] = useState(true);
@@ -291,14 +295,14 @@ export default function AdminDashboard() {
     window.localStorage.setItem("admin:pinnedQueries", JSON.stringify(pinnedQueryIds));
   }, [pinnedQueryIds]);
 
-  const loadOverview = useCallback(async () => {
+  const loadSummary = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await getAdminOverview();
-      const nextOverview = response.data as AdminOverview;
-      setOverview(nextOverview);
-      setSettingsDraft(nextOverview.settings);
-      setSelectedProgrammeId((current) => current || nextOverview.programmes[0]?.id || "");
+      const response = await getAdminSummary();
+      const nextSummary = response.data as AdminSummary;
+      setSummary(nextSummary);
+      setSettingsDraft(nextSummary.settings);
+      setSelectedProgrammeId((current) => current || nextSummary.programmes[0]?.id || "");
     } catch (error) {
       toast({
         title: "Failed to load admin dashboard",
@@ -307,6 +311,36 @@ export default function AdminDashboard() {
       });
     } finally {
       setLoading(false);
+    }
+  }, [toast]);
+
+  const loadUsers = useCallback(async () => {
+    try {
+      const response = await getAdminUsers();
+      setUsers(Array.isArray(response?.data?.users) ? (response.data.users as AdminUser[]) : []);
+    } catch (error) {
+      toast({
+        title: "Unable to load users",
+        description: error instanceof Error ? error.message : "Please try again shortly.",
+        variant: "destructive",
+      });
+    }
+  }, [toast]);
+
+  const loadProgrammes = useCallback(async () => {
+    try {
+      const response = await getAdminProgrammes();
+      const nextProgrammes = Array.isArray(response?.data?.programmes)
+        ? (response.data.programmes as AdminProgramme[])
+        : [];
+      setProgrammes(nextProgrammes);
+      setSelectedProgrammeId((current) => current || nextProgrammes[0]?.id || "");
+    } catch (error) {
+      toast({
+        title: "Unable to load programmes",
+        description: error instanceof Error ? error.message : "Please try again shortly.",
+        variant: "destructive",
+      });
     }
   }, [toast]);
 
@@ -344,8 +378,17 @@ export default function AdminDashboard() {
   }, [toast]);
 
   useEffect(() => {
-    void loadOverview();
-  }, [loadOverview]);
+    void loadSummary();
+  }, [loadSummary]);
+
+  useEffect(() => {
+    if (activeTab === "users") {
+      void loadUsers();
+    }
+    if (activeTab === "programmes") {
+      void loadProgrammes();
+    }
+  }, [activeTab, loadProgrammes, loadUsers]);
 
   useEffect(() => {
     if (activeTab === "announcements") {
@@ -359,10 +402,9 @@ export default function AdminDashboard() {
     }
   }, [activeTab, loadQueries]);
 
-  const users = useMemo(() => overview?.users ?? [], [overview?.users]);
-  const programmes = useMemo(() => overview?.programmes ?? [], [overview?.programmes]);
   const scholars = users.filter((entry) => entry.role === "scholar");
   const programmeManagers = users.filter((entry) => entry.role === "programme_manager");
+  const overviewProgrammes = useMemo(() => summary?.programmes ?? [], [summary?.programmes]);
 
   const scholarBatches = useMemo(
     () =>
@@ -542,14 +584,14 @@ export default function AdminDashboard() {
   const overviewStats = [
     {
       label: "Total users",
-      value: overview?.stats.totalUsers ?? 0,
-      hint: `${overview?.stats.scholars ?? 0} scholars, ${overview?.stats.programmeManagers ?? 0} managers`,
+      value: summary?.stats.totalUsers ?? 0,
+      hint: `${summary?.stats.scholars ?? 0} scholars, ${summary?.stats.programmeManagers ?? 0} managers`,
       icon: Users,
     },
     {
       label: "Open programmes",
-      value: overview?.stats.programmes ?? 0,
-      hint: `${overview?.stats.activeEnrollments ?? 0} active enrollments`,
+      value: summary?.stats.programmes ?? 0,
+      hint: `${summary?.stats.activeEnrollments ?? 0} active enrollments`,
       icon: BookOpen,
     },
     {
@@ -701,7 +743,7 @@ export default function AdminDashboard() {
       }
       setIsUserDialogOpen(false);
       resetUserForm();
-      await loadOverview();
+      await Promise.all([loadSummary(), loadUsers()]);
       toast({
         title: editingUserId ? "User updated" : "User created",
         description: responseMessage,
@@ -752,7 +794,7 @@ export default function AdminDashboard() {
       const result = response.data;
       setIsBulkUserDialogOpen(false);
       setBulkUserFile(null);
-      await loadOverview();
+      await Promise.all([loadSummary(), loadProgrammes()]);
       toast({
         title: "Bulk import completed",
         description:
@@ -804,7 +846,7 @@ export default function AdminDashboard() {
       }
       setIsProgrammeDialogOpen(false);
       resetProgrammeForm();
-      await loadOverview();
+      await Promise.all([loadSummary(), loadUsers()]);
       toast({
         title: editingProgrammeId ? "Programme updated" : "Programme created",
         description: "The programme details have been saved.",
@@ -824,7 +866,7 @@ export default function AdminDashboard() {
       await deleteAdminUser(pendingDeleteUser.id);
       setPendingDeleteUser(null);
       if (selectedUser?.id === pendingDeleteUser.id) setSelectedUser(null);
-      await loadOverview();
+      await Promise.all([loadSummary(), loadUsers()]);
       toast({ title: "User deleted", description: "The user has been removed." });
     } catch (error) {
       toast({
@@ -840,7 +882,7 @@ export default function AdminDashboard() {
     try {
       await deleteAdminProgramme(pendingDeleteProgramme.id);
       setPendingDeleteProgramme(null);
-      await loadOverview();
+      await Promise.all([loadSummary(), loadProgrammes()]);
       toast({ title: "Programme deleted", description: "The programme has been removed." });
     } catch (error) {
       toast({
@@ -856,7 +898,7 @@ export default function AdminDashboard() {
     try {
       await deleteAdminAssignment(pendingDeleteAssignmentId);
       setPendingDeleteAssignmentId(null);
-      await loadOverview();
+      await Promise.all([loadSummary(), loadProgrammes()]);
       toast({ title: "Assignment deleted", description: "The assignment has been removed." });
     } catch (error) {
       toast({
@@ -873,7 +915,7 @@ export default function AdminDashboard() {
       await assignScholarsToProgramme(selectedProgramme.id, selectedScholarIds);
       setSelectedScholarIds([]);
       setProgrammeDetailBatchFilter("all");
-      await loadOverview();
+      await Promise.all([loadSummary(), loadProgrammes()]);
       toast({
         title: "Scholars added",
         description: "Selected scholars were enrolled in the programme.",
@@ -890,7 +932,7 @@ export default function AdminDashboard() {
   const handleRemoveScholar = async (programmeId: string, scholarId: string) => {
     try {
       await removeScholarFromProgramme(programmeId, scholarId);
-      await loadOverview();
+      await Promise.all([loadSummary(), loadProgrammes()]);
       toast({ title: "Scholar removed", description: "Enrollment was removed." });
     } catch (error) {
       toast({
@@ -1016,7 +1058,7 @@ export default function AdminDashboard() {
     if (!settingsDraft) return;
     try {
       await updateAdminSettings(settingsDraft);
-      await loadOverview();
+      await loadSummary();
       toast({ title: "Settings saved", description: "Admin settings were updated." });
     } catch (error) {
       toast({
@@ -1035,7 +1077,7 @@ export default function AdminDashboard() {
     );
   };
 
-  if (loading && !overview) {
+  if (loading && !summary) {
     return (
       <div className="min-h-screen bg-background px-6 py-10 text-sm text-muted-foreground">
         Loading admin dashboard...
@@ -1095,7 +1137,7 @@ export default function AdminDashboard() {
                         Live scope
                       </p>
                       <p className="mt-2 text-lg font-semibold text-foreground">
-                        {programmes.length} programmes
+                        {summary?.stats.programmes ?? overviewProgrammes.length} programmes
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {queries.filter((query) => query.status === "open").length} open support
@@ -1130,7 +1172,7 @@ export default function AdminDashboard() {
                   <CardTitle>Programmes overview</CardTitle>
                 </CardHeader>
                 <CardContent className="grid gap-4 md:grid-cols-2">
-                  {programmes.map((programme) => (
+                  {overviewProgrammes.map((programme) => (
                     <button
                       key={programme.id}
                       type="button"

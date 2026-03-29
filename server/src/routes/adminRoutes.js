@@ -14,6 +14,7 @@ import {
   getAdminOverview,
   getAdminProgrammes,
   getAdminReports,
+  getAdminSummary,
   getAdminUsers,
   getSystemSettings,
   removeScholarFromProgramme,
@@ -26,6 +27,7 @@ const router = Router();
 
 router.use(isAuthenticated, isAuthorized("admin"));
 
+router.get("/summary", getAdminSummary);
 router.get("/overview", getAdminOverview);
 router.get("/users/template", downloadAdminUserTemplate);
 router.get("/users", getAdminUsers);

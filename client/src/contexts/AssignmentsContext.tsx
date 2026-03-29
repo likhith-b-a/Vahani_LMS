@@ -33,13 +33,17 @@ interface AssignmentsContextType {
 const AssignmentsContext = createContext<AssignmentsContextType | null>(null);
 
 export function AssignmentsProvider({ children }: { children: ReactNode }) {
-  const { isAuthenticated, accessToken, refreshToken } = useAuth();
+  const { isAuthenticated, accessToken, refreshToken, user } = useAuth();
   const [assignments, setAssignments] = useState<UserAssignment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refreshAssignments = useCallback(async () => {
-    if (!isAuthenticated || (!accessToken && !refreshToken)) {
+    if (
+      !isAuthenticated ||
+      user?.role !== "scholar" ||
+      (!accessToken && !refreshToken)
+    ) {
       setAssignments([]);
       setError(null);
       return;
@@ -58,7 +62,7 @@ export function AssignmentsProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [accessToken, isAuthenticated, refreshToken]);
+  }, [accessToken, isAuthenticated, refreshToken, user?.role]);
 
   useEffect(() => {
     refreshAssignments();

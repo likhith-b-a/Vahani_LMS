@@ -14,7 +14,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useAssignments } from "@/contexts/AssignmentsContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { getMyProgrammes, type Programme } from "@/api/programmes";
+import { getMyProgrammeSchedule, type ProgrammeSchedule } from "@/api/programmes";
 import { useToast } from "@/hooks/use-toast";
 
 type CalendarEvent = {
@@ -38,14 +38,14 @@ export function SmartCalendar() {
   const { assignments, loading } = useAssignments();
   const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(new Date()));
   const [selectedProgrammeId, setSelectedProgrammeId] = useState("all");
-  const [programmes, setProgrammes] = useState<Programme[]>([]);
+  const [programmes, setProgrammes] = useState<ProgrammeSchedule[]>([]);
 
   useEffect(() => {
     const loadProgrammes = async () => {
       try {
-        const response = await getMyProgrammes();
+        const response = await getMyProgrammeSchedule();
         const nextProgrammes = Array.isArray(response?.data?.programmes)
-          ? (response.data.programmes as Programme[])
+          ? (response.data.programmes as ProgrammeSchedule[])
           : [];
         setProgrammes(nextProgrammes);
       } catch (error) {

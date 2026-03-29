@@ -94,6 +94,35 @@ export interface AdminOverview {
   settings: AdminSettings;
 }
 
+export interface AdminSummary {
+  stats: AdminOverview["stats"];
+  programmes: Array<{
+    id: string;
+    title: string;
+    description: string | null;
+    createdAt: string;
+    selfEnrollmentEnabled: boolean;
+    programmeManagerId: string | null;
+    programmeManager: {
+      id: string;
+      name: string;
+      email: string;
+    } | null;
+    enrollments: Array<{
+      id: string;
+      status: string;
+      enrolledAt: string;
+      user: {
+        id: string;
+        name: string;
+        email: string;
+      };
+    }>;
+    assignmentsCount: number;
+  }>;
+  settings: AdminSettings;
+}
+
 export interface AdminSettings {
   featureAccess: {
     dashboardReports: boolean;
@@ -167,12 +196,22 @@ export const getAdminOverview = async () => {
   });
 };
 
+export const getAdminSummary = async () => {
+  return fetchWithAuth("/admin/summary", {
+    method: "GET",
+    cacheTtlMs: 30_000,
+    cacheKey: "admin:summary",
+  });
+};
+
 export const getAdminUsers = async (role = "all") => {
   const query =
     role && role !== "all" ? `?role=${encodeURIComponent(role)}` : "";
 
   return fetchWithAuth(`/admin/users${query}`, {
     method: "GET",
+    cacheTtlMs: 20_000,
+    cacheKey: `admin:users:${query || "all"}`,
   });
 };
 

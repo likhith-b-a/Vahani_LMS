@@ -104,6 +104,128 @@ const normalizeProgramme = (programme) => {
   };
 };
 
+const normalizeOverviewProgramme = (programme) => ({
+  id: programme.id,
+  title: programme.title,
+  description: programme.description,
+  createdAt: programme.createdAt,
+  selfEnrollmentEnabled: !!programme.selfEnrollmentEnabled,
+  programmeManagerId: programme.programmeManagerId,
+  programmeManager: programme.programmeManager,
+  enrollments: programme.enrollments.map((enrollment) => ({
+    id: enrollment.id,
+    status: enrollment.status,
+    enrolledAt: enrollment.enrolledAt,
+    user: enrollment.user,
+  })),
+  assignmentsCount: programme.assignmentsCount,
+});
+
+const getAdminSummary = asyncHandler(async (req, res) => {
+  const cacheKey = `admin:summary:${req.user.id}`;
+  const cachedResponse = getCachedResponse(cacheKey);
+
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
+  }
+
+  const [userRoleCounts, programmeCount, assignmentCount, submissionStats, programmes, settings] =
+    await Promise.all([
+      db.user.groupBy({
+        by: ["role"],
+        _count: {
+          _all: true,
+        },
+      }),
+      db.programme.count(),
+      db.assignment.count(),
+      db.submission.aggregate({
+        _count: {
+          _all: true,
+          score: true,
+        },
+      }),
+      db.programme.findMany({
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          createdAt: true,
+          selfEnrollmentEnabled: true,
+          programmeManagerId: true,
+          programmeManager: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          enrollments: {
+            select: {
+              id: true,
+              status: true,
+              enrolledAt: true,
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          _count: {
+            select: {
+              assignments: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 8,
+      }),
+      getAdminSettings(),
+    ]);
+
+  const roleCountMap = Object.fromEntries(
+    userRoleCounts.map((entry) => [entry.role, entry._count._all]),
+  );
+
+  const response = new ApiResponse(
+    200,
+    {
+      stats: {
+        totalUsers: Object.values(roleCountMap).reduce((sum, count) => sum + count, 0),
+        scholars: roleCountMap.scholar || 0,
+        programmeManagers: roleCountMap.programme_manager || 0,
+        admins: roleCountMap.admin || 0,
+        programmes: programmeCount,
+        assignments: assignmentCount,
+        submissions: submissionStats._count._all || 0,
+        gradedSubmissions: submissionStats._count.score || 0,
+        activeEnrollments: programmes.reduce(
+          (count, programme) =>
+            count +
+            programme.enrollments.filter((enrollment) => enrollment.status === "active").length,
+          0,
+        ),
+      },
+      programmes: programmes.map((programme) =>
+        normalizeOverviewProgramme({
+          ...programme,
+          assignmentsCount: programme._count.assignments,
+        }),
+      ),
+      settings,
+    },
+    "Admin summary fetched successfully",
+  );
+
+  setCachedResponse(cacheKey, response, 20_000);
+  return res.status(200).json(response);
+});
+
 const getAdminOverview = asyncHandler(async (req, res) => {
   const cacheKey = `admin:overview:${req.user.id}`;
   const cachedResponse = getCachedResponse(cacheKey);
@@ -1344,6 +1466,7 @@ export {
   deleteAdminProgramme,
   deleteAdminUser,
   downloadAdminUserTemplate,
+  getAdminSummary,
   getAdminOverview,
   getAdminProgrammes,
   getAdminReports,

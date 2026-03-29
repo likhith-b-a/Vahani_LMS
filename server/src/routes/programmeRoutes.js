@@ -10,6 +10,7 @@ import {
   getManagedProgrammes,
   getManagedProgrammeReport,
   getMyProgrammes,
+  getMyProgrammeSchedule,
   getProgrammeDetail,
   getWishlistProgrammeCatalog,
   markInteractiveSessionAttendance,
@@ -20,6 +21,7 @@ import {
 const router = Router();
 
 router.get("/my-programmes", isAuthenticated, getMyProgrammes);
+router.get("/my-programmes-schedule", isAuthenticated, getMyProgrammeSchedule);
 router.get("/discover", isAuthenticated, isAuthorized("scholar"), getDiscoverableProgrammes);
 router.get("/catalog", isAuthenticated, isAuthorized("scholar"), getWishlistProgrammeCatalog);
 router.post(

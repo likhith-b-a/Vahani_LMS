@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CalendarCheck, CheckCircle2, Clock3, XCircle } from "lucide-react";
 
-import { getMyProgrammes, type Programme } from "../api/programmes";
+import { getMyProgrammeSchedule, type ProgrammeSchedule } from "../api/programmes";
 import { AppSidebar } from "../components/dashboard/AppSidebar";
 import { TopNavbar } from "../components/dashboard/TopNavbar";
 import { Badge } from "../components/ui/badge";
@@ -83,15 +83,15 @@ function SessionCard({ session }: { session: SessionRecord }) {
 
 export default function Attendance() {
   const { toast } = useToast();
-  const [programmes, setProgrammes] = useState<Programme[]>([]);
+  const [programmes, setProgrammes] = useState<ProgrammeSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [programmeFilter, setProgrammeFilter] = useState("all");
 
   useEffect(() => {
     const loadProgrammes = async () => {
       try {
-        const response = await getMyProgrammes();
-        setProgrammes(Array.isArray(response?.data?.programmes) ? (response.data.programmes as Programme[]) : []);
+        const response = await getMyProgrammeSchedule();
+        setProgrammes(Array.isArray(response?.data?.programmes) ? (response.data.programmes as ProgrammeSchedule[]) : []);
       } catch (error) {
         toast({
           title: "Unable to load attendance",

@@ -72,11 +72,40 @@ export interface Programme {
   certificateAvailable?: boolean;
 }
 
+export interface ProgrammeSchedule {
+  id: string;
+  title: string;
+  status: string;
+  interactiveSessions?: Array<{
+    id: string;
+    title: string;
+    description?: string | null;
+    scheduledAt: string;
+    durationMinutes?: number | null;
+    meetingUrl?: string | null;
+    attendances?: Array<{
+      id: string;
+      status: "present" | "absent";
+      score?: number | null;
+      markedAt: string;
+      userId: string;
+    }>;
+  }>;
+}
+
 export const getMyProgrammes = async () => {
   return fetchWithAuth("/programmes/my-programmes", {
     method: "GET",
     cacheTtlMs: 45_000,
     cacheKey: "scholar:my-programmes",
+  });
+};
+
+export const getMyProgrammeSchedule = async () => {
+  return fetchWithAuth("/programmes/my-programmes-schedule", {
+    method: "GET",
+    cacheTtlMs: 30_000,
+    cacheKey: "scholar:my-programmes-schedule",
   });
 };
 
