@@ -7,6 +7,7 @@ import {
   addManagedProgrammeResource,
   createManagedInteractiveSession,
   getDiscoverableProgrammes,
+  getManagedProgrammeDetail,
   getManagedProgrammes,
   getManagedProgrammeReport,
   getMyProgrammes,
@@ -42,6 +43,12 @@ router.post(
   isAuthenticated,
   isAuthorized("programme_manager"),
   createManagedInteractiveSession,
+);
+router.get(
+  "/managed/:programmeId/detail",
+  isAuthenticated,
+  isAuthorized("programme_manager"),
+  getManagedProgrammeDetail,
 );
 router.get(
   "/managed/:programmeId/report",

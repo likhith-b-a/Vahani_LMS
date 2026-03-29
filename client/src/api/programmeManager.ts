@@ -43,7 +43,7 @@ export interface ManagedProgrammeAssignment {
     fileUrl: string | null;
     score: number | null;
     submittedAt: string;
-    user: ManagedStudent;
+    userId: string;
   }>;
 }
 
@@ -51,7 +51,7 @@ export interface ManagedInteractiveSessionAttendance {
   id: string;
   status: "present" | "absent";
   score: number | null;
-  user: ManagedStudent;
+  userId: string;
 }
 
 export interface ManagedInteractiveSession {
@@ -123,6 +123,14 @@ export const getManagedProgrammes = async () => {
     method: "GET",
     cacheTtlMs: 30_000,
     cacheKey: "manager:programmes",
+  });
+};
+
+export const getManagedProgrammeDetail = async (programmeId: string) => {
+  return fetchWithAuth(`/programmes/managed/${programmeId}/detail`, {
+    method: "GET",
+    cacheTtlMs: 30_000,
+    cacheKey: `manager:programme-detail:${programmeId}`,
   });
 };
 

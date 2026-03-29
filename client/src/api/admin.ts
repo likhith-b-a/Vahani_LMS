@@ -108,16 +108,7 @@ export interface AdminSummary {
       name: string;
       email: string;
     } | null;
-    enrollments: Array<{
-      id: string;
-      status: string;
-      enrolledAt: string;
-      user: {
-        id: string;
-        name: string;
-        email: string;
-      };
-    }>;
+    enrollmentsCount: number;
     assignmentsCount: number;
   }>;
   settings: AdminSettings;

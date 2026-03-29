@@ -112,3 +112,4 @@ storybook-static/
 # ------------------------------
 tmp/
 temp/
+test-reports/

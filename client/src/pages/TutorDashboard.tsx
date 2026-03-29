@@ -550,7 +550,7 @@ export default function TutorDashboard() {
             .includes(evaluationSearch.toLowerCase());
 
         const attendance = selectedEvaluationSession.attendances.find(
-          (entry) => entry.user.id === enrollment.user.id,
+          (entry) => entry.userId === enrollment.user.id,
         );
         const status = attendanceDrafts[enrollment.user.id] || attendance?.status || "present";
         const matchesFilter =
@@ -562,7 +562,7 @@ export default function TutorDashboard() {
       })
       .map((enrollment) => {
         const attendance = selectedEvaluationSession.attendances.find(
-          (entry) => entry.user.id === enrollment.user.id,
+          (entry) => entry.userId === enrollment.user.id,
         );
 
         return {
@@ -661,7 +661,7 @@ export default function TutorDashboard() {
       Object.fromEntries(
         selectedProgramme.enrollments.map((enrollment) => {
           const attendance = selectedEvaluationSession.attendances.find(
-            (entry) => entry.user.id === enrollment.user.id,
+            (entry) => entry.userId === enrollment.user.id,
           );
           return [enrollment.user.id, attendance?.status || "present"];
         }),
@@ -671,7 +671,7 @@ export default function TutorDashboard() {
       Object.fromEntries(
         selectedProgramme.enrollments.map((enrollment) => {
           const attendance = selectedEvaluationSession.attendances.find(
-            (entry) => entry.user.id === enrollment.user.id,
+            (entry) => entry.userId === enrollment.user.id,
           );
           return [
             enrollment.user.id,

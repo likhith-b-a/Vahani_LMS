@@ -52,22 +52,25 @@ const generateRefreshToken = (user) => {
   });
 };
 
-const generateAccessAndRefreshTokens = async (userId) => {
-  const user = await db.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      email: true,
-      role: true,
-      name: true,
-    },
-  });
+const generateAccessAndRefreshTokens = async (userOrId) => {
+  const user =
+    typeof userOrId === "string"
+      ? await db.user.findUnique({
+          where: { id: userOrId },
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            name: true,
+          },
+        })
+      : userOrId;
 
   const accessToken = generateAccessToken(user);
   const refreshToken = generateRefreshToken(user);
 
   await db.user.update({
-    where: { id: userId },
+    where: { id: user.id },
     data: { refreshToken },
   });
 
@@ -434,6 +437,9 @@ const loginUser = asyncHandler(async (req, res) => {
       email: true,
       role: true,
       password: true,
+      batch: true,
+      phoneNumber: true,
+      creditsEarned: true,
     },
   });
 
@@ -446,49 +452,49 @@ const loginUser = asyncHandler(async (req, res) => {
     throw new ApiError(401, "Invalid credentials");
   }
 
-  const user = await db.user.findUnique({
-    where: { id: account.id },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      batch: true,
-      phoneNumber: true,
-      creditsEarned: true,
-      enrollments:
-        account.role === "scholar"
-          ? {
-              include: {
-                programme: {
+  const scholarEnrollments =
+    account.role === "scholar"
+      ? await db.enrollment.findMany({
+          where: {
+            userId: account.id,
+          },
+          include: {
+            programme: {
+              select: {
+                id: true,
+                title: true,
+                description: true,
+                createdAt: true,
+                programmeManagerId: true,
+                programmeManager: {
                   select: {
-                    id: true,
-                    title: true,
-                    description: true,
-                    createdAt: true,
-                    programmeManagerId: true,
-                    programmeManager: {
-                      select: {
-                        name: true,
-                        email: true,
-                      },
-                    },
+                    name: true,
+                    email: true,
                   },
                 },
               },
-            }
-          : false,
-    },
-  });
+            },
+          },
+        })
+      : [];
 
-  const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(
-    account.id,
-  );
+  const { accessToken, refreshToken } = await generateAccessAndRefreshTokens({
+    id: account.id,
+    email: account.email,
+    role: account.role,
+    name: account.name,
+  });
   const responseUser = {
-    ...user,
+    id: account.id,
+    name: account.name,
+    email: account.email,
+    role: account.role,
+    batch: account.batch,
+    phoneNumber: account.phoneNumber,
+    creditsEarned: account.creditsEarned,
     enrollments:
       account.role === "scholar"
-        ? (user.enrollments || []).map((e) => ({
+        ? scholarEnrollments.map((e) => ({
             ...e.programme,
             status: e.status,
           }))

@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -10,6 +11,11 @@ dotenv.config({ path: path.resolve(__dirname, "../.env") });
 const BASE_URL = (process.env.PERF_BASE_URL || process.env.API_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
 const TARGET_MS = Number(process.env.PERF_TARGET_MS || 1000);
 const ITERATIONS = Number(process.env.PERF_ITERATIONS || 2);
+const REPORT_DIR = path.resolve(
+  __dirname,
+  "..",
+  process.env.PERF_REPORT_DIR || "test-reports/perf",
+);
 
 const ADMIN_EMAIL = process.env.PERF_ADMIN_EMAIL || "";
 const ADMIN_PASSWORD = process.env.PERF_ADMIN_PASSWORD || "";
@@ -306,8 +312,81 @@ const printDetailedFailures = (results) => {
   );
 };
 
+const toSlug = (value) =>
+  String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const buildMarkdownReport = ({ startedAt, finishedAt, summary, results }) => {
+  const slowResults = results.filter((result) => !result.ok || result.durationMs > TARGET_MS);
+  const lines = [
+    "# Perf Smoke Report",
+    "",
+    `- Base URL: ${BASE_URL}`,
+    `- Target threshold: ${TARGET_MS}ms`,
+    `- Iterations: ${ITERATIONS}`,
+    `- Started at: ${startedAt}`,
+    `- Finished at: ${finishedAt}`,
+    "",
+    "## Summary",
+    "",
+    "| Endpoint | Runs | Min (ms) | Avg (ms) | Max (ms) | Status |",
+    "| --- | ---: | ---: | ---: | ---: | --- |",
+    ...summary
+      .sort((left, right) => right.max - left.max)
+      .map(
+        (entry) =>
+          `| ${entry.label} | ${entry.runs} | ${entry.min} | ${entry.avg} | ${entry.max} | ${entry.status} |`,
+      ),
+    "",
+    "## Slow Or Failing Calls",
+    "",
+  ];
+
+  if (slowResults.length === 0) {
+    lines.push("All calls stayed within the configured threshold.");
+  } else {
+    lines.push("| Label | Status Code | Duration (ms) | Message |");
+    lines.push("| --- | ---: | ---: | --- |");
+    lines.push(
+      ...slowResults.map(
+        (result) =>
+          `| ${result.label} | ${result.status} | ${result.durationMs} | ${String(
+            result.data?.message || "",
+          ).replace(/\|/g, "\\|")} |`,
+      ),
+    );
+  }
+
+  return `${lines.join("\n")}\n`;
+};
+
+const saveReport = async ({ startedAt, finishedAt, summary, results }) => {
+  await fs.mkdir(REPORT_DIR, { recursive: true });
+  const stamp = toSlug(new Date(finishedAt).toISOString());
+  const payload = {
+    baseUrl: BASE_URL,
+    targetMs: TARGET_MS,
+    iterations: ITERATIONS,
+    startedAt,
+    finishedAt,
+    summary,
+    results,
+  };
+
+  const jsonPath = path.join(REPORT_DIR, `${stamp}.json`);
+  const mdPath = path.join(REPORT_DIR, `${stamp}.md`);
+
+  await fs.writeFile(jsonPath, JSON.stringify(payload, null, 2), "utf8");
+  await fs.writeFile(mdPath, buildMarkdownReport(payload), "utf8");
+
+  return { jsonPath, mdPath };
+};
+
 const main = async () => {
   const allResults = [];
+  const startedAt = new Date().toISOString();
 
   console.log(`Running perf smoke against ${BASE_URL}`);
   console.log(`Target threshold: ${TARGET_MS}ms`);
@@ -331,6 +410,17 @@ const main = async () => {
   const summary = summarizeResults(allResults);
   printSummary(summary);
   printDetailedFailures(allResults);
+  const finishedAt = new Date().toISOString();
+  const reportFiles = await saveReport({
+    startedAt,
+    finishedAt,
+    summary,
+    results: allResults,
+  });
+
+  console.log(`\nSaved reports:`);
+  console.log(`- ${reportFiles.jsonPath}`);
+  console.log(`- ${reportFiles.mdPath}`);
 
   const failures = summary.filter((entry) => entry.status !== "OK");
 

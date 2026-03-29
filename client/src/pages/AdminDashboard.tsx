@@ -1189,7 +1189,7 @@ export default function AdminDashboard() {
                             {programme.programmeManager?.name || "Unassigned manager"}
                           </p>
                         </div>
-                        <Badge variant="secondary">{programme.enrollments.length} scholars</Badge>
+                        <Badge variant="secondary">{programme.enrollmentsCount} scholars</Badge>
                       </div>
                       <p className="mt-3 text-sm text-muted-foreground">
                         {programme.description || "No programme description added yet."}

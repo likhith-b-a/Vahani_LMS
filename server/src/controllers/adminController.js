@@ -112,12 +112,7 @@ const normalizeOverviewProgramme = (programme) => ({
   selfEnrollmentEnabled: !!programme.selfEnrollmentEnabled,
   programmeManagerId: programme.programmeManagerId,
   programmeManager: programme.programmeManager,
-  enrollments: programme.enrollments.map((enrollment) => ({
-    id: enrollment.id,
-    status: enrollment.status,
-    enrolledAt: enrollment.enrolledAt,
-    user: enrollment.user,
-  })),
+  enrollmentsCount: programme.enrollmentsCount,
   assignmentsCount: programme.assignmentsCount,
 });
 
@@ -129,7 +124,15 @@ const getAdminSummary = asyncHandler(async (req, res) => {
     return res.status(200).json(cachedResponse);
   }
 
-  const [userRoleCounts, programmeCount, assignmentCount, submissionStats, programmes, settings] =
+  const [
+    userRoleCounts,
+    programmeCount,
+    assignmentCount,
+    submissionStats,
+    activeEnrollments,
+    programmes,
+    settings,
+  ] =
     await Promise.all([
       db.user.groupBy({
         by: ["role"],
@@ -143,6 +146,11 @@ const getAdminSummary = asyncHandler(async (req, res) => {
         _count: {
           _all: true,
           score: true,
+        },
+      }),
+      db.enrollment.count({
+        where: {
+          status: "active",
         },
       }),
       db.programme.findMany({
@@ -160,23 +168,10 @@ const getAdminSummary = asyncHandler(async (req, res) => {
               email: true,
             },
           },
-          enrollments: {
-            select: {
-              id: true,
-              status: true,
-              enrolledAt: true,
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                },
-              },
-            },
-          },
           _count: {
             select: {
               assignments: true,
+              enrollments: true,
             },
           },
         },
@@ -204,16 +199,12 @@ const getAdminSummary = asyncHandler(async (req, res) => {
         assignments: assignmentCount,
         submissions: submissionStats._count._all || 0,
         gradedSubmissions: submissionStats._count.score || 0,
-        activeEnrollments: programmes.reduce(
-          (count, programme) =>
-            count +
-            programme.enrollments.filter((enrollment) => enrollment.status === "active").length,
-          0,
-        ),
+        activeEnrollments,
       },
       programmes: programmes.map((programme) =>
         normalizeOverviewProgramme({
           ...programme,
+          enrollmentsCount: programme._count.enrollments,
           assignmentsCount: programme._count.assignments,
         }),
       ),

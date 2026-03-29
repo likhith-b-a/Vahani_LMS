@@ -15,7 +15,7 @@ import {
   addProgrammeResource,
   createInteractiveSession,
   createProgrammeAssignment,
-  getManagedProgrammes,
+  getManagedProgrammeDetail,
   markInteractiveSessionAttendance,
   publishProgrammeResults,
   type ManagedInteractiveSession,
@@ -110,7 +110,7 @@ export default function ManagerProgrammeDetail() {
     ? "/tutor"
     : "/programme-manager";
 
-  const [programmes, setProgrammes] = useState<ManagedProgramme[]>([]);
+  const [programme, setProgramme] = useState<ManagedProgramme | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] =
     useState<(typeof tabs)[number]["id"]>("assignments");
@@ -129,14 +129,17 @@ export default function ManagerProgrammeDetail() {
   const [attendanceDrafts, setAttendanceDrafts] = useState<Record<string, "present" | "absent">>({});
   const [attendanceScoreDrafts, setAttendanceScoreDrafts] = useState<Record<string, string>>({});
 
-  const loadProgrammes = useCallback(async () => {
+  const loadProgramme = useCallback(async () => {
+    if (!id) {
+      setProgramme(null);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
-      const response = await getManagedProgrammes();
-      const nextProgrammes = Array.isArray(response?.data?.programmes)
-        ? (response.data.programmes as ManagedProgramme[])
-        : [];
-      setProgrammes(nextProgrammes);
+      const response = await getManagedProgrammeDetail(id);
+      setProgramme((response?.data?.programme as ManagedProgramme) || null);
     } catch (error) {
       toast({
         title: "Unable to load programme",
@@ -146,13 +149,11 @@ export default function ManagerProgrammeDetail() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [id, toast]);
 
   useEffect(() => {
-    void loadProgrammes();
-  }, [loadProgrammes]);
-
-  const programme = programmes.find((entry) => entry.id === id) || null;
+    void loadProgramme();
+  }, [loadProgramme]);
 
   const selectedAttendanceSession = useMemo(
     () =>
@@ -167,9 +168,7 @@ export default function ManagerProgrammeDetail() {
     setAttendanceDrafts(
       Object.fromEntries(
         programme.enrollments.map((enrollment) => {
-          const attendance = session.attendances.find(
-            (entry) => entry.user.id === enrollment.user.id,
-          );
+          const attendance = session.attendances.find((entry) => entry.userId === enrollment.user.id);
           return [enrollment.user.id, attendance?.status || "present"];
         }),
       ) as Record<string, "present" | "absent">,
@@ -177,9 +176,7 @@ export default function ManagerProgrammeDetail() {
     setAttendanceScoreDrafts(
       Object.fromEntries(
         programme.enrollments.map((enrollment) => {
-          const attendance = session.attendances.find(
-            (entry) => entry.user.id === enrollment.user.id,
-          );
+          const attendance = session.attendances.find((entry) => entry.userId === enrollment.user.id);
           return [
             enrollment.user.id,
             attendance?.score !== null && attendance?.score !== undefined
@@ -221,7 +218,7 @@ export default function ManagerProgrammeDetail() {
       });
       setAssignmentForm(emptyAssignmentForm);
       setShowAssignmentDialog(false);
-      await loadProgrammes();
+      await loadProgramme();
       toast({
         title: "Assignment added",
         description: "The new assignment is now visible to scholars.",
@@ -257,7 +254,7 @@ export default function ManagerProgrammeDetail() {
       });
       setSessionForm(emptySessionForm);
       setShowSessionDialog(false);
-      await loadProgrammes();
+      await loadProgramme();
       toast({
         title: "Session scheduled",
         description: "The interactive session has been added to the programme.",
@@ -286,7 +283,7 @@ export default function ManagerProgrammeDetail() {
       await addProgrammeResource(programme.id, resourceForm);
       setResourceForm(emptyResourceForm);
       setShowResourceDialog(false);
-      await loadProgrammes();
+      await loadProgramme();
       toast({
         title: "Resource added",
         description: "The study material has been attached to the programme.",
@@ -318,7 +315,7 @@ export default function ManagerProgrammeDetail() {
       });
       setMeetingForm(emptyMeetingForm);
       setShowMeetingDialog(false);
-      await loadProgrammes();
+      await loadProgramme();
       toast({
         title: "Meeting link added",
         description: "Scholars can now see the meeting in the programme.",
@@ -349,7 +346,7 @@ export default function ManagerProgrammeDetail() {
         })),
       );
       setShowAttendanceDialog(false);
-      await loadProgrammes();
+      await loadProgramme();
       toast({
         title: "Attendance updated",
         description: "The session attendance and marks have been saved.",
@@ -367,7 +364,7 @@ export default function ManagerProgrammeDetail() {
     if (!programme) return;
     try {
       await publishProgrammeResults(programme.id);
-      await loadProgrammes();
+      await loadProgramme();
       toast({
         title: "Results published",
         description: "Programme completion status and credits have been updated.",
@@ -411,7 +408,7 @@ export default function ManagerProgrammeDetail() {
             </h1>
             <p className="text-xs text-muted-foreground">Welcome, {user?.name}</p>
           </div>
-          <Button variant="outline" onClick={() => void loadProgrammes()}>
+          <Button variant="outline" onClick={() => void loadProgramme()}>
             <RefreshCw size={16} className="mr-2" />
             Refresh
           </Button>

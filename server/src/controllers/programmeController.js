@@ -47,7 +47,14 @@ const getMyProgrammes = asyncHandler(async (req, res) => {
             },
           },
           assignments: {
-            include: {
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              dueDate: true,
+              maxScore: true,
+              type: true,
+              acceptedFileTypes: true,
               submissions: {
                 where: {
                   userId,
@@ -57,12 +64,17 @@ const getMyProgrammes = asyncHandler(async (req, res) => {
                   fileUrl: true,
                   score: true,
                   submittedAt: true,
+                  assignmentId: true,
+                  userId: true,
                 },
               },
             },
           },
           interactiveSessions: {
-            include: {
+            select: {
+              id: true,
+              title: true,
+              scheduledAt: true,
               attendances: {
                 where: {
                   userId,
@@ -78,25 +90,6 @@ const getMyProgrammes = asyncHandler(async (req, res) => {
             },
             orderBy: {
               scheduledAt: "asc",
-            },
-          },
-          resources: {
-            where: {
-              resourceType: {
-                in: ["study_material", "meeting_link"],
-              },
-            },
-            select: {
-              id: true,
-              title: true,
-              description: true,
-              resourceType: true,
-              url: true,
-              fileUrl: true,
-              createdAt: true,
-            },
-            orderBy: {
-              createdAt: "desc",
             },
           },
         },
@@ -154,10 +147,7 @@ const getMyProgrammeSchedule = asyncHandler(async (req, res) => {
             select: {
               id: true,
               title: true,
-              description: true,
               scheduledAt: true,
-              durationMinutes: true,
-              meetingUrl: true,
               attendances: {
                 where: {
                   userId,
@@ -291,7 +281,16 @@ const getManagedProgrammes = asyncHandler(async (req, res) => {
     where: {
       programmeManagerId: req.user.id,
     },
-    include: {
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      createdAt: true,
+      resultsPublishedAt: true,
+      selfEnrollmentEnabled: true,
+      spotlightTitle: true,
+      spotlightMessage: true,
+      programmeManagerId: true,
       programmeManager: {
         select: {
           id: true,
@@ -300,7 +299,10 @@ const getManagedProgrammes = asyncHandler(async (req, res) => {
         },
       },
       enrollments: {
-        include: {
+        select: {
+          id: true,
+          status: true,
+          enrolledAt: true,
           user: {
             select: {
               id: true,
@@ -312,17 +314,21 @@ const getManagedProgrammes = asyncHandler(async (req, res) => {
         },
       },
       assignments: {
-        include: {
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          dueDate: true,
+          maxScore: true,
+          type: true,
+          acceptedFileTypes: true,
           submissions: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                  batch: true,
-                },
-              },
+            select: {
+              id: true,
+              userId: true,
+              score: true,
+              submittedAt: true,
+              fileUrl: true,
             },
           },
         },
@@ -331,22 +337,34 @@ const getManagedProgrammes = asyncHandler(async (req, res) => {
         },
       },
       resources: {
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          resourceType: true,
+          url: true,
+          fileUrl: true,
+          createdAt: true,
+        },
         orderBy: {
           createdAt: "desc",
         },
       },
       interactiveSessions: {
-        include: {
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          scheduledAt: true,
+          durationMinutes: true,
+          maxScore: true,
+          meetingUrl: true,
           attendances: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                  batch: true,
-                },
-              },
+            select: {
+              id: true,
+              userId: true,
+              status: true,
+              score: true,
             },
           },
         },
@@ -373,6 +391,135 @@ const getManagedProgrammes = asyncHandler(async (req, res) => {
       ),
     },
     "Managed programmes fetched successfully",
+  );
+
+  setCachedResponse(cacheKey, response, 20_000);
+  return res.status(200).json(response);
+});
+
+const getManagedProgrammeDetail = asyncHandler(async (req, res) => {
+  const { programmeId } = req.params;
+  const cacheKey = `programmes:managed:detail:${req.user.id}:${programmeId}`;
+  const cachedResponse = getCachedResponse(cacheKey);
+
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
+  }
+
+  const programme = await db.programme.findFirst({
+    where: {
+      id: programmeId,
+      programmeManagerId: req.user.id,
+    },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      createdAt: true,
+      resultsPublishedAt: true,
+      selfEnrollmentEnabled: true,
+      spotlightTitle: true,
+      spotlightMessage: true,
+      programmeManagerId: true,
+      programmeManager: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      enrollments: {
+        select: {
+          id: true,
+          status: true,
+          enrolledAt: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              batch: true,
+            },
+          },
+        },
+      },
+      assignments: {
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          dueDate: true,
+          maxScore: true,
+          type: true,
+          acceptedFileTypes: true,
+          submissions: {
+            select: {
+              id: true,
+              userId: true,
+              score: true,
+              submittedAt: true,
+              fileUrl: true,
+            },
+          },
+        },
+        orderBy: {
+          dueDate: "asc",
+        },
+      },
+      resources: {
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          resourceType: true,
+          url: true,
+          fileUrl: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      },
+      interactiveSessions: {
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          scheduledAt: true,
+          durationMinutes: true,
+          maxScore: true,
+          meetingUrl: true,
+          attendances: {
+            select: {
+              id: true,
+              userId: true,
+              status: true,
+              score: true,
+            },
+          },
+        },
+        orderBy: {
+          scheduledAt: "asc",
+        },
+      },
+    },
+  });
+
+  if (!programme) {
+    throw new ApiError(404, "Programme not found for this manager");
+  }
+
+  const response = new ApiResponse(
+    200,
+    {
+      programme: withProgrammeMetadataSync({
+        ...programme,
+        assignments: programme.assignments.map((assignment) =>
+          serializeAssignment(assignment),
+        ),
+      }),
+    },
+    "Managed programme detail fetched successfully",
   );
 
   setCachedResponse(cacheKey, response, 20_000);
@@ -427,6 +574,7 @@ const createManagedInteractiveSession = asyncHandler(async (req, res) => {
 
   const scholarIds = await getProgrammeScholarIds(programmeId);
   clearCachedResponse(`programmes:managed:${req.user.id}`);
+  clearCachedResponse("programmes:managed:detail:");
   clearCachedResponse("programmes:mine:");
   clearCachedResponse("programmes:schedule:");
   clearCachedResponse("programme:detail:");
@@ -548,6 +696,7 @@ const markInteractiveSessionAttendance = asyncHandler(async (req, res) => {
   }
 
   clearCachedResponse(`programmes:managed:${req.user.id}`);
+  clearCachedResponse("programmes:managed:detail:");
   clearCachedResponse("programmes:mine:");
   clearCachedResponse("programmes:schedule:");
   clearCachedResponse("programme:detail:");
@@ -752,6 +901,7 @@ const publishProgrammeResults = asyncHandler(async (req, res) => {
   );
 
   clearCachedResponse(`programmes:managed:${req.user.id}`);
+  clearCachedResponse("programmes:managed:detail:");
   clearCachedResponse("programmes:mine:");
   clearCachedResponse("programmes:schedule:");
   clearCachedResponse("programme:detail:");
@@ -771,6 +921,12 @@ const publishProgrammeResults = asyncHandler(async (req, res) => {
 
 const getManagedProgrammeReport = asyncHandler(async (req, res) => {
   const { programmeId } = req.params;
+  const cacheKey = `programmes:managed:report:${req.user.id}:${programmeId}`;
+
+  const cachedResponse = getCachedResponse(cacheKey);
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
+  }
 
   if (!programmeId) {
     throw new ApiError(400, "Programme ID is required");
@@ -881,21 +1037,22 @@ const getManagedProgrammeReport = asyncHandler(async (req, res) => {
     };
   });
 
-  return res.status(200).json(
-    new ApiResponse(
-      200,
-      {
-        type: "programme_manager",
-        generatedAt: new Date().toISOString(),
-        programme: {
-          id: programme.id,
-          title: programme.title,
-        },
-        rows,
+  const response = new ApiResponse(
+    200,
+    {
+      type: "programme_manager",
+      generatedAt: new Date().toISOString(),
+      programme: {
+        id: programme.id,
+        title: programme.title,
       },
-      "Programme report generated successfully",
-    ),
+      rows,
+    },
+    "Programme report generated successfully",
   );
+
+  setCachedResponse(cacheKey, response, 20_000);
+  return res.status(200).json(response);
 });
 
 const getDiscoverableProgrammes = asyncHandler(async (req, res) => {
@@ -1121,6 +1278,7 @@ const addManagedProgrammeResource = asyncHandler(async (req, res) => {
 
   const scholarIds = await getProgrammeScholarIds(programmeId);
   clearCachedResponse(`programmes:managed:${req.user.id}`);
+  clearCachedResponse("programmes:managed:detail:");
   clearCachedResponse("programmes:mine:");
   clearCachedResponse("programmes:schedule:");
   clearCachedResponse("programme:detail:");
@@ -1176,6 +1334,7 @@ const addManagedProgrammeMeetingLink = asyncHandler(async (req, res) => {
 
   const scholarIds = await getProgrammeScholarIds(programmeId);
   clearCachedResponse(`programmes:managed:${req.user.id}`);
+  clearCachedResponse("programmes:managed:detail:");
   clearCachedResponse("programmes:mine:");
   clearCachedResponse("programme:detail:");
   await createNotification({
@@ -1204,6 +1363,7 @@ export {
   addManagedProgrammeResource,
   createManagedInteractiveSession,
   getDiscoverableProgrammes,
+  getManagedProgrammeDetail,
   getManagedProgrammes,
   getManagedProgrammeReport,
   getMyProgrammes,
