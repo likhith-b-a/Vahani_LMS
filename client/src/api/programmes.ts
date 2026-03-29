@@ -134,6 +134,8 @@ export interface DiscoverableProgramme {
 export const getDiscoverableProgrammes = async () => {
   return fetchWithAuth("/programmes/discover", {
     method: "GET",
+    cacheTtlMs: 45_000,
+    cacheKey: "scholar:discover-programmes",
   });
 };
 

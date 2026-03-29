@@ -150,7 +150,77 @@ const getQueries = asyncHandler(async (req, res) => {
     "Queries fetched successfully",
   );
 
-  setCachedResponse(cacheKey, response, 10_000);
+  setCachedResponse(cacheKey, response, 60_000);
+
+  const firstQueryId = queries[0]?.id;
+  if (firstQueryId) {
+    setImmediate(async () => {
+      const detailCacheKey = `queries:detail:${req.user.role}:${req.user.id}:${firstQueryId}`;
+      if (getCachedResponse(detailCacheKey)) {
+        return;
+      }
+
+      try {
+        const firstQuery = await db.supportQuery.findFirst({
+          where: {
+            id: firstQueryId,
+            ...where,
+          },
+          include: {
+            author: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                batch: true,
+              },
+            },
+            assignedTo: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+            programme: {
+              select: {
+                id: true,
+                title: true,
+              },
+            },
+            messages: {
+              select: {
+                id: true,
+                message: true,
+                createdAt: true,
+                author: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+              orderBy: {
+                createdAt: "asc",
+              },
+            },
+          },
+        });
+
+        if (!firstQuery) {
+          return;
+        }
+
+        setCachedResponse(
+          detailCacheKey,
+          new ApiResponse(200, { query: firstQuery }, "Query fetched successfully"),
+          60_000,
+        );
+      } catch {
+        // Ignore background cache warm failures.
+      }
+    });
+  }
   return res.status(200).json(response);
 });
 
@@ -191,12 +261,14 @@ const getQueryDetail = asyncHandler(async (req, res) => {
         },
       },
       messages: {
-        include: {
+        select: {
+          id: true,
+          message: true,
+          createdAt: true,
           author: {
             select: {
               id: true,
               name: true,
-              email: true,
             },
           },
         },
@@ -217,7 +289,7 @@ const getQueryDetail = asyncHandler(async (req, res) => {
     "Query fetched successfully",
   );
 
-  setCachedResponse(cacheKey, response, 10_000);
+  setCachedResponse(cacheKey, response, 60_000);
   return res.status(200).json(response);
 });
 

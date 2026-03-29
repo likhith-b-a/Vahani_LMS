@@ -393,6 +393,13 @@ const getAdminOverview = asyncHandler(async (req, res) => {
 
 const getAdminUsers = asyncHandler(async (req, res) => {
   const { role } = req.query;
+  const cacheKey = `admin:users:${req.user.id}:${role || "all"}`;
+  const cachedResponse = getCachedResponse(cacheKey);
+
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
+  }
+
   const users = await db.user.findMany({
     where:
       role && role !== "all"
@@ -428,15 +435,14 @@ const getAdminUsers = asyncHandler(async (req, res) => {
     },
   });
 
-  return res
-    .status(200)
-    .json(
-      new ApiResponse(
-        200,
-        { users: users.map(normalizeUser) },
-        "Users fetched successfully",
-      ),
-    );
+  const response = new ApiResponse(
+    200,
+    { users: users.map(normalizeUser) },
+    "Users fetched successfully",
+  );
+
+  setCachedResponse(cacheKey, response, 60_000);
+  return res.status(200).json(response);
 });
 
 const createAdminUser = asyncHandler(async (req, res) => {
@@ -1225,6 +1231,12 @@ const getAdminReports = asyncHandler(async (req, res) => {
   const to = typeof req.query.to === "string" ? req.query.to : "";
   const managerId =
     typeof req.query.managerId === "string" ? req.query.managerId : "";
+  const cacheKey = `admin:reports:${req.user.id}:${reportType}:${batch}:${from}:${to}:${managerId}`;
+
+  const cachedResponse = getCachedResponse(cacheKey);
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
+  }
 
   if (!["scholar", "programme"].includes(reportType)) {
     throw new ApiError(400, "Invalid report type");
@@ -1398,17 +1410,18 @@ const getAdminReports = asyncHandler(async (req, res) => {
     }));
   }
 
-  return res.status(200).json(
-    new ApiResponse(
-      200,
-      {
-        type: reportType,
-        generatedAt: new Date().toISOString(),
-        rows,
-      },
-      "Report generated successfully",
-    ),
+  const response = new ApiResponse(
+    200,
+    {
+      type: reportType,
+      generatedAt: new Date().toISOString(),
+      rows,
+    },
+    "Report generated successfully",
   );
+
+  setCachedResponse(cacheKey, response, 300_000);
+  return res.status(200).json(response);
 });
 
 const getSystemSettings = asyncHandler(async (req, res) => {

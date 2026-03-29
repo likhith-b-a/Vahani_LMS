@@ -116,6 +116,102 @@ const getMyProgrammes = asyncHandler(async (req, res) => {
   );
 
   setCachedResponse(cacheKey, response, 60_000);
+
+  const firstProgrammeId = programmes[0]?.id;
+  if (firstProgrammeId) {
+    setImmediate(async () => {
+      const detailCacheKey = `programme:detail:${userId}:${firstProgrammeId}`;
+      if (getCachedResponse(detailCacheKey)) {
+        return;
+      }
+
+      try {
+        const programmeData = await db.programme.findUnique({
+          where: { id: firstProgrammeId },
+          include: {
+            programmeManager: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+            assignments: {
+              include: {
+                submissions: {
+                  where: {
+                    userId,
+                  },
+                  select: {
+                    id: true,
+                    fileUrl: true,
+                    score: true,
+                    submittedAt: true,
+                  },
+                },
+              },
+            },
+            resources: {
+              select: {
+                id: true,
+                title: true,
+                description: true,
+                resourceType: true,
+                url: true,
+                fileUrl: true,
+                createdAt: true,
+              },
+              orderBy: {
+                createdAt: "desc",
+              },
+            },
+            interactiveSessions: {
+              include: {
+                attendances: {
+                  where: {
+                    userId,
+                  },
+                  select: {
+                    id: true,
+                    status: true,
+                    score: true,
+                    markedAt: true,
+                    userId: true,
+                  },
+                },
+              },
+              orderBy: {
+                scheduledAt: "asc",
+              },
+            },
+          },
+        });
+
+        if (!programmeData) {
+          return;
+        }
+
+        const programmeWithMetadata = withProgrammeMetadataSync({
+          ...programmeData,
+          assignments: programmeData.assignments.map((assignment) =>
+            serializeAssignment(assignment),
+          ),
+        });
+
+        setCachedResponse(
+          detailCacheKey,
+          new ApiResponse(
+            200,
+            programmeWithMetadata,
+            "programmeData fetched successfully",
+          ),
+          60_000,
+        );
+      } catch {
+        // Ignore background detail warm failures.
+      }
+    });
+  }
   return res.status(200).json(response);
 });
 

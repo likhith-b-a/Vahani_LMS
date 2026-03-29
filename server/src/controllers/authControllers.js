@@ -15,6 +15,8 @@ import {
   getCachedResponse,
   setCachedResponse,
 } from "../utils/responseCache.js";
+import { serializeAssignment } from "../utils/assignmentMetadata.js";
+import { withProgrammeMetadataSync } from "../utils/programmeMetadataStore.js";
 
 const getCookieOptions = () => {
   const isProduction = process.env.NODE_ENV === "production";
@@ -80,6 +82,485 @@ const generateAccessAndRefreshTokens = async (userOrId) => {
   });
 
   return { accessToken, refreshToken };
+};
+
+const warmAdminSummaryCache = async (userId) => {
+  const cacheKey = `admin:summary:${userId}`;
+  if (getCachedResponse(cacheKey)) {
+    return;
+  }
+
+  const [
+    userRoleCounts,
+    programmeCount,
+    assignmentCount,
+    submissionStats,
+    activeEnrollments,
+    programmes,
+  ] = await Promise.all([
+    db.user.groupBy({
+      by: ["role"],
+      _count: {
+        _all: true,
+      },
+    }),
+    db.programme.count(),
+    db.assignment.count(),
+    db.submission.aggregate({
+      _count: {
+        _all: true,
+        score: true,
+      },
+    }),
+    db.enrollment.count({
+      where: {
+        status: "active",
+      },
+    }),
+    db.programme.findMany({
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        createdAt: true,
+        selfEnrollmentEnabled: true,
+        programmeManagerId: true,
+        programmeManager: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        _count: {
+          select: {
+            assignments: true,
+            enrollments: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 8,
+    }),
+  ]);
+
+  const roleCountMap = Object.fromEntries(
+    userRoleCounts.map((entry) => [entry.role, entry._count._all]),
+  );
+
+  setCachedResponse(
+    cacheKey,
+    new ApiResponse(
+      200,
+      {
+        stats: {
+          totalUsers: Object.values(roleCountMap).reduce((sum, count) => sum + count, 0),
+          scholars: roleCountMap.scholar || 0,
+          programmeManagers: roleCountMap.programme_manager || 0,
+          admins: roleCountMap.admin || 0,
+          programmes: programmeCount,
+          assignments: assignmentCount,
+          submissions: submissionStats._count._all || 0,
+          gradedSubmissions: submissionStats._count.score || 0,
+          activeEnrollments,
+        },
+        programmes: programmes.map((programme) => ({
+          id: programme.id,
+          title: programme.title,
+          description: programme.description,
+          createdAt: programme.createdAt,
+          selfEnrollmentEnabled: !!programme.selfEnrollmentEnabled,
+          programmeManagerId: programme.programmeManagerId,
+          programmeManager: programme.programmeManager,
+          enrollmentsCount: programme._count.enrollments,
+          assignmentsCount: programme._count.assignments,
+        })),
+      },
+      "Admin summary fetched successfully",
+    ),
+    300_000,
+  );
+};
+
+const warmAdminUsersCache = async (userId) => {
+  const cacheKey = `admin:users:${userId}:all`;
+  if (getCachedResponse(cacheKey)) {
+    return;
+  }
+
+  const users = await db.user.findMany({
+    include: {
+      managedProgrammes: {
+        select: {
+          id: true,
+          title: true,
+        },
+      },
+      enrollments: {
+        include: {
+          programme: {
+            select: {
+              id: true,
+              title: true,
+            },
+          },
+        },
+      },
+      submissions: {
+        select: {
+          id: true,
+        },
+      },
+    },
+    orderBy: {
+      name: "asc",
+    },
+  });
+
+  setCachedResponse(
+    cacheKey,
+    new ApiResponse(
+      200,
+      {
+        users: users.map((user) => ({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          batch: user.batch,
+          phoneNumber: user.phoneNumber,
+          creditsEarned: user.creditsEarned,
+          managedProgrammesCount: user.managedProgrammes?.length || 0,
+          enrolledProgrammesCount: user.enrollments?.length || 0,
+          submissionCount: user.submissions?.length || 0,
+          programmes:
+            user.managedProgrammes?.map((programme) => ({
+              id: programme.id,
+              title: programme.title,
+            })) || [],
+          enrollments:
+            user.enrollments?.map((enrollment) => ({
+              id: enrollment.id,
+              status: enrollment.status,
+              programme: {
+                id: enrollment.programme.id,
+                title: enrollment.programme.title,
+              },
+            })) || [],
+        })),
+      },
+      "Users fetched successfully",
+    ),
+    60_000,
+  );
+};
+
+const warmAdminAnnouncementsCache = async (userId) => {
+  const cacheKey = `announcements:admin:${userId}`;
+  if (getCachedResponse(cacheKey)) {
+    return;
+  }
+
+  const announcements = await db.announcement.findMany({
+    where: {
+      createdById: userId,
+    },
+    select: {
+      id: true,
+      title: true,
+      message: true,
+      targetBatch: true,
+      createdAt: true,
+      createdBy: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      recipients: {
+        select: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              batch: true,
+            },
+          },
+        },
+      },
+      programme: {
+        select: {
+          id: true,
+          title: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  setCachedResponse(
+    cacheKey,
+    new ApiResponse(
+      200,
+      {
+        announcements,
+      },
+      "Announcements fetched successfully",
+    ),
+    60_000,
+  );
+};
+
+const warmScholarCaches = async (userId) => {
+  const profileCacheKey = `profile:${userId}`;
+  if (!getCachedResponse(profileCacheKey)) {
+    const user = await db.user.findUnique({
+      where: {
+        id: userId,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        batch: true,
+        phoneNumber: true,
+        creditsEarned: true,
+        enrollments: {
+          select: {
+            id: true,
+            status: true,
+            enrolledAt: true,
+            programme: {
+              select: {
+                id: true,
+                title: true,
+                description: true,
+                programmeManager: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (user) {
+      setCachedResponse(
+        profileCacheKey,
+        new ApiResponse(
+          200,
+          {
+            ...user,
+            enrollments: user.enrollments.map((enrollment) => ({
+              ...enrollment.programme,
+              enrollmentId: enrollment.id,
+              status: enrollment.status,
+              enrolledAt: enrollment.enrolledAt,
+            })),
+          },
+          "Profile fetched successfully",
+        ),
+        300_000,
+      );
+    }
+  }
+
+  const [scheduleEnrollments, programmeEnrollments, enrolled, discoverProgrammes] =
+    await Promise.all([
+      db.enrollment.findMany({
+        where: { userId },
+        select: {
+          status: true,
+          programme: {
+            select: {
+              id: true,
+              title: true,
+              interactiveSessions: {
+                select: {
+                  id: true,
+                  title: true,
+                  scheduledAt: true,
+                  attendances: {
+                    where: { userId },
+                    select: {
+                      id: true,
+                      status: true,
+                      score: true,
+                      markedAt: true,
+                      userId: true,
+                    },
+                  },
+                },
+                orderBy: { scheduledAt: "asc" },
+              },
+            },
+          },
+        },
+      }),
+      db.enrollment.findMany({
+        where: { userId },
+        include: {
+          programme: {
+            include: {
+              programmeManager: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+              assignments: {
+                select: {
+                  id: true,
+                  title: true,
+                  description: true,
+                  dueDate: true,
+                  maxScore: true,
+                  type: true,
+                  acceptedFileTypes: true,
+                  submissions: {
+                    where: { userId },
+                    select: {
+                      id: true,
+                      fileUrl: true,
+                      score: true,
+                      submittedAt: true,
+                      assignmentId: true,
+                      userId: true,
+                    },
+                  },
+                },
+              },
+              interactiveSessions: {
+                select: {
+                  id: true,
+                  title: true,
+                  scheduledAt: true,
+                  attendances: {
+                    where: { userId },
+                    select: {
+                      id: true,
+                      status: true,
+                      score: true,
+                      markedAt: true,
+                      userId: true,
+                    },
+                  },
+                },
+                orderBy: { scheduledAt: "asc" },
+              },
+            },
+          },
+        },
+      }),
+      db.enrollment.findMany({
+        where: { userId },
+        select: { programmeId: true },
+      }),
+      db.programme.findMany({
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          createdAt: true,
+          selfEnrollmentEnabled: true,
+          spotlightTitle: true,
+          spotlightMessage: true,
+          programmeManager: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          _count: {
+            select: {
+              assignments: true,
+              enrollments: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      }),
+    ]);
+
+  setCachedResponse(
+    `programmes:schedule:${userId}`,
+    new ApiResponse(
+      200,
+      {
+        programmes: scheduleEnrollments.map((enrollment) => ({
+          id: enrollment.programme.id,
+          title: enrollment.programme.title,
+          status: enrollment.status,
+          interactiveSessions: enrollment.programme.interactiveSessions,
+        })),
+      },
+      "Programme schedule fetched successfully",
+    ),
+    60_000,
+  );
+
+  const programmes = programmeEnrollments.map((enrollment) => ({
+    ...withProgrammeMetadataSync(enrollment.programme),
+    assignments: enrollment.programme.assignments.map((assignment) =>
+      serializeAssignment(assignment),
+    ),
+    interactiveSessions: enrollment.programme.interactiveSessions,
+    status: enrollment.status,
+    enrolledAt: enrollment.enrolledAt,
+  }));
+
+  setCachedResponse(
+    `programmes:mine:${userId}`,
+    new ApiResponse(
+      200,
+      { programmes },
+      "programmes fetched successfully",
+    ),
+    60_000,
+  );
+
+  const enrolledProgrammeIds = new Set(enrolled.map((item) => item.programmeId));
+  setCachedResponse(
+    `programmes:discover:${userId}`,
+    new ApiResponse(
+      200,
+      {
+        programmes: discoverProgrammes
+          .filter((programme) => programme.selfEnrollmentEnabled)
+          .map((programme) => ({
+            id: programme.id,
+            title: programme.title,
+            description: programme.description,
+            createdAt: programme.createdAt,
+            programmeManager: programme.programmeManager,
+            selfEnrollmentEnabled: programme.selfEnrollmentEnabled,
+            spotlightTitle: programme.spotlightTitle || "",
+            spotlightMessage: programme.spotlightMessage || "",
+            assignmentsCount: programme._count.assignments,
+            scholarsCount: programme._count.enrollments,
+            enrolled: enrolledProgrammeIds.has(programme.id),
+          })),
+      },
+      "Discoverable programmes fetched successfully",
+    ),
+    60_000,
+  );
 };
 
 const refreshAccessToken = asyncHandler(async (req, res) => {
@@ -545,6 +1026,24 @@ const loginUser = asyncHandler(async (req, res) => {
   const options = {
     ...getCookieOptions(),
   };
+
+  setImmediate(async () => {
+    try {
+      if (account.role === "admin") {
+        await Promise.all([
+          warmAdminSummaryCache(account.id),
+          warmAdminUsersCache(account.id),
+          warmAdminAnnouncementsCache(account.id),
+        ]);
+      }
+
+      if (account.role === "scholar") {
+        await warmScholarCaches(account.id);
+      }
+    } catch {
+      // Ignore background warm failures to keep login stable.
+    }
+  });
 
   return res
     .status(200)

@@ -270,7 +270,7 @@ const getAnnouncements = asyncHandler(async (req, res) => {
       "Announcements fetched successfully",
     );
 
-    setCachedResponse(cacheKey, response, 15_000);
+    setCachedResponse(cacheKey, response, 60_000);
     return res.status(200).json(response);
   }
 
@@ -323,7 +323,7 @@ const getAnnouncements = asyncHandler(async (req, res) => {
     "Announcements fetched successfully",
   );
 
-  setCachedResponse(cacheKey, response, 15_000);
+  setCachedResponse(cacheKey, response, 60_000);
   return res.status(200).json(response);
 });
 
