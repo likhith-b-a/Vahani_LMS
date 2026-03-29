@@ -38,7 +38,10 @@ export interface SupportQuery {
     name: string;
     email: string;
   } | null;
-  messages: SupportQueryMessage[];
+  messages?: SupportQueryMessage[];
+  _count?: {
+    messages: number;
+  };
 }
 
 export const getMyQueries = async () => {
@@ -50,6 +53,14 @@ export const getMyQueries = async () => {
 };
 
 export const getSupportQueries = getMyQueries;
+
+export const getSupportQueryDetail = async (queryId: string) => {
+  return fetchWithAuth(`/queries/${queryId}`, {
+    method: "GET",
+    cacheTtlMs: 10_000,
+    cacheKey: `queries:detail:${queryId}`,
+  });
+};
 
 export const createSupportQuery = async (payload: {
   programmeId?: string;

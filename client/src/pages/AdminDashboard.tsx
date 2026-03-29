@@ -47,6 +47,7 @@ import {
   type Announcement,
 } from "@/api/announcements";
 import {
+  getSupportQueryDetail,
   getSupportQueries,
   replyToSupportQuery,
   updateSupportQueryStatus,
@@ -264,6 +265,7 @@ export default function AdminDashboard() {
   const [queryTimeRangeFilter, setQueryTimeRangeFilter] =
     useState<QueryTimeRangeFilter>("all");
   const [selectedQueryId, setSelectedQueryId] = useState("");
+  const [selectedQueryDetail, setSelectedQueryDetail] = useState<SupportQuery | null>(null);
   const [queryReplyDraft, setQueryReplyDraft] = useState("");
   const [queryStatusDraft, setQueryStatusDraft] = useState<QueryStatus>("open");
   const [pinnedQueryIds, setPinnedQueryIds] = useState<string[]>([]);
@@ -367,6 +369,7 @@ export default function AdminDashboard() {
         ? (response.data.queries as SupportQuery[])
         : [];
       setQueries(nextQueries);
+      setSelectedQueryDetail(null);
       setSelectedQueryId((current) => preferredQueryId || current || nextQueries[0]?.id || "");
     } catch (error) {
       toast({
@@ -401,6 +404,24 @@ export default function AdminDashboard() {
       void loadQueries();
     }
   }, [activeTab, loadQueries]);
+
+  useEffect(() => {
+    const loadQueryDetail = async () => {
+      if (activeTab !== "queries" || !selectedQueryId) {
+        setSelectedQueryDetail(null);
+        return;
+      }
+
+      try {
+        const response = await getSupportQueryDetail(selectedQueryId);
+        setSelectedQueryDetail((response?.data?.query as SupportQuery) || null);
+      } catch {
+        setSelectedQueryDetail(null);
+      }
+    };
+
+    void loadQueryDetail();
+  }, [activeTab, selectedQueryId]);
 
   const scholars = users.filter((entry) => entry.role === "scholar");
   const programmeManagers = users.filter((entry) => entry.role === "programme_manager");
@@ -570,6 +591,7 @@ export default function AdminDashboard() {
   ]);
 
   const selectedQuery =
+    selectedQueryDetail ||
     filteredQueries.find((query) => query.id === selectedQueryId) ||
     queries.find((query) => query.id === selectedQueryId) ||
     filteredQueries[0] ||
@@ -1572,7 +1594,7 @@ export default function AdminDashboard() {
                         </div>
 
                         <div className="space-y-3">
-                          {selectedQuery.messages.map((message) => {
+                          {(selectedQueryDetail?.messages || []).map((message) => {
                             const mine = message.author.id === user?.id;
                             return (
                               <div

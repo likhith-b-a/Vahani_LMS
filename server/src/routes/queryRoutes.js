@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   createQuery,
+  getQueryDetail,
   getQueries,
   replyToQuery,
   updateQueryStatus,
@@ -12,6 +13,7 @@ const router = Router();
 
 router.use(isAuthenticated);
 router.get("/", getQueries);
+router.get("/:queryId", getQueryDetail);
 router.post("/", isAuthorized("scholar"), createQuery);
 router.post("/:queryId/messages", replyToQuery);
 router.patch(

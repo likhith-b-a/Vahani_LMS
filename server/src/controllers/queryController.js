@@ -90,6 +90,15 @@ const createQuery = asyncHandler(async (req, res) => {
   );
 });
 
+const getQueryAccessWhere = (user) =>
+  user.role === "scholar"
+    ? { authorId: user.id }
+    : user.role === "programme_manager"
+      ? { assignedToId: user.id }
+      : {
+          OR: [{ targetType: "admin" }, { assignedToId: user.id }],
+        };
+
 const getQueries = asyncHandler(async (req, res) => {
   const cacheKey = `queries:${req.user.role}:${req.user.id}`;
   const cachedResponse = getCachedResponse(cacheKey);
@@ -98,20 +107,67 @@ const getQueries = asyncHandler(async (req, res) => {
     return res.status(200).json(cachedResponse);
   }
 
-  const where =
-    req.user.role === "scholar"
-      ? { authorId: req.user.id }
-      : req.user.role === "programme_manager"
-        ? { assignedToId: req.user.id }
-        : {
-            OR: [
-              { targetType: "admin" },
-              { assignedToId: req.user.id },
-            ],
-          };
+  const where = getQueryAccessWhere(req.user);
 
   const queries = await db.supportQuery.findMany({
     where,
+    include: {
+      author: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          batch: true,
+        },
+      },
+      assignedTo: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      programme: {
+        select: {
+          id: true,
+          title: true,
+        },
+      },
+      _count: {
+        select: {
+          messages: true,
+        },
+      },
+    },
+    orderBy: {
+      updatedAt: "desc",
+    },
+  });
+
+  const response = new ApiResponse(
+    200,
+    { queries },
+    "Queries fetched successfully",
+  );
+
+  setCachedResponse(cacheKey, response, 10_000);
+  return res.status(200).json(response);
+});
+
+const getQueryDetail = asyncHandler(async (req, res) => {
+  const { queryId } = req.params;
+  const cacheKey = `queries:detail:${req.user.role}:${req.user.id}:${queryId}`;
+  const cachedResponse = getCachedResponse(cacheKey);
+
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
+  }
+
+  const query = await db.supportQuery.findFirst({
+    where: {
+      id: queryId,
+      ...getQueryAccessWhere(req.user),
+    },
     include: {
       author: {
         select: {
@@ -149,15 +205,16 @@ const getQueries = asyncHandler(async (req, res) => {
         },
       },
     },
-    orderBy: {
-      updatedAt: "desc",
-    },
   });
+
+  if (!query) {
+    throw new ApiError(404, "Query not found");
+  }
 
   const response = new ApiResponse(
     200,
-    { queries },
-    "Queries fetched successfully",
+    { query },
+    "Query fetched successfully",
   );
 
   setCachedResponse(cacheKey, response, 10_000);
@@ -294,4 +351,4 @@ const updateQueryStatus = asyncHandler(async (req, res) => {
   );
 });
 
-export { createQuery, getQueries, replyToQuery, updateQueryStatus };
+export { createQuery, getQueries, getQueryDetail, replyToQuery, updateQueryStatus };

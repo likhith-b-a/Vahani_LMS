@@ -36,6 +36,7 @@ import { useAuth } from "../contexts/AuthContext";
 import {
   createSupportQuery,
   getMyQueries,
+  getSupportQueryDetail,
   replyToSupportQuery,
   type QueryStatus,
   type QueryTargetType,
@@ -100,6 +101,7 @@ export default function Queries() {
   const [queries, setQueries] = useState<SupportQuery[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedQueryId, setSelectedQueryId] = useState("");
+  const [selectedQueryDetail, setSelectedQueryDetail] = useState<SupportQuery | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [recipientFilter, setRecipientFilter] = useState<RecipientFilter>("all");
@@ -125,6 +127,7 @@ export default function Queries() {
           ? (response.data.queries as SupportQuery[])
           : [];
         setQueries(nextQueries);
+        setSelectedQueryDetail(null);
         setSelectedQueryId((current) => preferredId || current || nextQueries[0]?.id || "");
       } catch (error) {
         toast({
@@ -143,6 +146,24 @@ export default function Queries() {
     void loadQueries();
   }, [loadQueries]);
 
+  useEffect(() => {
+    const loadQueryDetail = async () => {
+      if (!selectedQueryId) {
+        setSelectedQueryDetail(null);
+        return;
+      }
+
+      try {
+        const response = await getSupportQueryDetail(selectedQueryId);
+        setSelectedQueryDetail((response?.data?.query as SupportQuery) || null);
+      } catch {
+        setSelectedQueryDetail(null);
+      }
+    };
+
+    void loadQueryDetail();
+  }, [selectedQueryId]);
+
   const activeProgrammes = useMemo(
     () => (user?.enrollments || []).filter((programme) => programme.status !== "dropped"),
     [user?.enrollments],
@@ -158,7 +179,6 @@ export default function Queries() {
         query.programme?.title || "",
         query.assignedTo?.name || "",
         getRecipientLabel(query),
-        ...query.messages.map((message) => `${message.author.name} ${message.message}`),
       ]
         .join(" ")
         .toLowerCase();
@@ -189,12 +209,13 @@ export default function Queries() {
 
   const selectedQuery = useMemo(
     () =>
+      selectedQueryDetail ||
       filteredQueries.find((query) => query.id === selectedQueryId) ||
       queries.find((query) => query.id === selectedQueryId) ||
       filteredQueries[0] ||
       queries[0] ||
       null,
-    [filteredQueries, queries, selectedQueryId],
+    [filteredQueries, queries, selectedQueryDetail, selectedQueryId],
   );
 
   const handleCreateQuery = async () => {
@@ -538,7 +559,7 @@ export default function Queries() {
                       </div>
 
                       <div className="space-y-3">
-                        {selectedQuery.messages.map((message) => {
+                        {(selectedQueryDetail?.messages || []).map((message) => {
                           const isScholar = message.author.id === user?.id;
 
                           return (

@@ -29,6 +29,7 @@ import {
   type ManagedSubmission,
 } from "@/api/programmeManager";
 import {
+  getSupportQueryDetail,
   getSupportQueries,
   replyToSupportQuery,
   updateSupportQueryStatus,
@@ -183,6 +184,7 @@ export default function TutorDashboard() {
   const [selectedProgrammeId, setSelectedProgrammeId] = useState("");
   const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
   const [selectedQueryId, setSelectedQueryId] = useState("");
+  const [selectedQueryDetail, setSelectedQueryDetail] = useState<SupportQuery | null>(null);
 
   const [programmeSearch, setProgrammeSearch] = useState("");
   const [programmeDateFrom, setProgrammeDateFrom] = useState("");
@@ -300,6 +302,7 @@ export default function TutorDashboard() {
           ? (response.data.queries as SupportQuery[])
           : [];
         setQueries(nextQueries);
+        setSelectedQueryDetail(null);
         setSelectedQueryId((current) => preferredQueryId || current || nextQueries[0]?.id || "");
       } catch (error) {
         toast({
@@ -365,6 +368,24 @@ export default function TutorDashboard() {
     }
   }, [activeSection, loadQueries]);
 
+  useEffect(() => {
+    const loadQueryDetail = async () => {
+      if (activeSection !== "queries" || !selectedQueryId) {
+        setSelectedQueryDetail(null);
+        return;
+      }
+
+      try {
+        const response = await getSupportQueryDetail(selectedQueryId);
+        setSelectedQueryDetail((response?.data?.query as SupportQuery) || null);
+      } catch {
+        setSelectedQueryDetail(null);
+      }
+    };
+
+    void loadQueryDetail();
+  }, [activeSection, selectedQueryId]);
+
   const selectedProgramme =
     programmes.find((programme) => programme.id === selectedProgrammeId) || null;
   const selectedAssignmentType = selectedAssignmentId.startsWith("session:")
@@ -388,7 +409,10 @@ export default function TutorDashboard() {
     () => selectedProgramme?.interactiveSessions || [],
     [selectedProgramme],
   );
-  const selectedQuery = queries.find((query) => query.id === selectedQueryId) || null;
+  const selectedQuery =
+    selectedQueryDetail ||
+    queries.find((query) => query.id === selectedQueryId) ||
+    null;
   const selectedAttendanceSession = useMemo(
     () =>
       programmes
@@ -1720,7 +1744,7 @@ export default function TutorDashboard() {
                         </div>
 
                         <div className="space-y-3">
-                          {selectedQuery.messages.map((message) => (
+                          {(selectedQueryDetail?.messages || []).map((message) => (
                             <div
                               key={message.id}
                               className="rounded-xl border p-4"

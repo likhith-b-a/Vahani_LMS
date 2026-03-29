@@ -458,20 +458,13 @@ const loginUser = asyncHandler(async (req, res) => {
           where: {
             userId: account.id,
           },
-          include: {
+          select: {
+            id: true,
+            status: true,
             programme: {
               select: {
                 id: true,
                 title: true,
-                description: true,
-                createdAt: true,
-                programmeManagerId: true,
-                programmeManager: {
-                  select: {
-                    name: true,
-                    email: true,
-                  },
-                },
               },
             },
           },
@@ -495,6 +488,7 @@ const loginUser = asyncHandler(async (req, res) => {
     enrollments:
       account.role === "scholar"
         ? scholarEnrollments.map((e) => ({
+            id: e.programme.id,
             ...e.programme,
             status: e.status,
           }))

@@ -8,10 +8,10 @@ export interface Enrollment {
   id: string;
   status: string;
   title: string;
-  createdAt: string;
-  description: string;
-  programmeManagerId: string;
-  programmeManager: {
+  createdAt?: string;
+  description?: string;
+  programmeManagerId?: string;
+  programmeManager?: {
     name: string;
     email: string;
   };

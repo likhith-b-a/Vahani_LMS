@@ -101,8 +101,41 @@ const runAdminFlow = async () => {
   const { loginResult, accessToken } = await login(ADMIN_EMAIL, ADMIN_PASSWORD, "admin");
   const results = [loginResult];
 
+  const profile = await timedFetch("admin: profile", `${BASE_URL}/me`, {
+    headers: authHeaders(accessToken),
+  });
+  results.push(profile);
+
   results.push(
     await timedFetch("admin: summary", `${BASE_URL}/admin/summary`, {
+      headers: authHeaders(accessToken),
+    }),
+  );
+  const users = await timedFetch("admin: users", `${BASE_URL}/admin/users`, {
+    headers: authHeaders(accessToken),
+  });
+  results.push(users);
+  const programmes = await timedFetch("admin: programmes", `${BASE_URL}/admin/programmes`, {
+    headers: authHeaders(accessToken),
+  });
+  results.push(programmes);
+  results.push(
+    await timedFetch("admin: settings", `${BASE_URL}/admin/settings`, {
+      headers: authHeaders(accessToken),
+    }),
+  );
+  results.push(
+    await timedFetch("admin: wishlist", `${BASE_URL}/wishlist/admin/all`, {
+      headers: authHeaders(accessToken),
+    }),
+  );
+  results.push(
+    await timedFetch("admin: scholar report", `${BASE_URL}/admin/reports?type=scholar`, {
+      headers: authHeaders(accessToken),
+    }),
+  );
+  results.push(
+    await timedFetch("admin: programme report", `${BASE_URL}/admin/reports?type=programme`, {
       headers: authHeaders(accessToken),
     }),
   );
@@ -121,6 +154,14 @@ const runAdminFlow = async () => {
       headers: authHeaders(accessToken),
     }),
   );
+  const firstAdminQuery = firstItem(results[results.length - 1]?.data?.data?.queries);
+  if (firstAdminQuery?.id) {
+    results.push(
+      await timedFetch("admin: query detail", `${BASE_URL}/queries/${firstAdminQuery.id}`, {
+        headers: authHeaders(accessToken),
+      }),
+    );
+  }
 
   return results;
 };
@@ -137,6 +178,12 @@ const runManagerFlow = async () => {
   );
   const results = [loginResult];
 
+  results.push(
+    await timedFetch("manager: profile", `${BASE_URL}/me`, {
+      headers: authHeaders(accessToken),
+    }),
+  );
+
   const managedProgrammes = await timedFetch(
     "manager: programmes",
     `${BASE_URL}/programmes/managed/me`,
@@ -151,12 +198,25 @@ const runManagerFlow = async () => {
       headers: authHeaders(accessToken),
     }),
   );
+  results.push(
+    await timedFetch("manager: announcements", `${BASE_URL}/announcements`, {
+      headers: authHeaders(accessToken),
+    }),
+  );
 
   results.push(
     await timedFetch("manager: queries", `${BASE_URL}/queries`, {
       headers: authHeaders(accessToken),
     }),
   );
+  const firstManagerQuery = firstItem(results[results.length - 1]?.data?.data?.queries);
+  if (firstManagerQuery?.id) {
+    results.push(
+      await timedFetch("manager: query detail", `${BASE_URL}/queries/${firstManagerQuery.id}`, {
+        headers: authHeaders(accessToken),
+      }),
+    );
+  }
 
   const firstProgramme = firstItem(managedProgrammes.data?.data?.programmes);
   if (firstProgramme?.id) {
@@ -169,6 +229,19 @@ const runManagerFlow = async () => {
         },
       ),
     );
+
+    const firstAssignment = firstItem(firstProgramme.assignments);
+    if (firstAssignment?.id) {
+      results.push(
+        await timedFetch(
+          "manager: assignment submissions",
+          `${BASE_URL}/assignments/managed/submissions?programmeId=${encodeURIComponent(firstProgramme.id)}&assignmentId=${encodeURIComponent(firstAssignment.id)}`,
+          {
+            headers: authHeaders(accessToken),
+          },
+        ),
+      );
+    }
 
     results.push(
       await timedFetch(
@@ -188,6 +261,12 @@ const runScholarFlow = async () => {
   const { loginResult, accessToken } = await login(SCHOLAR_EMAIL, SCHOLAR_PASSWORD, "scholar");
   const results = [loginResult];
 
+  results.push(
+    await timedFetch("scholar: profile", `${BASE_URL}/me`, {
+      headers: authHeaders(accessToken),
+    }),
+  );
+
   const notifications = await timedFetch("scholar: notifications", `${BASE_URL}/notifications/me`, {
     headers: authHeaders(accessToken),
   });
@@ -201,6 +280,21 @@ const runScholarFlow = async () => {
 
   results.push(
     await timedFetch("scholar: programme schedule", `${BASE_URL}/programmes/my-programmes-schedule`, {
+      headers: authHeaders(accessToken),
+    }),
+  );
+  results.push(
+    await timedFetch("scholar: discover programmes", `${BASE_URL}/programmes/discover`, {
+      headers: authHeaders(accessToken),
+    }),
+  );
+  results.push(
+    await timedFetch("scholar: wishlist", `${BASE_URL}/wishlist/me`, {
+      headers: authHeaders(accessToken),
+    }),
+  );
+  results.push(
+    await timedFetch("scholar: announcements", `${BASE_URL}/announcements`, {
       headers: authHeaders(accessToken),
     }),
   );
@@ -246,6 +340,14 @@ const runScholarFlow = async () => {
       headers: authHeaders(accessToken),
     }),
   );
+  const firstScholarQuery = firstItem(results[results.length - 1]?.data?.data?.queries);
+  if (firstScholarQuery?.id) {
+    results.push(
+      await timedFetch("scholar: query detail", `${BASE_URL}/queries/${firstScholarQuery.id}`, {
+        headers: authHeaders(accessToken),
+      }),
+    );
+  }
 
   return results;
 };
