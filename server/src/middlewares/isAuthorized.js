@@ -5,7 +5,6 @@ const isAuthorized = (...roles) => {
     if (!req.user) {
       throw new ApiError(401, "Unauthorized");
     }
-    console.log(roles,req.user.role)
     if (!roles.includes(req.user.role)) {
       throw new ApiError(403, "Forbidden - Access denied");
     }

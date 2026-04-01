@@ -53,11 +53,13 @@ export interface Programme {
     title: string;
     description?: string | null;
     scheduledAt: string;
+    maxScore?: number | null;
     durationMinutes?: number | null;
     meetingUrl?: string | null;
     attendances?: Array<{
       id: string;
       status: "present" | "absent";
+      score?: number | null;
       markedAt: string;
       userId: string;
       interactiveSessionId: string;

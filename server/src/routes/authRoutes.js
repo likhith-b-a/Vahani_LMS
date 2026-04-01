@@ -5,10 +5,12 @@ import {
   loginUser,
   logoutUser,
   refreshAccessToken,
+  requestChangePasswordOtp,
   requestPasswordResetOtp,
   resetPasswordWithOtp,
   signupUser,
   updateCurrentUserProfile,
+  verifyChangePasswordOtp,
 } from "../controllers/authControllers.js";
 import { isAuthenticated } from "../middlewares/isAuthenticated.js";
 
@@ -23,6 +25,8 @@ router.post("/refresh-token", refreshAccessToken);
 router.post("/forgot-password/request-otp", requestPasswordResetOtp);
 router.post("/forgot-password/verify-otp", resetPasswordWithOtp);
 router.post("/change-password", isAuthenticated, changePassword);
+router.post("/change-password/request-otp", isAuthenticated, requestChangePasswordOtp);
+router.post("/change-password/verify-otp", isAuthenticated, verifyChangePasswordOtp);
 router.get("/me", isAuthenticated, getCurrentUserProfile);
 router.patch("/me", isAuthenticated, updateCurrentUserProfile);
 

@@ -334,8 +334,11 @@ model NotificationRecipient {
 
 model Certificate {
   id                        String                  @id @default(uuid())
+  credentialId              String                  @unique
   title                     String
   description               String?
+  scholarName               String
+  programmeTitle            String
   fileUrl                   String
   status                    CertificateStatus       @default(available)
   issuedAt                  DateTime                @default(now())

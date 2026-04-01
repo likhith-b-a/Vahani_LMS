@@ -58,6 +58,137 @@ const normalizeUser = (user) => ({
     })) || [],
 });
 
+const normalizeAdminUserDetail = (user) => {
+  const detail = {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    batch: user.batch,
+    phoneNumber: user.phoneNumber,
+    creditsEarned: user.creditsEarned,
+    createdAt: user.createdAt,
+    programmeHistory: [],
+    managedProgrammes: [],
+    certificates: [],
+  };
+
+  if (user.role === "scholar") {
+    detail.programmeHistory = (user.enrollments || []).map((enrollment) => {
+      const assignmentRows = (enrollment.programme.assignments || []).map((assignment) => {
+        const submission = assignment.submissions?.[0] || null;
+        return {
+          id: assignment.id,
+          title: assignment.title,
+          type: assignment.type,
+          dueDate: assignment.dueDate,
+          maxScore: assignment.maxScore,
+          score: submission?.score ?? null,
+          status: !submission
+            ? "not_submitted"
+            : submission.score === null
+              ? "under_evaluation"
+              : "graded",
+          submittedAt: submission?.submittedAt || null,
+        };
+      });
+
+      const interactiveSessions = (enrollment.programme.interactiveSessions || []).map((session) => {
+        const attendance = session.attendances?.[0] || null;
+        return {
+          id: session.id,
+          title: session.title,
+          scheduledAt: session.scheduledAt,
+          maxScore: session.maxScore,
+          attendanceStatus: attendance?.status || "unmarked",
+          score: attendance?.score ?? null,
+        };
+      });
+
+      const totalSessions = interactiveSessions.length;
+      const presentSessions = interactiveSessions.filter(
+        (session) => session.attendanceStatus === "present",
+      ).length;
+
+      return {
+        enrollmentId: enrollment.id,
+        status: enrollment.status,
+        progressPercent: enrollment.progressPercent,
+        creditsAwarded: enrollment.creditsAwarded,
+        enrolledAt: enrollment.enrolledAt,
+        completedAt: enrollment.completedAt,
+        programme: {
+          id: enrollment.programme.id,
+          title: enrollment.programme.title,
+          credits: enrollment.programme.credits,
+          programmeManager: enrollment.programme.programmeManager,
+        },
+        assignmentSummary: {
+          total: assignmentRows.length,
+          submitted: assignmentRows.filter((assignment) => assignment.status !== "not_submitted").length,
+          graded: assignmentRows.filter((assignment) => assignment.status === "graded").length,
+        },
+        attendanceSummary: {
+          totalSessions,
+          presentSessions,
+          absentSessions: interactiveSessions.filter(
+            (session) => session.attendanceStatus === "absent",
+          ).length,
+          attendancePercent:
+            totalSessions > 0 ? Math.round((presentSessions / totalSessions) * 100) : null,
+        },
+        assignments: assignmentRows,
+        interactiveSessions,
+        certificate:
+          (user.certificates || []).find(
+            (certificate) => certificate.programmeId === enrollment.programmeId,
+          ) || null,
+      };
+    });
+
+    detail.certificates = (user.certificates || []).map((certificate) => ({
+      id: certificate.id,
+      credentialId: certificate.credentialId,
+      programmeTitle: certificate.programmeTitle,
+      issuedAt: certificate.issuedAt,
+      status: certificate.status,
+      fileUrl: certificate.fileUrl,
+    }));
+  }
+
+  if (user.role === "programme_manager") {
+    detail.managedProgrammes = (user.managedProgrammes || []).map((programme) => ({
+      id: programme.id,
+      title: programme.title,
+      credits: programme.credits,
+      createdAt: programme.createdAt,
+      resultsPublishedAt: programme.resultsPublishedAt,
+      scholarCount: programme._count?.enrollments || 0,
+      activeScholarCount: (programme.enrollments || []).filter(
+        (enrollment) => enrollment.status === "active",
+      ).length,
+      completedScholarCount: (programme.enrollments || []).filter(
+        (enrollment) => enrollment.status === "completed",
+      ).length,
+      assignmentCount: programme._count?.assignments || 0,
+      interactiveSessionCount: programme._count?.interactiveSessions || 0,
+      certificatesIssuedCount: programme._count?.certificates || 0,
+    }));
+
+    detail.certificates = (user.issuedCertificates || []).map((certificate) => ({
+      id: certificate.id,
+      credentialId: certificate.credentialId,
+      scholarName: certificate.scholarName,
+      programmeTitle: certificate.programmeTitle,
+      issuedAt: certificate.issuedAt,
+      status: certificate.status,
+      fileUrl: certificate.fileUrl,
+    }));
+  }
+
+  return detail;
+};
+
 const normalizeProgramme = (programme) => {
   const totalScholars = programme.enrollments.length;
 
@@ -99,6 +230,72 @@ const normalizeProgramme = (programme) => {
         gradedCount: assignment.submissions.filter(
           (submission) => submission.score !== null,
         ).length,
+      };
+    }),
+  };
+};
+
+const normalizeAdminProgrammeDetail = (programme) => {
+  const totalPossibleAssignmentScore = (programme.assignments || []).reduce(
+    (sum, assignment) => sum + (assignment.maxScore || 0),
+    0,
+  );
+  const totalPossibleSessionScore = (programme.interactiveSessions || []).reduce(
+    (sum, session) => sum + (session.maxScore || 0),
+    0,
+  );
+  const totalPossibleScore = totalPossibleAssignmentScore + totalPossibleSessionScore;
+
+  return {
+    ...normalizeProgramme(programme),
+    resultsPublishedAt: programme.resultsPublishedAt,
+    interactiveSessions: (programme.interactiveSessions || []).map((session) => ({
+      id: session.id,
+      title: session.title,
+      description: session.description,
+      scheduledAt: session.scheduledAt,
+      durationMinutes: session.durationMinutes,
+      maxScore: session.maxScore,
+      meetingUrl: session.meetingUrl,
+      attendanceCount: session.attendances.length,
+      absentCount: session.attendances.filter((attendance) => attendance.status === "absent").length,
+    })),
+    enrolledScholars: programme.enrollments.map((enrollment) => {
+      const assignmentScore = (programme.assignments || []).reduce((sum, assignment) => {
+        const submission = assignment.submissions.find(
+          (item) => item.userId === enrollment.user.id,
+        );
+        return sum + (submission?.score || 0);
+      }, 0);
+
+      const sessionScore = (programme.interactiveSessions || []).reduce((sum, session) => {
+        const attendance = session.attendances.find(
+          (item) => item.userId === enrollment.user.id,
+        );
+        return sum + (attendance?.score || 0);
+      }, 0);
+
+      const totalScore = assignmentScore + sessionScore;
+
+      return {
+        id: enrollment.id,
+        status: enrollment.status,
+        enrolledAt: enrollment.enrolledAt,
+        completedAt: enrollment.completedAt,
+        creditsAwarded: enrollment.creditsAwarded,
+        progressPercent: enrollment.progressPercent,
+        user: enrollment.user,
+        assignmentScore,
+        sessionScore,
+        totalScore,
+        totalPossibleScore,
+        overallPercent:
+          totalPossibleScore > 0
+            ? Math.round((totalScore / totalPossibleScore) * 100)
+            : null,
+        certificate:
+          programme.certificates.find((certificate) => certificate.userId === enrollment.user.id) ||
+          null,
       };
     }),
   };
@@ -439,6 +636,153 @@ const getAdminUsers = asyncHandler(async (req, res) => {
     200,
     { users: users.map(normalizeUser) },
     "Users fetched successfully",
+  );
+
+  setCachedResponse(cacheKey, response, 60_000);
+  return res.status(200).json(response);
+});
+
+const getAdminUserDetail = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const cacheKey = `admin:user-detail:${req.user.id}:${userId}`;
+  const cachedResponse = getCachedResponse(cacheKey);
+
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
+  }
+
+  const user = await db.user.findUnique({
+    where: {
+      id: userId,
+    },
+    include: {
+      enrollments: {
+        include: {
+          programme: {
+            select: {
+              id: true,
+              title: true,
+              credits: true,
+              programmeManager: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+              assignments: {
+                select: {
+                  id: true,
+                  title: true,
+                  type: true,
+                  dueDate: true,
+                  maxScore: true,
+                  submissions: {
+                    where: {
+                      userId,
+                    },
+                    select: {
+                      id: true,
+                      score: true,
+                      submittedAt: true,
+                    },
+                  },
+                },
+                orderBy: {
+                  dueDate: "asc",
+                },
+              },
+              interactiveSessions: {
+                select: {
+                  id: true,
+                  title: true,
+                  scheduledAt: true,
+                  maxScore: true,
+                  attendances: {
+                    where: {
+                      userId,
+                    },
+                    select: {
+                      status: true,
+                      score: true,
+                    },
+                  },
+                },
+                orderBy: {
+                  scheduledAt: "asc",
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          enrolledAt: "desc",
+        },
+      },
+      managedProgrammes: {
+        select: {
+          id: true,
+          title: true,
+          credits: true,
+          createdAt: true,
+          resultsPublishedAt: true,
+          enrollments: {
+            select: {
+              status: true,
+            },
+          },
+          _count: {
+            select: {
+              enrollments: true,
+              assignments: true,
+              interactiveSessions: true,
+              certificates: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      },
+      certificates: {
+        select: {
+          id: true,
+          credentialId: true,
+          programmeId: true,
+          programmeTitle: true,
+          issuedAt: true,
+          status: true,
+          fileUrl: true,
+        },
+        orderBy: {
+          issuedAt: "desc",
+        },
+      },
+      issuedCertificates: {
+        select: {
+          id: true,
+          credentialId: true,
+          scholarName: true,
+          programmeTitle: true,
+          issuedAt: true,
+          status: true,
+          fileUrl: true,
+        },
+        orderBy: {
+          issuedAt: "desc",
+        },
+      },
+    },
+  });
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  const response = new ApiResponse(
+    200,
+    normalizeAdminUserDetail(user),
+    "Admin user detail fetched successfully",
   );
 
   setCachedResponse(cacheKey, response, 60_000);
@@ -846,6 +1190,104 @@ const getAdminProgrammes = asyncHandler(async (req, res) => {
   return res.status(200).json(response);
 });
 
+const getAdminProgrammeDetail = asyncHandler(async (req, res) => {
+  const { programmeId } = req.params;
+  const cacheKey = `admin:programme-detail:${req.user.id}:${programmeId}`;
+  const cachedResponse = getCachedResponse(cacheKey);
+
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
+  }
+
+  const programme = await db.programme.findUnique({
+    where: {
+      id: programmeId,
+    },
+    include: {
+      programmeManager: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      enrollments: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              batch: true,
+              phoneNumber: true,
+            },
+          },
+        },
+        orderBy: {
+          enrolledAt: "asc",
+        },
+      },
+      assignments: {
+        include: {
+          submissions: {
+            select: {
+              id: true,
+              userId: true,
+              score: true,
+            },
+          },
+        },
+        orderBy: {
+          dueDate: "asc",
+        },
+      },
+      interactiveSessions: {
+        include: {
+          attendances: {
+            select: {
+              userId: true,
+              status: true,
+              score: true,
+            },
+          },
+        },
+        orderBy: {
+          scheduledAt: "asc",
+        },
+      },
+      resources: true,
+      wishlists: {
+        select: {
+          id: true,
+        },
+      },
+      certificates: {
+        select: {
+          id: true,
+          userId: true,
+          credentialId: true,
+          issuedAt: true,
+          status: true,
+          fileUrl: true,
+        },
+      },
+    },
+  });
+
+  if (!programme) {
+    throw new ApiError(404, "Programme not found");
+  }
+
+  const response = new ApiResponse(
+    200,
+    normalizeAdminProgrammeDetail(programme),
+    "Programme detail fetched successfully",
+  );
+
+  setCachedResponse(cacheKey, response, 60_000);
+  return res.status(200).json(response);
+});
+
 const createAdminProgramme = asyncHandler(async (req, res) => {
   const {
     title,
@@ -1152,7 +1594,20 @@ const assignScholarsToProgramme = asyncHandler(async (req, res) => {
     ),
   );
 
+  await createNotification({
+    type: "programme",
+    title: `Added to ${programme.title}`,
+    message: `You have been enrolled in ${programme.title}. Check your programme workspace for assignments, resources, and updates.`,
+    userIds: scholarIds,
+    actorId: req.user.id,
+    programmeId,
+    actionUrl: `/my-programmes/${programmeId}`,
+  });
+
   clearCachedResponse("admin:");
+  clearCachedResponse("programmes:mine:");
+  clearCachedResponse("programmes:schedule:");
+  clearCachedResponse("programme:detail:");
 
   return res.status(200).json(
     new ApiResponse(
@@ -1453,7 +1908,9 @@ export {
   getAdminSummary,
   getAdminOverview,
   getAdminProgrammes,
+  getAdminProgrammeDetail,
   getAdminReports,
+  getAdminUserDetail,
   getAdminUsers,
   getSystemSettings,
   removeScholarFromProgramme,

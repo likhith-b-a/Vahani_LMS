@@ -85,3 +85,24 @@ export const changePassword = async (
     body: JSON.stringify({ currentPassword, newPassword }),
   });
 };
+
+export const requestChangePasswordOtp = async (
+  currentPassword: string,
+  newPassword: string,
+) => {
+  return fetchWithAuth("/change-password/request-otp", {
+    method: "POST",
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+};
+
+export const verifyChangePasswordOtp = async (
+  currentPassword: string,
+  newPassword: string,
+  otp: string,
+) => {
+  return fetchWithAuth("/change-password/verify-otp", {
+    method: "POST",
+    body: JSON.stringify({ currentPassword, newPassword, otp }),
+  });
+};

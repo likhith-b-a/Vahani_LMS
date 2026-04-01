@@ -26,6 +26,15 @@ const getMailFrom = () =>
   process.env.GMAIL ||
   "no-reply@vahani.lms";
 
+const hasNodemailerConfig = () =>
+  Boolean(process.env.GMAIL && process.env.PASSWORD);
+
+const hasSendGridConfig = () =>
+  Boolean(
+    process.env.SENDGRID_API_KEY &&
+      (process.env.MAIL_FROM || process.env.SENDGRID_FROM_EMAIL),
+  );
+
 const normalizeEmailList = (value) => {
   if (!value) {
     return [];
@@ -139,9 +148,25 @@ const sendEmail = async ({
     attachments,
   };
 
-  if (process.env.SENDGRID_API_KEY) {
-    await sendWithSendGrid(payload);
-    return;
+  if (hasSendGridConfig()) {
+    try {
+      await sendWithSendGrid(payload);
+      return;
+    } catch (error) {
+      if (!hasNodemailerConfig()) {
+        const sendGridMessage =
+          error?.response?.body?.errors?.[0]?.message || error.message || "SendGrid delivery failed";
+        throw new Error(
+          `Email delivery failed through SendGrid. Check that the sender address is verified and allowed. ${sendGridMessage}`,
+        );
+      }
+    }
+  }
+
+  if (!hasNodemailerConfig()) {
+    throw new Error(
+      "Email service is not configured. Add a verified SendGrid sender or configure Gmail SMTP credentials.",
+    );
   }
 
   await sendWithNodemailer(payload);

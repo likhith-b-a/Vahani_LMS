@@ -37,7 +37,7 @@ const getNotificationLabel = (type: string) => {
 };
 
 export function Announcements() {
-  const { notifications, loading } = useNotifications();
+  const { notifications, loading, markAsRead } = useNotifications();
   const items = notifications.slice(0, 6);
 
   return (
@@ -57,9 +57,15 @@ export function Announcements() {
           <p className="text-sm text-muted-foreground">Loading updates...</p>
         ) : items.length > 0 ? (
           items.map((item) => (
-            <div
+            <button
               key={item.id}
-              className={`flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-secondary/50 ${
+              type="button"
+              onClick={() => {
+                if (!item.isRead) {
+                  void markAsRead([item.id]);
+                }
+              }}
+              className={`w-full text-left flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-secondary/50 ${
                 item.isRead
                   ? "border-border bg-card"
                   : "border-vahani-blue/20 bg-vahani-blue/5"
@@ -91,7 +97,7 @@ export function Announcements() {
                   {item.message}
                 </p>
               </div>
-            </div>
+            </button>
           ))
         ) : (
           <p className="text-sm text-muted-foreground">No updates yet.</p>

@@ -13,8 +13,10 @@ import {
   downloadAdminUserTemplate,
   getAdminOverview,
   getAdminProgrammes,
+  getAdminProgrammeDetail,
   getAdminReports,
   getAdminSummary,
+  getAdminUserDetail,
   getAdminUsers,
   getSystemSettings,
   removeScholarFromProgramme,
@@ -31,12 +33,14 @@ router.get("/summary", getAdminSummary);
 router.get("/overview", getAdminOverview);
 router.get("/users/template", downloadAdminUserTemplate);
 router.get("/users", getAdminUsers);
+router.get("/users/:userId", getAdminUserDetail);
 router.post("/users/bulk", uploadMemory.single("file"), bulkCreateAdminUsers);
 router.post("/users", createAdminUser);
 router.patch("/users/:userId", updateAdminUser);
 router.delete("/users/:userId", deleteAdminUser);
 
 router.get("/programmes", getAdminProgrammes);
+router.get("/programmes/:programmeId", getAdminProgrammeDetail);
 router.post("/programmes", createAdminProgramme);
 router.patch("/programmes/:programmeId", updateAdminProgramme);
 router.delete("/programmes/:programmeId", deleteAdminProgramme);

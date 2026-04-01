@@ -59,6 +59,7 @@ const uploadBufferToS3 = async ({
   mimeType,
   originalName,
   folder = "uploads",
+  objectKey,
 }) => {
   if (!s3Client || !bucket) {
     const missingConfig = getMissingS3Config();
@@ -71,7 +72,9 @@ const uploadBufferToS3 = async ({
   const fileName = sanitizeSegment(path.basename(originalName || "file", ext));
   const timestamp = Date.now();
   const randomToken = Math.round(Math.random() * 1e9);
-  const key = `${folder}/${timestamp}-${randomToken}-${fileName || "file"}${ext.toLowerCase()}`;
+  const key =
+    objectKey ||
+    `${folder}/${timestamp}-${randomToken}-${fileName || "file"}${ext.toLowerCase()}`;
 
   await s3Client.send(
     new PutObjectCommand({

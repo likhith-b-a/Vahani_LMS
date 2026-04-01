@@ -34,7 +34,7 @@ export default function Settings() {
 
   return (
     <div className="flex min-h-screen bg-background">
-      <AppSidebar activePage="Dashboard" />
+      <AppSidebar activePage="Overview" />
       <div className="flex-1 flex flex-col min-w-0">
         <TopNavbar />
         <main className="flex-1 overflow-y-auto">

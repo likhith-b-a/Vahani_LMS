@@ -257,8 +257,8 @@ const warmAdminUsersCache = async (userId) => {
   );
 };
 
-const warmAdminAnnouncementsCache = async (userId) => {
-  const cacheKey = `announcements:admin:${userId}`;
+const warmSentAnnouncementsCache = async (userId, role) => {
+  const cacheKey = `announcements:${role}:${userId}`;
   if (getCachedResponse(cacheKey)) {
     return;
   }
@@ -312,6 +312,65 @@ const warmAdminAnnouncementsCache = async (userId) => {
         announcements,
       },
       "Announcements fetched successfully",
+    ),
+    60_000,
+  );
+};
+
+const warmUserNotificationsCache = async (userId) => {
+  const cacheKey = `notifications:${userId}`;
+  if (getCachedResponse(cacheKey)) {
+    return;
+  }
+
+  const recipients = await db.notificationRecipient.findMany({
+    where: {
+      userId,
+    },
+    select: {
+      isRead: true,
+      notificationId: true,
+      notification: {
+        select: {
+          type: true,
+          title: true,
+          message: true,
+          createdAt: true,
+          programmeId: true,
+          assignmentId: true,
+          actionUrl: true,
+          metadata: true,
+        },
+      },
+    },
+    orderBy: {
+      notification: {
+        createdAt: "desc",
+      },
+    },
+    take: 20,
+  });
+
+  setCachedResponse(
+    cacheKey,
+    new ApiResponse(
+      200,
+      {
+        notifications: recipients.map((recipient) => ({
+          id: recipient.notificationId,
+          type: recipient.notification.type.toUpperCase(),
+          title: recipient.notification.title,
+          message: recipient.notification.message,
+          createdAt: recipient.notification.createdAt,
+          programmeId: recipient.notification.programmeId,
+          assignmentId: recipient.notification.assignmentId,
+          actionLabel: recipient.notification.actionUrl ? "Open" : "",
+          actionUrl: recipient.notification.actionUrl,
+          metadata: recipient.notification.metadata,
+          isRead: recipient.isRead,
+        })),
+      },
+      "Notifications fetched successfully",
     ),
     60_000,
   );
@@ -561,6 +620,62 @@ const warmScholarCaches = async (userId) => {
     ),
     60_000,
   );
+
+  const assignments = await db.assignment.findMany({
+    where: {
+      programme: {
+        is: {
+          enrollments: {
+            some: {
+              userId,
+            },
+          },
+        },
+      },
+    },
+    include: {
+      programme: {
+        select: {
+          id: true,
+          title: true,
+        },
+      },
+      submissions: {
+        where: {
+          userId,
+        },
+        select: {
+          id: true,
+          fileUrl: true,
+          score: true,
+          submittedAt: true,
+        },
+      },
+    },
+    orderBy: {
+      dueDate: "asc",
+    },
+  });
+
+  setCachedResponse(
+    `assignments:user:${userId}`,
+    new ApiResponse(
+      200,
+      assignments.map((assignment) => ({
+        ...serializeAssignment(assignment),
+        submission: assignment.submissions[0] || null,
+        status:
+          assignment.submissions.length === 0
+            ? "PENDING"
+            : assignment.submissions[0]?.score !== null &&
+                assignment.submissions[0]?.score !== undefined
+              ? "GRADED"
+              : "SUBMITTED",
+      })),
+      "Assignments fetched successfully",
+    ),
+    60_000,
+  );
 };
 
 const refreshAccessToken = asyncHandler(async (req, res) => {
@@ -766,6 +881,125 @@ const changePassword = asyncHandler(async (req, res) => {
       refreshToken: null,
     },
   });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Password changed successfully"));
+});
+
+const requestChangePasswordOtp = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  if (!currentPassword || !newPassword) {
+    throw new ApiError(400, "Current password and new password are required");
+  }
+
+  if (String(newPassword).length < 8) {
+    throw new ApiError(400, "New password must be at least 8 characters");
+  }
+
+  const user = await db.user.findUnique({
+    where: {
+      id: req.user.id,
+    },
+    select: {
+      id: true,
+      email: true,
+      password: true,
+    },
+  });
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  const isValidPassword = await isPasswordCorrect(currentPassword, user.password);
+
+  if (!isValidPassword) {
+    throw new ApiError(400, "Current password is incorrect");
+  }
+
+  const otp = String(Math.floor(100000 + Math.random() * 900000));
+  const otpHash = await bcrypt.hash(otp, 10);
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+  await setPasswordResetOtp(user.email, {
+    otpHash,
+    expiresAt,
+  });
+
+  await sendMail(user.email, "Your Vahani LMS change password OTP", {
+    otp,
+    expiresInMinutes: 10,
+  });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "OTP sent successfully"));
+});
+
+const verifyChangePasswordOtp = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword, otp } = req.body;
+
+  if (!currentPassword || !newPassword || !otp) {
+    throw new ApiError(400, "Current password, new password and OTP are required");
+  }
+
+  if (String(newPassword).length < 8) {
+    throw new ApiError(400, "New password must be at least 8 characters");
+  }
+
+  const user = await db.user.findUnique({
+    where: {
+      id: req.user.id,
+    },
+    select: {
+      id: true,
+      email: true,
+      password: true,
+    },
+  });
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  const isValidPassword = await isPasswordCorrect(currentPassword, user.password);
+
+  if (!isValidPassword) {
+    throw new ApiError(400, "Current password is incorrect");
+  }
+
+  const otpRecord = await getPasswordResetOtp(user.email);
+
+  if (!otpRecord) {
+    throw new ApiError(400, "OTP not found or expired");
+  }
+
+  if (new Date(otpRecord.expiresAt).getTime() < Date.now()) {
+    await clearPasswordResetOtp(user.email);
+    throw new ApiError(400, "OTP expired");
+  }
+
+  const isValidOtp = await bcrypt.compare(String(otp), otpRecord.otpHash);
+
+  if (!isValidOtp) {
+    throw new ApiError(400, "Invalid OTP");
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+  await db.user.update({
+    where: {
+      id: req.user.id,
+    },
+    data: {
+      password: hashedPassword,
+      refreshToken: null,
+    },
+  });
+
+  await clearPasswordResetOtp(user.email);
 
   return res
     .status(200)
@@ -1029,12 +1263,18 @@ const loginUser = asyncHandler(async (req, res) => {
 
   setImmediate(async () => {
     try {
+      await warmUserNotificationsCache(account.id);
+
       if (account.role === "admin") {
         await Promise.all([
           warmAdminSummaryCache(account.id),
           warmAdminUsersCache(account.id),
-          warmAdminAnnouncementsCache(account.id),
+          warmSentAnnouncementsCache(account.id, "admin"),
         ]);
+      }
+
+      if (account.role === "programme_manager") {
+        await warmSentAnnouncementsCache(account.id, "programme_manager");
       }
 
       if (account.role === "scholar") {
@@ -1066,8 +1306,10 @@ export {
   loginUser,
   logoutUser,
   refreshAccessToken,
+  requestChangePasswordOtp,
   requestPasswordResetOtp,
   resetPasswordWithOtp,
   signupUser,
   updateCurrentUserProfile,
+  verifyChangePasswordOtp,
 };

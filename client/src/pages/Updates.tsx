@@ -63,8 +63,8 @@ export default function Updates() {
                     updates also appear in this feed.
                   </p>
                   <p>
-                    *Unread items remain highlighted until you open them from the
-                    navbar notification menu.
+                    *Click any item in the feed or the navbar notification menu
+                    to mark it as read.
                   </p>
                 </div>
               </div>

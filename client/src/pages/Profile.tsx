@@ -198,7 +198,7 @@ export default function Profile() {
 
   return (
     <div className="flex min-h-screen bg-background">
-      <AppSidebar activePage="Dashboard" />
+      <AppSidebar activePage="Overview" />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopNavbar />
         <main className="flex-1 overflow-y-auto">

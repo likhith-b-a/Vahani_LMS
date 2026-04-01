@@ -727,6 +727,34 @@ const markInteractiveSessionAttendance = asyncHandler(async (req, res) => {
     });
   }
 
+  await Promise.all(
+    normalizedAttendance.map((entry) =>
+      createNotification({
+        type: entry.status === "absent" ? "meeting" : "grade",
+        title:
+          entry.status === "absent"
+            ? `Attendance marked for ${session.title}`
+            : `Interactive session marks updated for ${session.title}`,
+        message:
+          entry.status === "absent"
+            ? `You were marked absent for ${session.title} in ${session.programme.title}.${session.maxScore > 0 ? ` Score recorded: ${entry.score ?? 0}/${session.maxScore}.` : ""}`
+            : session.maxScore > 0
+              ? `Your attendance and marks for ${session.title} have been recorded as ${entry.score ?? 0}/${session.maxScore}.`
+              : `Your attendance for ${session.title} has been marked present.`,
+        userIds: [entry.userId],
+        actorId: req.user.id,
+        programmeId: session.programmeId,
+        actionUrl: `/my-programmes/${session.programmeId}`,
+        metadata: {
+          interactiveSessionId: sessionId,
+          attendanceStatus: entry.status,
+          score: entry.score ?? 0,
+          maxScore: session.maxScore,
+        },
+      }),
+    ),
+  );
+
   clearCachedResponse(`programmes:managed:${req.user.id}`);
   clearCachedResponse("programmes:managed:detail:");
   clearCachedResponse("programmes:mine:");

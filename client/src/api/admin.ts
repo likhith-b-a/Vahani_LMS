@@ -27,6 +27,96 @@ export interface AdminUser {
   }>;
 }
 
+export interface AdminUserDetail {
+  id: string;
+  name: string;
+  email: string;
+  role: AdminUserRole;
+  batch?: string | null;
+  phoneNumber?: string | null;
+  creditsEarned: number;
+  createdAt: string;
+  programmeHistory: Array<{
+    enrollmentId: string;
+    status: string;
+    progressPercent: number;
+    creditsAwarded: number;
+    enrolledAt: string;
+    completedAt?: string | null;
+    programme: {
+      id: string;
+      title: string;
+      credits?: number | null;
+      programmeManager?: {
+        id: string;
+        name: string;
+        email: string;
+      } | null;
+    };
+    assignmentSummary: {
+      total: number;
+      submitted: number;
+      graded: number;
+    };
+    attendanceSummary: {
+      totalSessions: number;
+      presentSessions: number;
+      absentSessions: number;
+      attendancePercent: number | null;
+    };
+    overallPercent?: number | null;
+    assignments: Array<{
+      id: string;
+      title: string;
+      type: string;
+      dueDate?: string | null;
+      maxScore?: number | null;
+      score: number | null;
+      status: "not_submitted" | "under_evaluation" | "graded";
+      submittedAt?: string | null;
+    }>;
+    interactiveSessions: Array<{
+      id: string;
+      title: string;
+      scheduledAt: string;
+      maxScore: number;
+      attendanceStatus: "present" | "absent" | "unmarked";
+      score: number | null;
+    }>;
+    certificate?: {
+      id: string;
+      credentialId: string;
+      programmeId: string;
+      programmeTitle: string;
+      issuedAt: string;
+      status: string;
+      fileUrl: string;
+    } | null;
+  }>;
+  managedProgrammes: Array<{
+    id: string;
+    title: string;
+    credits?: number | null;
+    createdAt: string;
+    resultsPublishedAt?: string | null;
+    scholarCount: number;
+    activeScholarCount: number;
+    completedScholarCount: number;
+    assignmentCount: number;
+    interactiveSessionCount: number;
+    certificatesIssuedCount: number;
+  }>;
+  certificates: Array<{
+    id: string;
+    credentialId: string;
+    programmeTitle: string;
+    issuedAt: string;
+    status: string;
+    fileUrl: string;
+    scholarName?: string;
+  }>;
+}
+
 export interface AdminProgrammeAssignment {
   id: string;
   title: string;
@@ -75,6 +165,48 @@ export interface AdminProgramme {
     };
   }>;
   assignments: AdminProgrammeAssignment[];
+}
+
+export interface AdminProgrammeDetail extends AdminProgramme {
+  resultsPublishedAt?: string | null;
+  interactiveSessions: Array<{
+    id: string;
+    title: string;
+    description?: string | null;
+    scheduledAt: string;
+    durationMinutes?: number | null;
+    maxScore: number;
+    meetingUrl?: string | null;
+    attendanceCount: number;
+    absentCount: number;
+  }>;
+  enrolledScholars: Array<{
+    id: string;
+    status: string;
+    enrolledAt: string;
+    completedAt?: string | null;
+    creditsAwarded: number;
+    progressPercent: number;
+    assignmentScore: number;
+    sessionScore: number;
+    totalScore: number;
+    totalPossibleScore: number;
+    overallPercent: number | null;
+    user: {
+      id: string;
+      name: string;
+      email: string;
+      batch?: string | null;
+      phoneNumber?: string | null;
+    };
+    certificate?: {
+      id: string;
+      credentialId: string;
+      issuedAt: string;
+      status: string;
+      fileUrl: string;
+    } | null;
+  }>;
 }
 
 export interface AdminOverview {
@@ -212,6 +344,14 @@ export const createAdminUser = async (payload: AdminUserPayload) => {
   });
 };
 
+export const getAdminUserDetail = async (userId: string) => {
+  return fetchWithAuth(`/admin/users/${userId}`, {
+    method: "GET",
+    cacheTtlMs: 20_000,
+    cacheKey: `admin:user-detail:${userId}`,
+  });
+};
+
 export const downloadAdminUserTemplate = async () => {
   const response = await fetch(`${BASE_URL}/admin/users/template`, {
     method: "GET",
@@ -265,6 +405,14 @@ export const getAdminProgrammes = async () => {
     method: "GET",
     cacheTtlMs: 30_000,
     cacheKey: "admin:programmes",
+  });
+};
+
+export const getAdminProgrammeDetail = async (programmeId: string) => {
+  return fetchWithAuth(`/admin/programmes/${programmeId}`, {
+    method: "GET",
+    cacheTtlMs: 20_000,
+    cacheKey: `admin:programme-detail:${programmeId}`,
   });
 };
 

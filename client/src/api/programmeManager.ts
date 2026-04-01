@@ -1,4 +1,4 @@
-import { fetchWithAuth } from "./fetchWithAuth";
+import { BASE_URL, fetchWithAuth } from "./fetchWithAuth";
 
 export interface ManagedStudent {
   id: string;
@@ -109,6 +109,20 @@ export interface ManagedProgramme {
   }>;
   assignments: ManagedProgrammeAssignment[];
   interactiveSessions: ManagedInteractiveSession[];
+}
+
+export interface ManagedCertificate {
+  id: string;
+  credentialId: string;
+  title: string;
+  scholarName: string;
+  programmeTitle: string;
+  fileUrl: string;
+  status: "available" | "claimed" | "revoked";
+  issuedAt: string;
+  claimedAt?: string | null;
+  verificationUrl: string;
+  user?: ManagedStudent;
 }
 
 export interface CreateAssignmentPayload {
@@ -235,6 +249,35 @@ export const publishProgrammeResults = async (programmeId: string) => {
     method: "POST",
   });
 };
+
+export const getProgrammeCertificates = async (programmeId: string) => {
+  return fetchWithAuth(`/certificates/programmes/${programmeId}`, {
+    method: "GET",
+  });
+};
+
+export const generateProgrammeCertificates = async (programmeId: string) => {
+  return fetchWithAuth(`/certificates/programmes/${programmeId}/generate`, {
+    method: "POST",
+  });
+};
+
+export const updateProgrammeCertificate = async (
+  certificateId: string,
+  payload: {
+    scholarName: string;
+    programmeTitle: string;
+    issuedAt: string;
+  },
+) => {
+  return fetchWithAuth(`/certificates/${certificateId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+};
+
+export const getManagedCertificateDownloadUrl = (certificateId: string) =>
+  `${BASE_URL}/certificates/${encodeURIComponent(certificateId)}/download`;
 
 export interface ProgrammeManagerReportResponse {
   type: "programme_manager";

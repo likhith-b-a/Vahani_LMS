@@ -11,6 +11,8 @@ import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Index";
 import AdminDashboard from "./pages/AdminDashboard";
+import AdminUserDetailPage from "./pages/AdminUserDetail";
+import AdminProgrammeDetailPage from "./pages/AdminProgrammeDetail";
 import TutorDashboard from "./pages/TutorDashboard";
 import ManagerProgrammeDetail from "./pages/ManagerProgrammeDetail";
 import CourseRegistration from "./pages/CourseRegistration";
@@ -25,6 +27,8 @@ import ProgrammeDetail from "./pages/ProgrammeDetail";
 import Queries from "./pages/Queries";
 import Updates from "./pages/Updates";
 import Wishlist from "./pages/Wishlist";
+import Marks from "./pages/Marks";
+import VerifyCertificate from "./pages/VerifyCertificate";
 
 const queryClient = new QueryClient();
 
@@ -57,6 +61,14 @@ const App = () => (
                 }
               />
               <Route
+                path="/enrollments"
+                element={
+                  <ProtectedRoute allowedRoles={["scholar"]}>
+                    <CourseRegistration />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/my-programmes"
                 element={
                   <ProtectedRoute allowedRoles={["scholar"]}>
@@ -80,6 +92,7 @@ const App = () => (
                   </ProtectedRoute>
                 }
               />
+              <Route path="/verify-certificate/:credentialId" element={<VerifyCertificate />} />
               <Route
                 path="/attendance"
                 element={
@@ -137,10 +150,34 @@ const App = () => (
                 }
               />
               <Route
+                path="/marks"
+                element={
+                  <ProtectedRoute allowedRoles={["scholar"]}>
+                    <Marks />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/admin"
                 element={
                   <ProtectedRoute allowedRoles={["admin"]}>
                     <AdminDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/users/:userId"
+                element={
+                  <ProtectedRoute allowedRoles={["admin"]}>
+                    <AdminUserDetailPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/programmes/:programmeId"
+                element={
+                  <ProtectedRoute allowedRoles={["admin"]}>
+                    <AdminProgrammeDetailPage />
                   </ProtectedRoute>
                 }
               />

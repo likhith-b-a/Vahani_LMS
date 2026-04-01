@@ -3,10 +3,13 @@ import {
   ArrowLeft,
   BookOpen,
   CalendarDays,
+  Download,
+  ExternalLink,
   FileText,
   Link as LinkIcon,
   Plus,
   RefreshCw,
+  ShieldCheck,
   Users,
 } from "lucide-react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
@@ -15,11 +18,16 @@ import {
   addProgrammeResource,
   createInteractiveSession,
   createProgrammeAssignment,
+  generateProgrammeCertificates,
   getManagedProgrammeDetail,
+  getManagedCertificateDownloadUrl,
+  getProgrammeCertificates,
   markInteractiveSessionAttendance,
   publishProgrammeResults,
   type ManagedInteractiveSession,
+  type ManagedCertificate,
   type ManagedProgramme,
+  updateProgrammeCertificate,
 } from "../api/programmeManager";
 import { ManagerSidebar } from "../components/dashboard/ManagerSidebar";
 import { Badge } from "../components/ui/badge";
@@ -120,6 +128,8 @@ export default function ManagerProgrammeDetail() {
   const [showResourceDialog, setShowResourceDialog] = useState(false);
   const [showMeetingDialog, setShowMeetingDialog] = useState(false);
   const [showAttendanceDialog, setShowAttendanceDialog] = useState(false);
+  const [showCertificatesDialog, setShowCertificatesDialog] = useState(false);
+  const [showEditCertificateDialog, setShowEditCertificateDialog] = useState(false);
 
   const [assignmentForm, setAssignmentForm] = useState(emptyAssignmentForm);
   const [sessionForm, setSessionForm] = useState(emptySessionForm);
@@ -128,6 +138,14 @@ export default function ManagerProgrammeDetail() {
   const [attendanceSessionId, setAttendanceSessionId] = useState<string | null>(null);
   const [attendanceDrafts, setAttendanceDrafts] = useState<Record<string, "present" | "absent">>({});
   const [attendanceScoreDrafts, setAttendanceScoreDrafts] = useState<Record<string, string>>({});
+  const [certificates, setCertificates] = useState<ManagedCertificate[]>([]);
+  const [certificatesLoading, setCertificatesLoading] = useState(false);
+  const [certificateEditForm, setCertificateEditForm] = useState({
+    id: "",
+    scholarName: "",
+    programmeTitle: "",
+    issuedAt: "",
+  });
 
   const loadProgramme = useCallback(async () => {
     if (!id) {
@@ -154,6 +172,34 @@ export default function ManagerProgrammeDetail() {
   useEffect(() => {
     void loadProgramme();
   }, [loadProgramme]);
+
+  const loadCertificates = useCallback(async () => {
+    if (!id) return;
+
+    try {
+      setCertificatesLoading(true);
+      const response = await getProgrammeCertificates(id);
+      setCertificates(
+        Array.isArray(response?.data?.certificates)
+          ? (response.data.certificates as ManagedCertificate[])
+          : [],
+      );
+    } catch (error) {
+      toast({
+        title: "Unable to load certificates",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setCertificatesLoading(false);
+    }
+  }, [id, toast]);
+
+  useEffect(() => {
+    if (programme?.resultsPublishedAt) {
+      void loadCertificates();
+    }
+  }, [loadCertificates, programme?.resultsPublishedAt]);
 
   const selectedAttendanceSession = useMemo(
     () =>
@@ -378,11 +424,72 @@ export default function ManagerProgrammeDetail() {
     }
   };
 
-  const handleGenerateCertificatesPlaceholder = () => {
-    toast({
-      title: "Certificates flow pending",
-      description: "The button is ready. We can wire certificate generation next.",
+  const handleOpenCertificatesDialog = async () => {
+    setShowCertificatesDialog(true);
+    await loadCertificates();
+  };
+
+  const handleGenerateCertificates = async () => {
+    if (!programme) return;
+
+    try {
+      setCertificatesLoading(true);
+      const response = await generateProgrammeCertificates(programme.id);
+      setCertificates(
+        Array.isArray(response?.data?.certificates)
+          ? (response.data.certificates as ManagedCertificate[])
+          : [],
+      );
+      toast({
+        title: "Certificates generated",
+        description: "Completed scholars can now view their certificates.",
+      });
+    } catch (error) {
+      toast({
+        title: "Unable to generate certificates",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setCertificatesLoading(false);
+    }
+  };
+
+  const openEditCertificateDialog = (certificate: ManagedCertificate) => {
+    setCertificateEditForm({
+      id: certificate.id,
+      scholarName: certificate.scholarName,
+      programmeTitle: certificate.programmeTitle,
+      issuedAt: certificate.issuedAt.slice(0, 10),
     });
+    setShowEditCertificateDialog(true);
+  };
+
+  const handleUpdateCertificate = async () => {
+    try {
+      const response = await updateProgrammeCertificate(certificateEditForm.id, {
+        scholarName: certificateEditForm.scholarName,
+        programmeTitle: certificateEditForm.programmeTitle,
+        issuedAt: certificateEditForm.issuedAt,
+      });
+      const updatedCertificate = response?.data as ManagedCertificate;
+      setCertificates((current) =>
+        current.map((certificate) =>
+          certificate.id === updatedCertificate.id ? updatedCertificate : certificate,
+        ),
+      );
+      setShowEditCertificateDialog(false);
+      toast({
+        title: "Certificate updated",
+        description: "The certificate has been regenerated with the same credential ID.",
+      });
+    } catch (error) {
+      toast({
+        title: "Unable to update certificate",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const summary = {
@@ -444,8 +551,12 @@ export default function ManagerProgrammeDetail() {
                 <Button variant="secondary" onClick={() => void handlePublishResults()}>
                   Publish results
                 </Button>
-                <Button variant="secondary" onClick={handleGenerateCertificatesPlaceholder}>
-                  Generate certificates
+                <Button
+                  variant="secondary"
+                  onClick={() => void handleOpenCertificatesDialog()}
+                  disabled={!programme?.resultsPublishedAt}
+                >
+                  {certificates.length > 0 ? "View & edit certificates" : "Generate certificates"}
                 </Button>
               </div>
             </div>
@@ -1023,6 +1134,142 @@ export default function ManagerProgrammeDetail() {
               Cancel
             </Button>
             <Button onClick={() => void handleSaveAttendance()}>Update attendance</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showCertificatesDialog} onOpenChange={setShowCertificatesDialog}>
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Programme certificates</DialogTitle>
+            <DialogDescription>
+              Generate certificates for completed scholars and edit issued certificates without changing their credential IDs.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/20 p-4">
+              <div>
+                <p className="font-medium text-foreground">
+                  {programme?.resultsPublishedAt
+                    ? "Results are published. Certificates can be generated for completed scholars."
+                    : "Publish results first to enable certificate generation."}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Existing certificates will be refreshed and keep the same credential IDs.
+                </p>
+              </div>
+              <Button
+                onClick={() => void handleGenerateCertificates()}
+                disabled={!programme?.resultsPublishedAt || certificatesLoading}
+              >
+                {certificatesLoading
+                  ? "Generating..."
+                  : certificates.length > 0
+                    ? "Regenerate current certificates"
+                    : "Generate certificates"}
+              </Button>
+            </div>
+
+            {certificatesLoading ? (
+              <p className="text-sm text-muted-foreground">Loading certificates...</p>
+            ) : certificates.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No certificates generated for this programme yet.
+              </p>
+            ) : (
+              <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
+                {certificates.map((certificate) => (
+                  <div key={certificate.id} className="rounded-2xl border border-border p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-foreground">{certificate.scholarName}</p>
+                          <Badge variant="outline">{certificate.status}</Badge>
+                        </div>
+                        <p className="mt-1 text-sm text-muted-foreground">{certificate.programmeTitle}</p>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {certificate.credentialId} • Issued {formatDate(certificate.issuedAt)}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" size="sm" onClick={() => openEditCertificateDialog(certificate)}>
+                          Edit
+                        </Button>
+                        <Button asChild variant="outline" size="sm">
+                          <a href={certificate.fileUrl} target="_blank" rel="noreferrer">
+                            <ExternalLink className="mr-2 h-4 w-4" />
+                            Open
+                          </a>
+                        </Button>
+                        <Button asChild variant="outline" size="sm">
+                          <a
+                            href={getManagedCertificateDownloadUrl(certificate.id)}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <Download className="mr-2 h-4 w-4" />
+                            Download
+                          </a>
+                        </Button>
+                        <Button asChild variant="outline" size="sm">
+                          <a href={certificate.verificationUrl} target="_blank" rel="noreferrer">
+                            <ShieldCheck className="mr-2 h-4 w-4" />
+                            Verify
+                          </a>
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showEditCertificateDialog} onOpenChange={setShowEditCertificateDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit certificate</DialogTitle>
+            <DialogDescription>
+              Update certificate text and issue date. The certificate will be regenerated with the same credential ID.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Scholar name</Label>
+              <Input
+                value={certificateEditForm.scholarName}
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                  setCertificateEditForm((current) => ({ ...current, scholarName: event.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Programme title</Label>
+              <Input
+                value={certificateEditForm.programmeTitle}
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                  setCertificateEditForm((current) => ({ ...current, programmeTitle: event.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Issue date</Label>
+              <Input
+                type="date"
+                value={certificateEditForm.issuedAt}
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                  setCertificateEditForm((current) => ({ ...current, issuedAt: event.target.value }))
+                }
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditCertificateDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => void handleUpdateCertificate()}>Save changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { changePassword } from "@/api/auth";
+import { requestChangePasswordOtp, verifyChangePasswordOtp } from "@/api/auth";
 
 interface Props {
   open: boolean;
@@ -21,10 +21,21 @@ export function ChangePasswordModal({ open, onOpenChange }: Props) {
   const [showNew, setShowNew] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
 
   const isValid = current.trim().length > 0 && newPass.trim().length >= 8 && newPass === confirm;
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const resetForm = () => {
+    setCurrent("");
+    setNewPass("");
+    setConfirm("");
+    setOtp("");
+    setOtpSent(false);
+    setError("");
+  };
+
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
@@ -43,21 +54,48 @@ export function ChangePasswordModal({ open, onOpenChange }: Props) {
 
     try {
       setLoading(true);
-      await changePassword(current, newPass);
+      await requestChangePasswordOtp(current, newPass);
+      setOtpSent(true);
+      toast({ title: "OTP Sent", description: "A verification OTP has been sent to your email." });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send OTP.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    if (!otp.trim()) {
+      setError("Please enter the OTP sent to your email.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await verifyChangePasswordOtp(current, newPass, otp);
       toast({ title: "Password Updated", description: "Your password has been updated successfully." });
-      setCurrent("");
-      setNewPass("");
-      setConfirm("");
+      resetForm();
       onOpenChange(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update password.");
+      setError(err instanceof Error ? err.message : "Failed to verify OTP.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          resetForm();
+        }
+        onOpenChange(nextOpen);
+      }}
+    >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <div className="flex items-center gap-3 mb-1">
@@ -68,7 +106,7 @@ export function ChangePasswordModal({ open, onOpenChange }: Props) {
           </div>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+        <form onSubmit={otpSent ? handleVerifyOtp : handleSendOtp} className="space-y-4 mt-2">
           {error && (
             <div className="bg-destructive/10 border border-destructive/20 text-destructive text-sm rounded-lg px-4 py-3">
               {error}
@@ -124,12 +162,31 @@ export function ChangePasswordModal({ open, onOpenChange }: Props) {
             )}
           </div>
 
+          {otpSent && (
+            <div className="space-y-2">
+              <Label htmlFor="change-password-otp">OTP</Label>
+              <Input
+                id="change-password-otp"
+                inputMode="numeric"
+                placeholder="Enter the 6-digit OTP"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter the OTP sent to your registered email to complete the password change.
+              </p>
+            </div>
+          )}
+
           <div className="flex gap-3 pt-2">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" className="flex-1" onClick={() => {
+              resetForm();
+              onOpenChange(false);
+            }}>
               Cancel
             </Button>
-            <Button type="submit" className="flex-1 bg-vahani-blue hover:bg-vahani-blue/90" disabled={loading || !isValid}>
-              {loading ? "Updating..." : "Update Password"}
+            <Button type="submit" className="flex-1 bg-vahani-blue hover:bg-vahani-blue/90" disabled={loading || !isValid || (otpSent && !otp.trim())}>
+              {loading ? (otpSent ? "Verifying..." : "Sending OTP...") : otpSent ? "Verify & Update" : "Send OTP"}
             </Button>
           </div>
         </form>

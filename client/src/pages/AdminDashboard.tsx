@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   BellRing,
@@ -58,7 +59,6 @@ import {
 import { AdminSidebar } from "@/components/dashboard/AdminSidebar";
 import { AdminUsersSection } from "@/components/dashboard/admin/AdminUsersSection";
 import {
-  AdminUserDetailsDialog,
   AdminUserDialog,
   BulkUserImportDialog,
 } from "@/components/dashboard/admin/AdminUserDialogs";
@@ -213,6 +213,8 @@ const roleLabel = (role: AdminUserRole) =>
 export default function AdminDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const [summary, setSummary] = useState<AdminSummary | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -220,10 +222,12 @@ export default function AdminDashboard() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [queries, setQueries] = useState<SupportQuery[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState(
+    (location.state as { section?: string } | null)?.section || "overview",
+  );
 
   const [userSearch, setUserSearch] = useState("");
-  const [userRoleFilter, setUserRoleFilter] = useState<"all" | AdminUserRole>("all");
+  const [userRoleFilter, setUserRoleFilter] = useState<AdminUserRole>("scholar");
   const [userBatchFilter, setUserBatchFilter] = useState("all");
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [userForm, setUserForm] = useState(emptyUserForm);
@@ -232,7 +236,6 @@ export default function AdminDashboard() {
   const [bulkUserFile, setBulkUserFile] = useState<File | null>(null);
   const [isDownloadingUserTemplate, setIsDownloadingUserTemplate] = useState(false);
   const [isImportingUsers, setIsImportingUsers] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [pendingDeleteUser, setPendingDeleteUser] = useState<AdminUser | null>(null);
   const [selectedEmailUserIds, setSelectedEmailUserIds] = useState<string[]>([]);
   const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false);
@@ -469,7 +472,7 @@ export default function AdminDashboard() {
         const searchTarget =
           `${entry.name} ${entry.email} ${entry.phoneNumber || ""} ${entry.batch || ""}`.toLowerCase();
         const matchesSearch = !userSearch.trim() || searchTarget.includes(userSearch.toLowerCase());
-        const matchesRole = userRoleFilter === "all" || entry.role === userRoleFilter;
+        const matchesRole = entry.role === userRoleFilter;
         const matchesBatch =
           userRoleFilter !== "scholar" ||
           userBatchFilter === "all" ||
@@ -906,7 +909,6 @@ export default function AdminDashboard() {
     try {
       await deleteAdminUser(pendingDeleteUser.id);
       setPendingDeleteUser(null);
-      if (selectedUser?.id === pendingDeleteUser.id) setSelectedUser(null);
       await Promise.all([loadSummary(), loadUsers()]);
       toast({ title: "User deleted", description: "The user has been removed." });
     } catch (error) {
@@ -1218,8 +1220,7 @@ export default function AdminDashboard() {
                       key={programme.id}
                       type="button"
                       onClick={() => {
-                        setSelectedProgrammeId(programme.id);
-                        setActiveTab("programmes");
+                        navigate(`/admin/programmes/${programme.id}`);
                       }}
                       className="rounded-xl border border-border p-4 text-left transition hover:border-vahani-blue/40 hover:bg-muted/40"
                     >
@@ -1267,7 +1268,9 @@ export default function AdminDashboard() {
                   resetUserForm();
                   setIsUserDialogOpen(true);
                 }}
-                onOpenUserDetails={setSelectedUser}
+                onOpenUserDetails={(selectedUser) =>
+                  navigate(`/admin/users/${selectedUser.id}`)
+                }
                 onOpenEditUser={openEditUserDialog}
                 onRequestDeleteUser={setPendingDeleteUser}
               />
@@ -1311,61 +1314,103 @@ export default function AdminDashboard() {
                       </div>
                     </div>
 
-                    <div className="space-y-3">
+                    <div className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3">
                       {filteredProgrammes.map((programme) => (
                         <button
-                        key={programme.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedProgrammeId(programme.id);
-                          setProgrammeDetailBatchFilter("all");
-                          setSelectedScholarIds([]);
-                          setIsProgrammeDetailOpen(true);
-                        }}
-                          className="w-full rounded-2xl border border-border p-4 text-left transition hover:border-vahani-blue/40 hover:bg-muted/40"
+                          key={programme.id}
+                          type="button"
+                          onClick={() => navigate(`/admin/programmes/${programme.id}`)}
+                          className="flex h-full min-h-[360px] flex-col overflow-hidden rounded-[28px] border border-border bg-card text-left transition hover:border-vahani-blue/40 hover:shadow-md"
                         >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="font-semibold text-foreground">{programme.title}</p>
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                {programme.programmeManager?.name || "Unassigned manager"}
-                              </p>
+                          <div className="h-2 bg-gradient-to-r from-[#11173f] via-[#7a5600] to-[#f5aa00]" />
+                          <div className="flex h-full flex-col gap-5 p-5">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-xl font-semibold leading-tight text-foreground lg:text-2xl">
+                                  {programme.title}
+                                </p>
+                                <p className="mt-3 line-clamp-3 text-sm leading-7 text-muted-foreground">
+                                  {programme.description || "No description added for this programme yet."}
+                                </p>
+                              </div>
+                              <Badge variant={programme.enrollments.some((entry) => entry.status === "completed") ? "default" : "secondary"}>
+                                {programme.enrollments.some((entry) => entry.status === "completed")
+                                  ? "Completed"
+                                  : "Active"}
+                              </Badge>
                             </div>
-                            <div className="flex flex-wrap gap-2">
-                              {programme.selfEnrollmentEnabled && <Badge variant="secondary">Self-enroll</Badge>}
-                              <Badge variant="outline">{programme.enrollments.length} scholars</Badge>
+
+                            <div className="grid gap-3 text-sm text-muted-foreground sm:grid-cols-2">
+                              <div className="space-y-3">
+                                <p>Handled by: {programme.programmeManager?.name || "Unassigned manager"}</p>
+                                <p>{programme.assignments.filter((assignment) => assignment.pendingCount > 0).length} pending</p>
+                              </div>
+                              <div className="space-y-3">
+                                <p>Enrolled {formatDate(programme.createdAt)}</p>
+                                <p>
+                                  {programme.assignments.some((assignment) => assignment.dueDate && new Date(assignment.dueDate) > new Date())
+                                    ? "Upcoming assignment available"
+                                    : "No upcoming assignment"}
+                                </p>
+                              </div>
                             </div>
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
-                            <span>{formatDate(programme.createdAt)}</span>
-                            <span>{programme.assignments.length} assignments</span>
-                            <span>{programme.resources?.length ?? 0} resources</span>
-                          </div>
-                          <div className="mt-3 flex gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openEditProgrammeDialog(programme);
-                              }}
-                            >
-                              <Pencil className="mr-2 h-4 w-4" />
-                              Edit
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setPendingDeleteProgramme(programme);
-                              }}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
-                            </Button>
+
+                            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                              <span>{programme.selfEnrollmentEnabled ? "Self-enrollable" : "Mandatory"}</span>
+                              <span>{programme.enrollments.length} scholars</span>
+                              <span>{programme.assignments.length} assignments</span>
+                              <span>{programme.resources?.length ?? 0} resources</span>
+                            </div>
+
+                            <div className="mt-auto grid gap-3 sm:grid-cols-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  navigate(`/admin/programmes/${programme.id}`);
+                                }}
+                              >
+                                View details
+                              </Button>
+                              <Button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  navigate(`/admin/programmes/${programme.id}`);
+                                }}
+                                className="bg-amber-500 text-black hover:bg-amber-400"
+                              >
+                                Continue
+                              </Button>
+                            </div>
+
+                            <div className="flex justify-between gap-3">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openEditProgrammeDialog(programme);
+                                }}
+                              >
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Edit
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setPendingDeleteProgramme(programme);
+                                }}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </Button>
+                            </div>
                           </div>
                         </button>
                       ))}
@@ -1865,12 +1910,6 @@ export default function AdminDashboard() {
         userForm={userForm}
         onUserFormChange={setUserForm}
         onSubmit={() => void handleUserSubmit()}
-      />
-
-      <AdminUserDetailsDialog
-        selectedUser={selectedUser}
-        onOpenChange={(open) => !open && setSelectedUser(null)}
-        onEditUser={openEditUserDialog}
       />
 
       <Dialog

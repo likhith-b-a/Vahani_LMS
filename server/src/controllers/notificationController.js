@@ -41,7 +41,7 @@ const getMyNotifications = asyncHandler(async (req, res) => {
         createdAt: "desc",
       },
     },
-    take: 50,
+    take: 20,
   });
 
   const response = new ApiResponse(
@@ -64,7 +64,7 @@ const getMyNotifications = asyncHandler(async (req, res) => {
     "Notifications fetched successfully",
   );
 
-  setCachedResponse(cacheKey, response, 10_000);
+  setCachedResponse(cacheKey, response, 60_000);
   return res.status(200).json(response);
 });
 

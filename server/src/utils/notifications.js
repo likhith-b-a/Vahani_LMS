@@ -1,4 +1,5 @@
 import db from "../db.js";
+import { clearCachedResponse } from "./responseCache.js";
 
 const dedupeIds = (ids = []) => [...new Set(ids.filter(Boolean))];
 const normalizeMetadata = (metadata) =>
@@ -22,7 +23,7 @@ const createNotification = async ({
     return null;
   }
 
-  return db.notification.create({
+  const notification = await db.notification.create({
     data: {
       type,
       title,
@@ -40,6 +41,12 @@ const createNotification = async ({
       },
     },
   });
+
+  recipientIds.forEach((userId) => {
+    clearCachedResponse(`notifications:${userId}`);
+  });
+
+  return notification;
 };
 
 const getProgrammeScholarIds = async (programmeId) => {

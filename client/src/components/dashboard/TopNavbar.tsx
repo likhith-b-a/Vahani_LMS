@@ -32,18 +32,9 @@ export function TopNavbar() {
     void logout().then(() => navigate("/"));
   };
 
-  const handleNotificationAction = async (notificationId: string, programmeId?: string, assignmentId?: string) => {
+  const handleNotificationAction = async (notificationId: string) => {
     await markAsRead([notificationId]);
     setNotificationsOpen(false);
-
-    if (assignmentId) {
-      navigate(programmeId ? `/assignments?programmeId=${encodeURIComponent(programmeId)}` : "/assignments");
-      return;
-    }
-
-    if (programmeId) {
-      navigate(`/my-programmes/${encodeURIComponent(programmeId)}`);
-    }
   };
 
   const initials = user?.name?.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "U";
@@ -93,11 +84,7 @@ export function TopNavbar() {
                     <button
                       key={notification.id}
                       onClick={() =>
-                        void handleNotificationAction(
-                          notification.id,
-                          notification.programmeId,
-                          notification.assignmentId,
-                        )
+                        void handleNotificationAction(notification.id)
                       }
                       className={`w-full rounded-lg px-3 py-3 text-left transition-colors ${
                         notification.isRead ? "hover:bg-secondary/40" : "bg-secondary/50 hover:bg-secondary"

@@ -9,8 +9,8 @@ import { useState, useEffect } from "react";
 import vahaniLogo from "@/assets/vahani-logo.png";
 
 const mainNav = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
-  { icon: BookPlus, label: "Course Registration", path: "/courses" },
+  { icon: LayoutDashboard, label: "Overview", path: "/dashboard" },
+  { icon: BookPlus, label: "Enrollments", path: "/enrollments" },
   { icon: BookOpen, label: "My Programmes", path: "/my-programmes" },
   { icon: Award, label: "Certificates", path: "/certificates" },
   { icon: CalendarCheck, label: "Attendance", path: "/attendance" },
@@ -19,7 +19,7 @@ const mainNav = [
   { icon: BookPlus, label: "Wishlist", path: "/wishlist" },
   { icon: FolderOpen, label: "Resources", path: "/dashboard" },
   { icon: Megaphone, label: "Announcements", path: "/updates" },
-  { icon: BarChart3, label: "Performance Reports", path: "/dashboard" },
+  { icon: BarChart3, label: "Marks", path: "/marks" },
 ];
 
 const bottomNav = [
@@ -27,7 +27,7 @@ const bottomNav = [
   { icon: LogOut, label: "Logout", danger: true },
 ];
 
-export function AppSidebar({ activePage = "Dashboard" }: { activePage?: string }) {
+export function AppSidebar({ activePage = "Overview" }: { activePage?: string }) {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const [open, setOpen] = useState(false);
