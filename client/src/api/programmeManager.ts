@@ -192,6 +192,16 @@ export const createProgrammeAssignment = async (
   });
 };
 
+export const updateProgrammeAssignment = async (
+  assignmentId: string,
+  payload: Partial<CreateAssignmentPayload>,
+) => {
+  return fetchWithAuth(`/assignments/managed/assignments/${assignmentId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+};
+
 export const addProgrammeResource = async (
   programmeId: string,
   payload: { title: string; url?: string; description?: string; file?: File | null },
@@ -230,6 +240,16 @@ export const createInteractiveSession = async (
 ) => {
   return fetchWithAuth(`/programmes/managed/${programmeId}/interactive-sessions`, {
     method: "POST",
+    body: JSON.stringify(payload),
+  });
+};
+
+export const updateInteractiveSession = async (
+  sessionId: string,
+  payload: Partial<CreateInteractiveSessionPayload>,
+) => {
+  return fetchWithAuth(`/programmes/managed/interactive-sessions/${sessionId}`, {
+    method: "PATCH",
     body: JSON.stringify(payload),
   });
 };

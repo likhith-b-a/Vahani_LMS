@@ -74,7 +74,11 @@ const getMyProgrammes = asyncHandler(async (req, res) => {
             select: {
               id: true,
               title: true,
+              description: true,
               scheduledAt: true,
+              durationMinutes: true,
+              maxScore: true,
+              meetingUrl: true,
               attendances: {
                 where: {
                   userId,
@@ -635,6 +639,78 @@ const createManagedInteractiveSession = asyncHandler(async (req, res) => {
   );
 });
 
+const updateManagedInteractiveSession = asyncHandler(async (req, res) => {
+  const { sessionId } = req.params;
+  const { title, description, scheduledAt, durationMinutes, meetingUrl, maxScore } = req.body;
+
+  if (!sessionId) {
+    throw new ApiError(400, "Interactive session ID is required");
+  }
+
+  const session = await db.interactiveSession.findFirst({
+    where: {
+      id: sessionId,
+      programme: {
+        is: {
+          programmeManagerId: req.user.id,
+        },
+      },
+    },
+    select: {
+      id: true,
+      programmeId: true,
+      maxScore: true,
+    },
+  });
+
+  if (!session) {
+    throw new ApiError(404, "Interactive session not found for this manager");
+  }
+
+  const normalizedMaxScore =
+    maxScore !== undefined && maxScore !== null && maxScore !== ""
+      ? Number(maxScore)
+      : session.maxScore;
+
+  if (Number.isNaN(normalizedMaxScore) || normalizedMaxScore < 0) {
+    throw new ApiError(400, "Interactive session max score must be 0 or more");
+  }
+
+  const updatedSession = await db.interactiveSession.update({
+    where: {
+      id: sessionId,
+    },
+    data: {
+      ...(title !== undefined ? { title: String(title).trim() } : {}),
+      ...(description !== undefined
+        ? { description: String(description || "").trim() || null }
+        : {}),
+      ...(scheduledAt !== undefined
+        ? { scheduledAt: scheduledAt ? new Date(scheduledAt) : undefined }
+        : {}),
+      ...(durationMinutes !== undefined && durationMinutes !== null && durationMinutes !== ""
+        ? { durationMinutes: Number(durationMinutes) }
+        : {}),
+      ...(maxScore !== undefined ? { maxScore: normalizedMaxScore } : {}),
+      ...(meetingUrl !== undefined ? { meetingUrl: meetingUrl?.trim() || null } : {}),
+    },
+  });
+
+  clearCachedResponse(`programmes:managed:${req.user.id}`);
+  clearCachedResponse("programmes:managed:detail:");
+  clearCachedResponse("programmes:mine:");
+  clearCachedResponse("programmes:schedule:");
+  clearCachedResponse("programme:detail:");
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      { session: updatedSession },
+      "Interactive session updated successfully",
+    ),
+  );
+});
+
 const markInteractiveSessionAttendance = asyncHandler(async (req, res) => {
   const { sessionId } = req.params;
   const { attendance = [] } = req.body;
@@ -1051,6 +1127,39 @@ const getManagedProgrammeReport = asyncHandler(async (req, res) => {
   }
 
   const rows = programme.enrollments.map((enrollment) => {
+    const totalAssignmentMarks = programme.assignments.reduce(
+      (sum, assignment) => sum + (assignment.maxScore || 0),
+      0,
+    );
+    const totalSessionMarks = programme.interactiveSessions.reduce(
+      (sum, session) => sum + (session.maxScore || 0),
+      0,
+    );
+    const totalPossibleMarks = totalAssignmentMarks + totalSessionMarks;
+
+    const assignmentScore = programme.assignments.reduce((sum, assignment) => {
+      const submission = assignment.submissions.find(
+        (entry) => entry.userId === enrollment.userId,
+      );
+      return sum + (submission?.score || 0);
+    }, 0);
+
+    const interactiveSessionScore = programme.interactiveSessions.reduce(
+      (sum, session) => {
+        const attendance = session.attendances.find(
+          (entry) => entry.userId === enrollment.userId,
+        );
+        return sum + (attendance?.score || 0);
+      },
+      0,
+    );
+
+    const totalObtainedMarks = assignmentScore + interactiveSessionScore;
+    const percentage =
+      totalPossibleMarks > 0
+        ? Number(((totalObtainedMarks / totalPossibleMarks) * 100).toFixed(2))
+        : 0;
+
     const fixedColumns = {
       userId: enrollment.user.id,
       name: enrollment.user.name,
@@ -1059,6 +1168,8 @@ const getManagedProgrammeReport = asyncHandler(async (req, res) => {
       batch: enrollment.user.batch || "",
       programmeStatus: enrollment.status,
       creditsEarned: enrollment.user.creditsEarned,
+      totalMarks: `${totalObtainedMarks}/${totalPossibleMarks}`,
+      percentage,
     };
 
     const assignmentColumns = Object.fromEntries(
@@ -1444,4 +1555,5 @@ export {
   markInteractiveSessionAttendance,
   publishProgrammeResults,
   selfEnrollInProgramme,
+  updateManagedInteractiveSession,
 };

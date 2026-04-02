@@ -17,6 +17,7 @@ import {
   markInteractiveSessionAttendance,
   publishProgrammeResults,
   selfEnrollInProgramme,
+  updateManagedInteractiveSession,
 } from "../controllers/programmeController.js";
 
 const router = Router();
@@ -43,6 +44,12 @@ router.post(
   isAuthenticated,
   isAuthorized("programme_manager"),
   createManagedInteractiveSession,
+);
+router.patch(
+  "/managed/interactive-sessions/:sessionId",
+  isAuthenticated,
+  isAuthorized("programme_manager"),
+  updateManagedInteractiveSession,
 );
 router.get(
   "/managed/:programmeId/detail",

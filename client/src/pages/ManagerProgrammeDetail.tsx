@@ -7,6 +7,7 @@ import {
   ExternalLink,
   FileText,
   Link as LinkIcon,
+  Pencil,
   Plus,
   RefreshCw,
   ShieldCheck,
@@ -27,6 +28,8 @@ import {
   type ManagedInteractiveSession,
   type ManagedCertificate,
   type ManagedProgramme,
+  updateInteractiveSession,
+  updateProgrammeAssignment,
   updateProgrammeCertificate,
 } from "../api/programmeManager";
 import { ManagerSidebar } from "../components/dashboard/ManagerSidebar";
@@ -107,6 +110,9 @@ const formatDateTime = (value?: string | null) =>
       })
     : "No date";
 
+const resetAssignmentForm = () => ({ ...emptyAssignmentForm });
+const resetSessionForm = () => ({ ...emptySessionForm });
+
 export default function ManagerProgrammeDetail() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -130,6 +136,8 @@ export default function ManagerProgrammeDetail() {
   const [showAttendanceDialog, setShowAttendanceDialog] = useState(false);
   const [showCertificatesDialog, setShowCertificatesDialog] = useState(false);
   const [showEditCertificateDialog, setShowEditCertificateDialog] = useState(false);
+  const [editingAssignmentId, setEditingAssignmentId] = useState<string | null>(null);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
 
   const [assignmentForm, setAssignmentForm] = useState(emptyAssignmentForm);
   const [sessionForm, setSessionForm] = useState(emptySessionForm);
@@ -252,7 +260,7 @@ export default function ManagerProgrammeDetail() {
     }
 
     try {
-      await createProgrammeAssignment(programme.id, {
+      const payload = {
         title: assignmentForm.title.trim(),
         description: assignmentForm.description.trim(),
         dueDate: assignmentForm.dueDate,
@@ -261,17 +269,26 @@ export default function ManagerProgrammeDetail() {
         isGraded: assignmentForm.isGraded,
         allowLateSubmission: assignmentForm.allowLateSubmission,
         allowResubmission: assignmentForm.allowResubmission,
-      });
-      setAssignmentForm(emptyAssignmentForm);
+      };
+
+      if (editingAssignmentId) {
+        await updateProgrammeAssignment(editingAssignmentId, payload);
+      } else {
+        await createProgrammeAssignment(programme.id, payload);
+      }
+      setAssignmentForm(resetAssignmentForm());
+      setEditingAssignmentId(null);
       setShowAssignmentDialog(false);
       await loadProgramme();
       toast({
-        title: "Assignment added",
-        description: "The new assignment is now visible to scholars.",
+        title: editingAssignmentId ? "Assignment updated" : "Assignment added",
+        description: editingAssignmentId
+          ? "The assignment changes are now visible in the programme."
+          : "The new assignment is now visible to scholars.",
       });
     } catch (error) {
       toast({
-        title: "Unable to add assignment",
+        title: editingAssignmentId ? "Unable to update assignment" : "Unable to add assignment",
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
@@ -290,24 +307,33 @@ export default function ManagerProgrammeDetail() {
     }
 
     try {
-      await createInteractiveSession(programme.id, {
+      const payload = {
         title: sessionForm.title.trim(),
         description: sessionForm.description.trim(),
         scheduledAt: sessionForm.scheduledAt,
         durationMinutes: Number(sessionForm.durationMinutes || 60),
         maxScore: Number(sessionForm.maxScore || 0),
         meetingUrl: sessionForm.meetingUrl.trim() || undefined,
-      });
-      setSessionForm(emptySessionForm);
+      };
+
+      if (editingSessionId) {
+        await updateInteractiveSession(editingSessionId, payload);
+      } else {
+        await createInteractiveSession(programme.id, payload);
+      }
+      setSessionForm(resetSessionForm());
+      setEditingSessionId(null);
       setShowSessionDialog(false);
       await loadProgramme();
       toast({
-        title: "Session scheduled",
-        description: "The interactive session has been added to the programme.",
+        title: editingSessionId ? "Session updated" : "Session scheduled",
+        description: editingSessionId
+          ? "The interactive session has been updated."
+          : "The interactive session has been added to the programme.",
       });
     } catch (error) {
       toast({
-        title: "Unable to schedule session",
+        title: editingSessionId ? "Unable to update session" : "Unable to schedule session",
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
@@ -455,6 +481,62 @@ export default function ManagerProgrammeDetail() {
     }
   };
 
+  const openEditAssignmentDialog = (assignment: ManagedProgramme["assignments"][number]) => {
+    setEditingAssignmentId(assignment.id);
+    setAssignmentForm({
+      title: assignment.title,
+      description: assignment.description || "",
+      dueDate: assignment.dueDate ? new Date(assignment.dueDate).toISOString().slice(0, 16) : "",
+      maxScore: assignment.maxScore !== null && assignment.maxScore !== undefined ? String(assignment.maxScore) : "",
+      assignmentType: assignment.assignmentType,
+      isGraded: true,
+      allowLateSubmission: true,
+      allowResubmission: true,
+    });
+    setShowAssignmentDialog(true);
+  };
+
+  const openAddAssignmentDialog = () => {
+    setEditingAssignmentId(null);
+    setAssignmentForm(resetAssignmentForm());
+    setShowAssignmentDialog(true);
+  };
+
+  const openEditSessionDialog = (session: ManagedInteractiveSession) => {
+    setEditingSessionId(session.id);
+    setSessionForm({
+      title: session.title,
+      description: session.description || "",
+      scheduledAt: new Date(session.scheduledAt).toISOString().slice(0, 16),
+      durationMinutes: String(session.durationMinutes || 60),
+      maxScore: String(session.maxScore || 0),
+      meetingUrl: session.meetingUrl || "",
+    });
+    setShowSessionDialog(true);
+  };
+
+  const openAddSessionDialog = () => {
+    setEditingSessionId(null);
+    setSessionForm(resetSessionForm());
+    setShowSessionDialog(true);
+  };
+
+  const handleAssignmentDialogChange = (open: boolean) => {
+    setShowAssignmentDialog(open);
+    if (!open) {
+      setEditingAssignmentId(null);
+      setAssignmentForm(resetAssignmentForm());
+    }
+  };
+
+  const handleSessionDialogChange = (open: boolean) => {
+    setShowSessionDialog(open);
+    if (!open) {
+      setEditingSessionId(null);
+      setSessionForm(resetSessionForm());
+    }
+  };
+
   const openEditCertificateDialog = (certificate: ManagedCertificate) => {
     setCertificateEditForm({
       id: certificate.id,
@@ -532,11 +614,11 @@ export default function ManagerProgrammeDetail() {
                 Back to programmes
               </Button>
               <div className="flex flex-wrap gap-2">
-                <Button onClick={() => setShowAssignmentDialog(true)}>
+                <Button onClick={openAddAssignmentDialog}>
                   <Plus className="mr-2 h-4 w-4" />
                   Add assignment
                 </Button>
-                <Button variant="outline" onClick={() => setShowSessionDialog(true)}>
+                <Button variant="outline" onClick={openAddSessionDialog}>
                   <Plus className="mr-2 h-4 w-4" />
                   Interactive session
                 </Button>
@@ -660,9 +742,19 @@ export default function ManagerProgrammeDetail() {
                                   {assignment.description || "No assignment description."}
                                 </p>
                               </div>
-                              <Badge variant="secondary">
-                                {assignment.submissions.length}/{programme.enrollments.length} submitted
-                              </Badge>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge variant="secondary">
+                                  {assignment.submissions.length}/{programme.enrollments.length} submitted
+                                </Badge>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openEditAssignmentDialog(assignment)}
+                                >
+                                  <Pencil className="mr-2 h-4 w-4" />
+                                  Edit
+                                </Button>
+                              </div>
                             </div>
                             <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
                               <span>Due {formatDateTime(assignment.dueDate)}</span>
@@ -690,14 +782,24 @@ export default function ManagerProgrammeDetail() {
                                     {session.description || "No session description."}
                                   </p>
                                 </div>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  disabled={!canMarkAttendance}
-                                  onClick={() => openAttendanceDialog(session)}
-                                >
-                                  Mark attendance
-                                </Button>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => openEditSessionDialog(session)}
+                                  >
+                                    <Pencil className="mr-2 h-4 w-4" />
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={!canMarkAttendance}
+                                    onClick={() => openAttendanceDialog(session)}
+                                  >
+                                    Mark attendance
+                                  </Button>
+                                </div>
                               </div>
                               <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
                                 <span>{formatDateTime(session.scheduledAt)}</span>
@@ -803,11 +905,15 @@ export default function ManagerProgrammeDetail() {
         </main>
       </div>
 
-      <Dialog open={showAssignmentDialog} onOpenChange={setShowAssignmentDialog}>
+      <Dialog open={showAssignmentDialog} onOpenChange={handleAssignmentDialogChange}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Add assignment</DialogTitle>
-            <DialogDescription>Create a new assignment for this programme.</DialogDescription>
+            <DialogTitle>{editingAssignmentId ? "Edit assignment" : "Add assignment"}</DialogTitle>
+            <DialogDescription>
+              {editingAssignmentId
+                ? "Update the assignment details for this programme."
+                : "Create a new assignment for this programme."}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -875,20 +981,26 @@ export default function ManagerProgrammeDetail() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAssignmentDialog(false)}>
+            <Button variant="outline" onClick={() => handleAssignmentDialogChange(false)}>
               Cancel
             </Button>
-            <Button onClick={() => void handleAddAssignment()}>Add assignment</Button>
+            <Button onClick={() => void handleAddAssignment()}>
+              {editingAssignmentId ? "Update assignment" : "Add assignment"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showSessionDialog} onOpenChange={setShowSessionDialog}>
+      <Dialog open={showSessionDialog} onOpenChange={handleSessionDialogChange}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Schedule interactive session</DialogTitle>
+            <DialogTitle>
+              {editingSessionId ? "Edit interactive session" : "Schedule interactive session"}
+            </DialogTitle>
             <DialogDescription>
-              Add the session details, meeting link, and marks configuration.
+              {editingSessionId
+                ? "Update the session details, meeting link, and marks configuration."
+                : "Add the session details, meeting link, and marks configuration."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -962,10 +1074,12 @@ export default function ManagerProgrammeDetail() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowSessionDialog(false)}>
+            <Button variant="outline" onClick={() => handleSessionDialogChange(false)}>
               Cancel
             </Button>
-            <Button onClick={() => void handleAddSession()}>Schedule session</Button>
+            <Button onClick={() => void handleAddSession()}>
+              {editingSessionId ? "Update session" : "Schedule session"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

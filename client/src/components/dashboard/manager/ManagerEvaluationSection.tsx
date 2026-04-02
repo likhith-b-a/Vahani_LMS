@@ -1,5 +1,6 @@
+import { formatDistanceStrict } from "date-fns";
 import { type ChangeEvent } from "react";
-import { Mail } from "lucide-react";
+import { Eye, Mail } from "lucide-react";
 import { type ManagedInteractiveSession, type ManagedProgrammeAssignment, type ManagedSubmission } from "@/api/programmeManager";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,29 @@ interface EvaluationStudentRow {
 interface PreviewFileState {
   url: string;
   title: string;
+}
+
+function getSubmissionTimingMeta(submission: ManagedSubmission) {
+  const dueDate = submission.assignment.dueDate ? new Date(submission.assignment.dueDate) : null;
+  const submittedAt = new Date(submission.submittedAt);
+
+  if (!dueDate || Number.isNaN(dueDate.getTime())) {
+    return null;
+  }
+
+  const diffLabel = formatDistanceStrict(submittedAt, dueDate);
+
+  if (submittedAt.getTime() > dueDate.getTime()) {
+    return {
+      label: `Overdue by ${diffLabel}`,
+      className: "bg-red-500/10 text-red-600",
+    };
+  }
+
+  return {
+    label: `Submitted ${diffLabel} early`,
+    className: "bg-green-500/10 text-green-600",
+  };
 }
 
 interface ManagerEvaluationSectionProps {
@@ -240,48 +264,85 @@ export function ManagerEvaluationSection({
             </p>
           ) : null}
 
-          {selectedAssignmentType === "assignment" &&
-            filteredSubmissions.map((submission) => (
-              <div key={submission.id} className="space-y-3 rounded-lg border border-border p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          {selectedAssignmentType === "assignment" && filteredSubmissions.length > 0 ? (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-border bg-muted/20 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="font-medium text-foreground">{submission.student.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {submission.student.email}
-                      {submission.student.batch ? ` | ${submission.student.batch}` : ""}
+                    <p className="font-medium text-foreground">
+                      {filteredSubmissions[0]?.assignment.title}
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      Submitted {formatDateTime(submission.submittedAt)}
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {filteredSubmissions[0]?.assignment.dueDate
+                        ? formatDateTime(filteredSubmissions[0].assignment.dueDate)
+                        : "No due date"}
                     </p>
-                    {submission.fileUrl ? (
-                      <button
-                        type="button"
-                        className="mt-2 text-xs font-medium text-vahani-blue underline-offset-4 hover:underline"
-                        onClick={() => onOpenSubmissionFile(submission)}
-                      >
-                        {submission.assignment.assignmentType === "document"
-                          ? "Preview submission"
-                          : "Download submission"}
-                      </button>
-                    ) : null}
                   </div>
-                  <Badge variant="outline">{submission.status}</Badge>
-                </div>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <Input
-                    type="number"
-                    min="0"
-                    max={submission.assignment.maxScore ?? undefined}
-                    value={scoreDrafts[submission.id] || ""}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                      onScoreDraftChange(submission.id, event.target.value)
-                    }
-                    className="sm:max-w-[180px]"
-                  />
-                  <Button onClick={() => onSaveMarks(submission.id)}>Save marks</Button>
+                  <Badge variant="outline">
+                    Max marks {filteredSubmissions[0]?.assignment.maxScore ?? 0}
+                  </Badge>
                 </div>
               </div>
-            ))}
+
+              {filteredSubmissions.map((submission) => {
+                const timingMeta = getSubmissionTimingMeta(submission);
+
+                return (
+                  <div
+                    key={submission.id}
+                    className="grid gap-3 rounded-lg border border-border p-4 xl:grid-cols-[minmax(0,1fr)_220px_240px]"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium text-foreground">{submission.student.name}</p>
+                        <Badge variant="outline">{submission.status}</Badge>
+                        {timingMeta ? (
+                          <Badge className={timingMeta.className}>{timingMeta.label}</Badge>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {submission.student.email}
+                        {submission.student.batch ? ` | ${submission.student.batch}` : ""}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Last submission {formatDateTime(submission.submittedAt)}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 xl:justify-end">
+                      {submission.fileUrl ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => onOpenSubmissionFile(submission)}
+                        >
+                          <Eye className="mr-2 h-4 w-4" />
+                          {submission.assignment.assignmentType === "document"
+                            ? "Preview"
+                            : "Download"}
+                        </Button>
+                      ) : null}
+                    </div>
+
+                    <div className="flex flex-col gap-2 sm:flex-row xl:justify-end items-center">
+                      <Input
+                        type="number"
+                        min="0"
+                        max={submission.assignment.maxScore ?? undefined}
+                        value={scoreDrafts[submission.id] || ""}
+                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                          onScoreDraftChange(submission.id, event.target.value)
+                        }
+                        className="sm:max-w-[120px]"
+                      />
+                      <Button onClick={() => onSaveMarks(submission.id)}>Save marks</Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
 
           {selectedAssignmentType === "session" && selectedEvaluationSession && (
             <div className="space-y-4">

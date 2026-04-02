@@ -41,7 +41,9 @@ import {
 import { ManagerSidebar } from "@/components/dashboard/ManagerSidebar";
 import { EmailComposerDialog } from "@/components/dashboard/EmailComposerDialog";
 import { ManagerEvaluationSection } from "@/components/dashboard/manager/ManagerEvaluationSection";
+import { ManagerAnalyticsSection } from "@/components/dashboard/manager/ManagerAnalyticsSection";
 import { ManagerProgrammesSection } from "@/components/dashboard/manager/ManagerProgrammesSection";
+import type { ManagerProgrammeStatusFilter } from "@/components/dashboard/manager/ManagerProgrammesSection";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -118,6 +120,23 @@ const formatDate = (value?: string | null) =>
       })
     : "No date";
 
+const getManagerProgrammeStatus = (programme: ManagedProgrammeSummary) => {
+  if (programme.resultsPublishedAt) {
+    return "completed";
+  }
+
+  if (
+    programme.scholarsCount === 0 &&
+    programme.assignmentsCount === 0 &&
+    programme.interactiveSessionsCount === 0 &&
+    (programme.resourcesCount || 0) === 0
+  ) {
+    return "setup";
+  }
+
+  return "active";
+};
+
 const formatDateTime = (value?: string | null) =>
   value
     ? new Date(value).toLocaleString("en-IN", {
@@ -192,6 +211,8 @@ export default function TutorDashboard() {
   const [programmeSearch, setProgrammeSearch] = useState("");
   const [programmeDateFrom, setProgrammeDateFrom] = useState("");
   const [programmeDateTo, setProgrammeDateTo] = useState("");
+  const [programmeStatusFilter, setProgrammeStatusFilter] =
+    useState<ManagerProgrammeStatusFilter>("all");
   const [announcementSearch, setAnnouncementSearch] = useState("");
   const [announcementDateFrom, setAnnouncementDateFrom] = useState("");
   const [announcementDateTo, setAnnouncementDateTo] = useState("");
@@ -388,10 +409,16 @@ export default function TutorDashboard() {
     if (activeSection === "announcements") {
       void loadAnnouncements();
     }
+    if (activeSection === "analytics") {
+      void loadAnnouncements();
+    }
   }, [activeSection, loadAnnouncements]);
 
   useEffect(() => {
     if (activeSection === "queries") {
+      void loadQueries();
+    }
+    if (activeSection === "analytics") {
       void loadQueries();
     }
   }, [activeSection, loadQueries]);
@@ -474,12 +501,22 @@ export default function TutorDashboard() {
         const matchesSearch = `${programme.title} ${programme.description || ""}`
           .toLowerCase()
           .includes(programmeSearch.toLowerCase());
+        const matchesStatus =
+          programmeStatusFilter === "all" ||
+          getManagerProgrammeStatus(programme) === programmeStatusFilter;
         return (
           matchesSearch &&
+          matchesStatus &&
           matchesDateRange(programme.createdAt, programmeDateFrom, programmeDateTo)
         );
       }),
-    [programmeDateFrom, programmeDateTo, programmeSearch, programmes],
+    [
+      programmeDateFrom,
+      programmeDateTo,
+      programmeSearch,
+      programmeStatusFilter,
+      programmes,
+    ],
   );
 
   const filteredAnnouncements = useMemo(
@@ -1272,11 +1309,21 @@ export default function TutorDashboard() {
                 onProgrammeDateFromChange={setProgrammeDateFrom}
                 programmeDateTo={programmeDateTo}
                 onProgrammeDateToChange={setProgrammeDateTo}
+                programmeStatusFilter={programmeStatusFilter}
+                onProgrammeStatusFilterChange={setProgrammeStatusFilter}
                 filteredProgrammes={filteredProgrammes}
                 onOpenProgramme={(programmeId) =>
                   navigate(`${dashboardBasePath}/programmes/${programmeId}`)
                 }
                 formatDate={formatDate}
+              />
+            )}
+
+            {activeSection === "analytics" && (
+              <ManagerAnalyticsSection
+                programmes={programmes}
+                announcements={announcements}
+                queries={queries}
               />
             )}
 

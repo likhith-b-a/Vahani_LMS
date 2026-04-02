@@ -19,6 +19,7 @@ import { useAuth } from "@/contexts/AuthContext";
 const primaryNav = [
   { icon: LayoutDashboard, label: "Overview", value: "overview" },
   { icon: BookOpen, label: "Programmes", value: "programmes" },
+  { icon: BarChart3, label: "Analytics", value: "analytics" },
   { icon: BellRing, label: "Announcements", value: "announcements" },
   { icon: FileText, label: "Evaluation", value: "evaluation" },
   { icon: BarChart3, label: "Reports", value: "reports" },

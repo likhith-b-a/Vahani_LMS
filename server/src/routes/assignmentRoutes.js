@@ -10,6 +10,7 @@ import {
   getManagedSubmissions,
   getUserAssignments,
   submitAssignment,
+  updateAssignment,
 } from "../controllers/assignmentController.js";
 
 const router = Router();
@@ -26,6 +27,12 @@ router.post(
   isAuthenticated,
   isAuthorized("programme_manager"),
   createAssignment,
+);
+router.patch(
+  "/managed/assignments/:assignmentId",
+  isAuthenticated,
+  isAuthorized("programme_manager"),
+  updateAssignment,
 );
 router.patch(
   "/submissions/:submissionId/evaluate",

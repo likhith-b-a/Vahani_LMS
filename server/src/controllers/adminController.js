@@ -1781,12 +1781,16 @@ const getAdminReports = asyncHandler(async (req, res) => {
         );
         const totalPossible = assignmentTotal + sessionTotal;
         const totalScored = assignmentScored + sessionScored;
+        const percentage =
+          totalPossible > 0
+            ? Number(((totalScored / totalPossible) * 100).toFixed(2))
+            : 0;
 
         programmeColumnsTop[columnLabel] =
           `${enrollment.programme.title} [${enrollment.status}]`;
         programmeColumnsBottom[columnLabel] =
           enrollment.status === "completed" || enrollment.status === "uncompleted"
-            ? `${totalScored}/${totalPossible || 0}`
+            ? `${totalScored}/${totalPossible || 0} (${percentage}%)`
             : "";
       }
 

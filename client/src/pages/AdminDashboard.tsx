@@ -57,6 +57,7 @@ import {
   type SupportQuery,
 } from "@/api/queries";
 import { AdminSidebar } from "@/components/dashboard/AdminSidebar";
+import { AdminAnalyticsSection } from "@/components/dashboard/admin/AdminAnalyticsSection";
 import { AdminUsersSection } from "@/components/dashboard/admin/AdminUsersSection";
 import {
   AdminUserDialog,
@@ -128,6 +129,28 @@ const emptyAnnouncementForm = {
   targetBatch: "",
   targetRoles: ["scholar"] as string[],
   userIds: [] as string[],
+};
+
+type ProgrammeStatusFilter = "all" | "setup" | "active" | "completed";
+
+const getAdminProgrammeStatus = (programme: AdminProgramme): Exclude<ProgrammeStatusFilter, "all"> => {
+  const hasCompletedScholars = programme.enrollments.some(
+    (entry) => entry.status === "completed",
+  );
+
+  if (hasCompletedScholars) {
+    return "completed";
+  }
+
+  if (
+    programme.enrollments.length === 0 &&
+    programme.assignments.length === 0 &&
+    (programme.resources?.length ?? 0) === 0
+  ) {
+    return "setup";
+  }
+
+  return "active";
 };
 
 const reportLabels = {
@@ -244,6 +267,8 @@ export default function AdminDashboard() {
   const [programmeSearch, setProgrammeSearch] = useState("");
   const [programmeDateFrom, setProgrammeDateFrom] = useState("");
   const [programmeDateTo, setProgrammeDateTo] = useState("");
+  const [programmeStatusFilter, setProgrammeStatusFilter] =
+    useState<ProgrammeStatusFilter>("all");
   const [editingProgrammeId, setEditingProgrammeId] = useState<string | null>(null);
   const [programmeForm, setProgrammeForm] = useState(emptyProgrammeForm);
   const [isProgrammeDialogOpen, setIsProgrammeDialogOpen] = useState(false);
@@ -407,10 +432,16 @@ export default function AdminDashboard() {
     if (activeTab === "programmes") {
       void loadProgrammes();
     }
+    if (activeTab === "analytics") {
+      void Promise.all([loadUsers(), loadProgrammes()]);
+    }
   }, [activeTab, loadProgrammes, loadUsers]);
 
   useEffect(() => {
     if (activeTab === "announcements") {
+      void loadAnnouncements();
+    }
+    if (activeTab === "analytics") {
       void loadAnnouncements();
     }
   }, [activeTab, loadAnnouncements]);
@@ -423,6 +454,9 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (activeTab === "queries") {
+      void loadQueries();
+    }
+    if (activeTab === "analytics") {
       void loadQueries();
     }
   }, [activeTab, loadQueries]);
@@ -501,14 +535,23 @@ export default function AdminDashboard() {
           `${programme.title} ${programme.description || ""} ${programme.programmeManager?.name || ""}`.toLowerCase();
         const matchesSearch =
           !programmeSearch.trim() || searchTarget.includes(programmeSearch.toLowerCase());
+        const matchesStatus =
+          programmeStatusFilter === "all" ||
+          getAdminProgrammeStatus(programme) === programmeStatusFilter;
         const matchesTimeline = matchesDateRange(
           programme.createdAt,
           programmeDateFrom,
           programmeDateTo,
         );
-        return matchesSearch && matchesTimeline;
+        return matchesSearch && matchesStatus && matchesTimeline;
       }),
-    [programmeDateFrom, programmeDateTo, programmeSearch, programmes],
+    [
+      programmeDateFrom,
+      programmeDateTo,
+      programmeSearch,
+      programmeStatusFilter,
+      programmes,
+    ],
   );
 
   const availableScholars = useMemo(
@@ -1276,6 +1319,16 @@ export default function AdminDashboard() {
               />
             </TabsContent>
 
+            <TabsContent value="analytics" className="space-y-6">
+              <AdminAnalyticsSection
+                summary={summary}
+                users={users}
+                programmes={programmes}
+                announcements={announcements}
+                queries={queries}
+              />
+            </TabsContent>
+
             <TabsContent value="programmes" className="space-y-6">
               <Card>
                   <CardHeader className="gap-4">
@@ -1308,9 +1361,20 @@ export default function AdminDashboard() {
                           className="pl-9"
                         />
                       </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="grid gap-3 sm:grid-cols-3">
                         <Input type="date" value={programmeDateFrom} onChange={(event: ChangeEvent<HTMLInputElement>) => setProgrammeDateFrom(event.target.value)} />
                         <Input type="date" value={programmeDateTo} onChange={(event: ChangeEvent<HTMLInputElement>) => setProgrammeDateTo(event.target.value)} />
+                        <Select value={programmeStatusFilter} onValueChange={(value) => setProgrammeStatusFilter(value as ProgrammeStatusFilter)}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Filter by status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All statuses</SelectItem>
+                            <SelectItem value="setup">Setup</SelectItem>
+                            <SelectItem value="active">Active</SelectItem>
+                            <SelectItem value="completed">Completed</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
 
@@ -1333,10 +1397,14 @@ export default function AdminDashboard() {
                                   {programme.description || "No description added for this programme yet."}
                                 </p>
                               </div>
-                              <Badge variant={programme.enrollments.some((entry) => entry.status === "completed") ? "default" : "secondary"}>
-                                {programme.enrollments.some((entry) => entry.status === "completed")
+                              <Badge
+                                variant={getAdminProgrammeStatus(programme) === "completed" ? "default" : "secondary"}
+                              >
+                                {getAdminProgrammeStatus(programme) === "completed"
                                   ? "Completed"
-                                  : "Active"}
+                                  : getAdminProgrammeStatus(programme) === "setup"
+                                    ? "Setup"
+                                    : "Active"}
                               </Badge>
                             </div>
 

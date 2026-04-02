@@ -106,6 +106,42 @@ export default function Marks() {
     return [...assignmentRows, ...sessionRows];
   }, [selectedProgramme]);
 
+  const programmeTotals = useMemo(() => {
+    if (!selectedProgramme) {
+      return null;
+    }
+
+    const assignmentPossible = selectedProgramme.assignments.reduce(
+      (sum, assignment) => sum + (assignment.maxScore || 0),
+      0,
+    );
+    const assignmentScored = selectedProgramme.assignments.reduce((sum, assignment) => {
+      const submission = assignment.submissions[0];
+      return sum + (submission?.score || 0);
+    }, 0);
+
+    const sessionPossible = (selectedProgramme.interactiveSessions || []).reduce(
+      (sum, session) => sum + (session.maxScore || 0),
+      0,
+    );
+    const sessionScored = (selectedProgramme.interactiveSessions || []).reduce(
+      (sum, session) => sum + (session.attendances?.[0]?.score || 0),
+      0,
+    );
+
+    const totalPossible = assignmentPossible + sessionPossible;
+    const totalScored = assignmentScored + sessionScored;
+
+    return {
+      totalScored,
+      totalPossible,
+      percentage:
+        totalPossible > 0
+          ? Number(((totalScored / totalPossible) * 100).toFixed(2))
+          : 0,
+    };
+  }, [selectedProgramme]);
+
   return (
     <div className="flex min-h-screen bg-background">
       <AppSidebar activePage="Marks" />
@@ -148,11 +184,23 @@ export default function Marks() {
             {selectedProgramme && (
               <Card>
                 <CardHeader>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <CardTitle>{selectedProgramme.title}</CardTitle>
-                    <Badge variant="outline" className="capitalize">
-                      {selectedProgramme.status}
-                    </Badge>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <CardTitle>{selectedProgramme.title}</CardTitle>
+                      <Badge variant="outline" className="capitalize">
+                        {selectedProgramme.status}
+                      </Badge>
+                    </div>
+                    {programmeTotals && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="secondary">
+                          Total marks {programmeTotals.totalScored}/{programmeTotals.totalPossible}
+                        </Badge>
+                        <Badge className="bg-vahani-blue/10 text-vahani-blue">
+                          {programmeTotals.percentage}%
+                        </Badge>
+                      </div>
+                    )}
                   </div>
                 </CardHeader>
                 <CardContent>

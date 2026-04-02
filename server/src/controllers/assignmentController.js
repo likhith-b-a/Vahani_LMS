@@ -200,6 +200,113 @@ const createAssignment = asyncHandler(async (req, res) => {
     );
 });
 
+const updateAssignment = asyncHandler(async (req, res) => {
+  const { assignmentId } = req.params;
+  const {
+    title,
+    description,
+    dueDate,
+    maxScore,
+    assignmentType,
+    acceptedFileTypes,
+    isGraded,
+    allowLateSubmission,
+    allowResubmission,
+    meetingUrl,
+  } = req.body;
+
+  if (!assignmentId) {
+    throw new ApiError(400, "Assignment ID is required");
+  }
+
+  const assignment = await db.assignment.findFirst({
+    where: {
+      id: assignmentId,
+      programme: {
+        is: {
+          programmeManagerId: req.user.id,
+        },
+      },
+    },
+    select: {
+      id: true,
+      programmeId: true,
+      title: true,
+      type: true,
+    },
+  });
+
+  if (!assignment) {
+    throw new ApiError(404, "Assignment not found for this programme manager");
+  }
+
+  const normalizedAssignmentType =
+    typeof assignmentType === "string" && assignmentType.trim()
+      ? assignmentType
+      : assignment.type;
+
+  if (normalizedAssignmentType === "interactive_session") {
+    throw new ApiError(
+      400,
+      "Interactive sessions should be managed from the interactive session scheduler",
+    );
+  }
+
+  const updatedAssignment = await db.assignment.update({
+    where: {
+      id: assignmentId,
+    },
+    data: {
+      ...(title !== undefined ? { title: String(title).trim() } : {}),
+      ...(description !== undefined
+        ? { description: String(description || "").trim() || "" }
+        : {}),
+      ...(dueDate !== undefined ? { dueDate: dueDate ? new Date(dueDate) : null } : {}),
+      ...(maxScore !== undefined && maxScore !== null && maxScore !== ""
+        ? { maxScore: Number(maxScore) }
+        : maxScore === null || maxScore === ""
+          ? { maxScore: null }
+          : {}),
+      ...(assignmentType !== undefined ? { type: normalizedAssignmentType } : {}),
+      ...(acceptedFileTypes !== undefined
+        ? {
+            acceptedFileTypes:
+              Array.isArray(acceptedFileTypes) && acceptedFileTypes.length > 0
+                ? acceptedFileTypes
+                : getAcceptedFileTypesForAssignmentType(normalizedAssignmentType),
+          }
+        : assignmentType !== undefined
+          ? {
+              acceptedFileTypes:
+                getAcceptedFileTypesForAssignmentType(normalizedAssignmentType),
+            }
+          : {}),
+      ...(isGraded !== undefined ? { isGraded: !!isGraded } : {}),
+      ...(allowLateSubmission !== undefined
+        ? { allowLateSubmission: !!allowLateSubmission }
+        : {}),
+      ...(allowResubmission !== undefined
+        ? { allowResubmission: !!allowResubmission }
+        : {}),
+      ...(meetingUrl !== undefined ? { meetingUrl: meetingUrl?.trim() || null } : {}),
+    },
+  });
+
+  clearCachedResponse("assignments:user:");
+  clearCachedResponse("programmes:mine:");
+  clearCachedResponse("programme:detail:");
+  clearCachedResponse(`programmes:managed:${req.user.id}`);
+  clearCachedResponse("programmes:managed:detail:");
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      serializeAssignment(updatedAssignment),
+      "Assignment updated successfully",
+    ),
+  );
+});
+
 const getManagedSubmissions = asyncHandler(async (req, res) => {
   const programmeId =
     typeof req.query.programmeId === "string" ? req.query.programmeId : undefined;
@@ -697,4 +804,5 @@ export {
   getManagedSubmissions,
   getUserAssignments,
   submitAssignment,
+  updateAssignment,
 };

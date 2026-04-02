@@ -15,7 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { downloadCsvReport, exportReportAsPdf } from "@/lib/reportExport";
+import { exportAdminUserDetailPdf } from "@/lib/adminDetailPdfExport";
 
 const roleLabel = (role: AdminUserDetail["role"]) =>
   role === "programme_manager"
@@ -134,84 +134,7 @@ export default function AdminUserDetailPage() {
                 <>
                   <Button
                     variant="outline"
-                    onClick={() => {
-                      const rows =
-                        userDetail.role === "scholar"
-                          ? userDetail.programmeHistory.map((entry) => ({
-                              scholarId: userDetail.id,
-                              name: userDetail.name,
-                              email: userDetail.email,
-                              batch: userDetail.batch || "",
-                              programme: entry.programme.title,
-                              status: entry.status,
-                              overallPercent: entry.overallPercent ?? "",
-                              creditsAwarded: entry.creditsAwarded,
-                              attendancePercent: entry.attendanceSummary.attendancePercent ?? "",
-                              certificateId: entry.certificate?.credentialId || "",
-                            }))
-                          : userDetail.managedProgrammes.map((programme) => ({
-                              managerId: userDetail.id,
-                              name: userDetail.name,
-                              email: userDetail.email,
-                              programme: programme.title,
-                              scholars: programme.scholarCount,
-                              completed: programme.completedScholarCount,
-                              assignments: programme.assignmentCount,
-                              sessions: programme.interactiveSessionCount,
-                              certificates: programme.certificatesIssuedCount,
-                            }));
-
-                      downloadCsvReport(
-                        {
-                          type: "admin-user-detail",
-                          generatedAt: new Date().toISOString(),
-                          rows,
-                        },
-                        `${userDetail.name.replace(/\s+/g, "-").toLowerCase()}-detail`,
-                      );
-                    }}
-                  >
-                    Export CSV
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const rows =
-                        userDetail.role === "scholar"
-                          ? userDetail.programmeHistory.map((entry) => ({
-                              scholarId: userDetail.id,
-                              name: userDetail.name,
-                              email: userDetail.email,
-                              batch: userDetail.batch || "",
-                              programme: entry.programme.title,
-                              status: entry.status,
-                              overallPercent: entry.overallPercent ?? "",
-                              creditsAwarded: entry.creditsAwarded,
-                              attendancePercent: entry.attendanceSummary.attendancePercent ?? "",
-                              certificateId: entry.certificate?.credentialId || "",
-                            }))
-                          : userDetail.managedProgrammes.map((programme) => ({
-                              managerId: userDetail.id,
-                              name: userDetail.name,
-                              email: userDetail.email,
-                              programme: programme.title,
-                              scholars: programme.scholarCount,
-                              completed: programme.completedScholarCount,
-                              assignments: programme.assignmentCount,
-                              sessions: programme.interactiveSessionCount,
-                              certificates: programme.certificatesIssuedCount,
-                            }));
-
-                      exportReportAsPdf(
-                        {
-                          type: "admin-user-detail",
-                          generatedAt: new Date().toISOString(),
-                          rows,
-                        },
-                        `${userDetail.name} details`,
-                        `${userDetail.name.replace(/\s+/g, "-").toLowerCase()}-detail`,
-                      );
-                    }}
+                    onClick={() => exportAdminUserDetailPdf(userDetail)}
                   >
                     Export PDF
                   </Button>

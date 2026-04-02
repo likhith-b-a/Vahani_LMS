@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, BookOpen, GraduationCap, Plus, Users } from "lucide-react";
+import { ArrowLeft, BookOpen, Download, GraduationCap, Plus, Users } from "lucide-react";
 import {
   assignScholarsToProgramme,
   getAdminProgrammeDetail,
@@ -25,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { exportAdminProgrammeDetailPdf } from "@/lib/adminDetailPdfExport";
 
 const formatDate = (value?: string | null) =>
   value
@@ -153,6 +154,17 @@ export default function AdminProgrammeDetailPage() {
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to programmes page
             </Button>
+            {programme && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => exportAdminProgrammeDetailPdf(programme)}
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Export PDF
+                </Button>
+              </>
+            )}
 
             {loading ? (
               <Card>

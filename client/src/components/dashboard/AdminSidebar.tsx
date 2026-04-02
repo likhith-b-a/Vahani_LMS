@@ -17,6 +17,7 @@ const primaryNav = [
   { icon: BarChart3, label: "Overview", value: "overview" },
   { icon: Users, label: "Users", value: "users" },
   { icon: BookOpen, label: "Programmes", value: "programmes" },
+  { icon: BarChart3, label: "Analytics", value: "analytics" },
   { icon: BellRing, label: "Announcements", value: "announcements" },
   { icon: Users, label: "Queries", value: "queries" },
   { icon: BarChart3, label: "Reports", value: "reports" },

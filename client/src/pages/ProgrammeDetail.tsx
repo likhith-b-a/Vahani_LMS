@@ -7,6 +7,7 @@ import {
   CalendarDays,
   ClipboardCheck,
   ExternalLink,
+  Link as LinkIcon,
   Play,
   Users,
 } from "lucide-react";
@@ -24,6 +25,29 @@ function getPendingAssignments(programme: Programme) {
 
 function getSubmittedAssignments(programme: Programme) {
   return programme.assignments.filter((assignment) => assignment.submissions.length > 0);
+}
+
+function getSessionAttendanceLabel(session: NonNullable<Programme["interactiveSessions"]>[number]) {
+  const attendance = session.attendances?.[0];
+
+  if (!attendance) {
+    return {
+      label: new Date(session.scheduledAt).getTime() > Date.now() ? "Upcoming" : "Not marked",
+      className: "bg-yellow-500/10 text-yellow-700",
+    };
+  }
+
+  if (attendance.status === "absent") {
+    return {
+      label: "Absent",
+      className: "bg-red-500/10 text-red-600",
+    };
+  }
+
+  return {
+    label: "Present",
+    className: "bg-green-500/10 text-green-600",
+  };
 }
 
 export default function ProgrammeDetail() {
@@ -86,6 +110,11 @@ export default function ProgrammeDetail() {
         icon: ClipboardCheck,
       },
       {
+        label: "Interactive Sessions",
+        value: String(programme.interactiveSessions?.length || 0),
+        icon: CalendarDays,
+      },
+      {
         label: "Enrolled Since",
         value: format(new Date(programme.enrolledAt || programme.createdAt), "dd MMM yyyy"),
         icon: CalendarDays,
@@ -102,19 +131,32 @@ export default function ProgrammeDetail() {
           <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6 lg:p-8">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <Button variant="ghost" className="mb-2 px-0" onClick={() => navigate("/my-programmes")}>
+                <Button
+                  variant="ghost"
+                  className="mb-2 px-0"
+                  onClick={() => navigate("/my-programmes")}
+                >
                   <ArrowLeft size={16} className="mr-2" />
                   Back to My Programmes
                 </Button>
                 <h1 className="text-2xl font-bold tracking-tight">
-                  {loading ? "Loading programme..." : programme?.title || "Programme Details"}
+                  {loading
+                    ? "Loading programme..."
+                    : programme?.title || "Programme Details"}
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  View assignments, spotlight updates, study materials, and meeting links in one place.
+                  View assignments, interactive sessions, spotlight updates,
+                  study materials, and meeting links in one place.
                 </p>
               </div>
               {programme && (
-                <Button onClick={() => navigate(`/assignments?programmeId=${encodeURIComponent(programme.id)}`)}>
+                <Button
+                  onClick={() =>
+                    navigate(
+                      `/assignments?programmeId=${encodeURIComponent(programme.id)}`,
+                    )
+                  }
+                >
                   <Play size={16} className="mr-2" />
                   Open Assignments
                 </Button>
@@ -154,22 +196,27 @@ export default function ProgrammeDetail() {
                           )}
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          {programme.description || "No programme description available."}
+                          {programme.description ||
+                            "No programme description available."}
                         </p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
 
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                   {stats.map((stat) => (
                     <Card key={stat.label}>
                       <CardContent className="p-4">
                         <div className="mb-2 flex items-center justify-between">
-                          <span className="text-xs text-muted-foreground">{stat.label}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {stat.label}
+                          </span>
                           <stat.icon size={16} className="text-vahani-blue" />
                         </div>
-                        <p className="text-lg font-semibold text-foreground">{stat.value}</p>
+                        <p className="text-lg font-semibold text-foreground">
+                          {stat.value}
+                        </p>
                       </CardContent>
                     </Card>
                   ))}
@@ -191,47 +238,58 @@ export default function ProgrammeDetail() {
                 )}
 
                 <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Assignments</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {programme.assignments.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">
-                          No assignments have been published yet.
-                        </p>
-                      ) : (
-                        programme.assignments.map((assignment) => (
-                          <div
-                            key={assignment.id}
-                            className="rounded-lg border border-border p-4"
-                          >
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="font-medium text-foreground">{assignment.title}</p>
-                              <Badge
-                                className={
-                                  assignment.submissions.length
-                                    ? "bg-blue-500/10 text-blue-600"
-                                    : "bg-yellow-500/10 text-yellow-700"
-                                }
-                              >
-                                {assignment.submissions.length ? "Submitted" : "Pending"}
-                              </Badge>
-                              <Badge variant="outline">{assignment.assignmentType}</Badge>
-                            </div>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                              {assignment.description}
-                            </p>
-                            <p className="mt-2 text-xs text-muted-foreground">
-                              Due {format(new Date(assignment.dueDate), "dd MMM yyyy, hh:mm a")} • Max score {assignment.maxScore}
-                            </p>
-                          </div>
-                        ))
-                      )}
-                    </CardContent>
-                  </Card>
-
                   <div className="space-y-6">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Assignments</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {programme.assignments.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            No assignments have been published yet.
+                          </p>
+                        ) : (
+                          programme.assignments.map((assignment) => (
+                            <div
+                              key={assignment.id}
+                              className="rounded-lg border border-border p-4"
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-medium text-foreground">
+                                  {assignment.title}
+                                </p>
+                                <Badge
+                                  className={
+                                    assignment.submissions.length
+                                      ? "bg-blue-500/10 text-blue-600"
+                                      : "bg-yellow-500/10 text-yellow-700"
+                                  }
+                                >
+                                  {assignment.submissions.length
+                                    ? "Submitted"
+                                    : "Pending"}
+                                </Badge>
+                                <Badge variant="outline">
+                                  {assignment.assignmentType}
+                                </Badge>
+                              </div>
+                              <p className="mt-1 text-sm text-muted-foreground">
+                                {assignment.description}
+                              </p>
+                              <p className="mt-2 text-xs text-muted-foreground">
+                                Due{" "}
+                                {format(
+                                  new Date(assignment.dueDate),
+                                  "dd MMM yyyy, hh:mm a",
+                                )}{" "}
+                                • Max score {assignment.maxScore}
+                              </p>
+                            </div>
+                          ))
+                        )}
+                      </CardContent>
+                    </Card>
+
                     <Card>
                       <CardHeader>
                         <CardTitle>Study Materials</CardTitle>
@@ -253,6 +311,89 @@ export default function ProgrammeDetail() {
                         ) : (
                           <p className="text-sm text-muted-foreground">
                             No study materials added yet.
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <div className="space-y-6">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Interactive Sessions</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {programme.interactiveSessions?.length ? (
+                          programme.interactiveSessions.map((session) => {
+                            const attendance = session.attendances?.[0];
+                            const attendanceBadge =
+                              getSessionAttendanceLabel(session);
+
+                            return (
+                              <div
+                                key={session.id}
+                                className="rounded-lg border border-border p-4"
+                              >
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <p className="font-medium text-foreground">
+                                        {session.title}
+                                      </p>
+                                      <Badge
+                                        className={attendanceBadge.className}
+                                      >
+                                        {attendanceBadge.label}
+                                      </Badge>
+                                    </div>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                      {session.description ||
+                                        "No session description available."}
+                                    </p>
+                                  </div>
+                                  <Badge variant="outline">
+                                    {format(
+                                      new Date(session.scheduledAt),
+                                      "dd MMM yyyy, hh:mm a",
+                                    )}
+                                  </Badge>
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                                  <span>
+                                    Duration {session.durationMinutes || 0} mins
+                                  </span>
+                                  <span>Max marks {session.maxScore ?? 0}</span>
+                                  <span>
+                                    Attendance{" "}
+                                    {attendance?.status
+                                      ? attendance.status
+                                      : "Pending"}
+                                  </span>
+                                  <span>
+                                    Score{" "}
+                                    {attendance?.score !== null &&
+                                    attendance?.score !== undefined
+                                      ? `${attendance.score}/${session.maxScore ?? 0}`
+                                      : "Not marked"}
+                                  </span>
+                                </div>
+                                {session.meetingUrl ? (
+                                  <a
+                                    href={session.meetingUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="mt-3 inline-flex items-center gap-2 text-sm text-vahani-blue underline-offset-4 hover:underline"
+                                  >
+                                    <LinkIcon size={14} />
+                                    Join session link
+                                  </a>
+                                ) : null}
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            No interactive sessions scheduled yet.
                           </p>
                         )}
                       </CardContent>

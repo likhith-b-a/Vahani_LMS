@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { format, formatDistanceToNowStrict, isBefore, isWithinInterval, addDays } from "date-fns";
+import {
+  addDays,
+  format,
+  formatDistanceStrict,
+  formatDistanceToNowStrict,
+  isBefore,
+  isWithinInterval,
+} from "date-fns";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -110,6 +117,33 @@ function mergeProgrammeAssignments(
   });
 }
 
+function getSubmissionTimingMeta(assignment: EnrichedAssignment) {
+  if (!assignment.submission?.submittedAt) {
+    return null;
+  }
+
+  const dueDate = new Date(assignment.dueDate);
+  const submittedAt = new Date(assignment.submission.submittedAt);
+
+  if (Number.isNaN(dueDate.getTime()) || Number.isNaN(submittedAt.getTime())) {
+    return null;
+  }
+
+  const diffLabel = formatDistanceStrict(submittedAt, dueDate);
+
+  if (submittedAt.getTime() > dueDate.getTime()) {
+    return {
+      label: `Overdue by ${diffLabel}`,
+      className: "bg-red-500/15 text-red-600 border-red-500/30",
+    };
+  }
+
+  return {
+    label: `Submitted ${diffLabel} early`,
+    className: "bg-green-500/15 text-green-600 border-green-500/30",
+  };
+}
+
 function AssignmentCard({
   assignment,
   onSubmit,
@@ -119,6 +153,7 @@ function AssignmentCard({
 }) {
   const badge = getAssignmentBadge(assignment);
   const requiresAttendance = assignment.assignmentType === "interactive_session";
+  const submissionTiming = getSubmissionTimingMeta(assignment);
 
   return (
     <Card className="border-border/80">
@@ -133,6 +168,9 @@ function AssignmentCard({
               <Badge variant="outline" className="capitalize">
                 {assignment.assignmentType}
               </Badge>
+              {submissionTiming ? (
+                <Badge className={submissionTiming.className}>{submissionTiming.label}</Badge>
+              ) : null}
             </div>
 
             <p className="text-sm text-muted-foreground">
@@ -162,7 +200,8 @@ function AssignmentCard({
               )}
               {assignment.submission?.submittedAt && (
                 <span>
-                  Submitted {format(new Date(assignment.submission.submittedAt), "dd MMM yyyy")}
+                  Last submission{" "}
+                  {format(new Date(assignment.submission.submittedAt), "dd MMM yyyy, hh:mm a")}
                 </span>
               )}
               {assignment.submission?.score !== null &&
