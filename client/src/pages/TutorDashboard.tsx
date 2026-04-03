@@ -17,14 +17,18 @@ import { sendRoleBasedEmail, type EmailRecipient } from "@/api/emails";
 import {
   addProgrammeMeetingLink,
   addProgrammeResource,
+  bulkEvaluateInteractiveSession,
   createProgrammeAssignment,
   createInteractiveSession,
+  downloadInteractiveSessionBulkTemplate,
+  downloadProgrammeAssignmentBulkTemplate,
   evaluateProgrammeSubmission,
   getManagedAssignmentSubmissions,
   getManagedProgrammeDetail,
   getManagedProgrammes,
   getManagedProgrammeReport,
   markInteractiveSessionAttendance,
+  bulkEvaluateProgrammeAssignment,
   type ProgrammeManagerReportResponse,
   type ManagedProgramme,
   type ManagedProgrammeSummary,
@@ -260,6 +264,7 @@ export default function TutorDashboard() {
   const [emailRecipients, setEmailRecipients] = useState<EmailRecipient[]>([]);
   const [emailRecipientLabel, setEmailRecipientLabel] = useState("selected scholars");
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [bulkEvaluationProcessing, setBulkEvaluationProcessing] = useState(false);
 
   useEffect(() => {
     try {
@@ -1114,6 +1119,82 @@ export default function TutorDashboard() {
     }
   };
 
+  const handleDownloadBulkEvaluationSheet = async () => {
+    if (!selectedAssignmentId) {
+      toast({
+        title: "Select an item first",
+        description: "Choose an assignment or interactive session before downloading the sheet.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const blob =
+        selectedAssignmentType === "session"
+          ? await downloadInteractiveSessionBulkTemplate(selectedSessionKey)
+          : await downloadProgrammeAssignmentBulkTemplate(selectedAssignmentKey);
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download =
+        selectedAssignmentType === "session"
+          ? `${selectedEvaluationSession?.title || "interactive-session"}-marks-template.xlsx`
+          : `${submissions[0]?.assignment.title || "assignment"}-marks-template.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast({
+        title: "Unable to download marks sheet",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleUploadBulkEvaluationSheet = async (file: File) => {
+    if (!selectedAssignmentId || !selectedProgramme) {
+      toast({
+        title: "Select an item first",
+        description: "Choose an assignment or interactive session before uploading marks.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setBulkEvaluationProcessing(true);
+
+      if (selectedAssignmentType === "session") {
+        await bulkEvaluateInteractiveSession(selectedSessionKey, file);
+        await loadProgrammes(selectedProgramme.id);
+        toast({
+          title: "Session marks updated",
+          description: "The uploaded sheet has been applied to present scholars.",
+        });
+      } else {
+        await bulkEvaluateProgrammeAssignment(selectedAssignmentKey, file);
+        await loadSubmissions(selectedProgramme.id, selectedAssignmentKey);
+        await loadProgrammes(selectedProgramme.id);
+        toast({
+          title: "Assignment marks updated",
+          description: "The uploaded sheet has been applied to submitted scholars.",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Unable to upload marks sheet",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setBulkEvaluationProcessing(false);
+    }
+  };
+
   const handleReplyToQuery = async () => {
     if (!selectedQuery || !queryReplyDraft.trim()) {
       toast({
@@ -1470,6 +1551,9 @@ export default function TutorDashboard() {
                         }));
                   openEmailDialogForRecipients(recipients, "currently visible scholars");
                 }}
+                onDownloadBulkSheet={() => void handleDownloadBulkEvaluationSheet()}
+                onUploadBulkSheet={(file) => void handleUploadBulkEvaluationSheet(file)}
+                bulkProcessing={bulkEvaluationProcessing}
                 attendanceSessionMaxScore={selectedEvaluationSession?.maxScore || 0}
                 onSessionStatusChange={(userId, status) => {
                   setAttendanceDrafts((current) => ({

@@ -80,7 +80,7 @@ export const exportReportAsPdf = (
   </body>
 </html>`;
 
-  const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1200,height=800");
+  const printWindow = window.open("", "_blank", "width=1200,height=800");
   if (!printWindow) return;
   printWindow.document.open();
   printWindow.document.write(html);

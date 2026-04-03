@@ -2,6 +2,43 @@ import db from "../db.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/AsyncHandler.js";
+import { getWishlistAiOverview } from "../utils/wishlistInsights.js";
+
+const getWishlistEntriesForAdmin = async (batch = "") =>
+  batch && batch !== "all"
+    ? db.$queryRaw`
+        SELECT
+          pw.id,
+          pw."requestedTitle",
+          pw.note,
+          pw."createdAt",
+          u.id AS "userId",
+          u.name AS "userName",
+          u.email AS "userEmail",
+          u."phoneNumber" AS "userPhoneNumber",
+          u.batch AS "userBatch"
+        FROM "ProgrammeWishlist" pw
+        INNER JOIN "User" u
+          ON u.id = pw."userId"
+        WHERE u.batch = ${batch}
+        ORDER BY pw."createdAt" ASC
+      `
+    : db.$queryRaw`
+        SELECT
+          pw.id,
+          pw."requestedTitle",
+          pw.note,
+          pw."createdAt",
+          u.id AS "userId",
+          u.name AS "userName",
+          u.email AS "userEmail",
+          u."phoneNumber" AS "userPhoneNumber",
+          u.batch AS "userBatch"
+        FROM "ProgrammeWishlist" pw
+        INNER JOIN "User" u
+          ON u.id = pw."userId"
+        ORDER BY pw."createdAt" ASC
+      `;
 
 const getMyWishlist = asyncHandler(async (req, res) => {
   const wishlist = await db.$queryRaw`
@@ -112,41 +149,7 @@ const removeFromWishlist = asyncHandler(async (req, res) => {
 
 const getAdminWishlist = asyncHandler(async (_req, res) => {
   const batch = typeof _req.query.batch === "string" ? _req.query.batch : "";
-  const wishlist =
-    batch && batch !== "all"
-      ? await db.$queryRaw`
-          SELECT
-            pw.id,
-            pw."requestedTitle",
-            pw.note,
-            pw."createdAt",
-            u.id AS "userId",
-            u.name AS "userName",
-            u.email AS "userEmail",
-            u."phoneNumber" AS "userPhoneNumber",
-            u.batch AS "userBatch"
-          FROM "ProgrammeWishlist" pw
-          INNER JOIN "User" u
-            ON u.id = pw."userId"
-          WHERE u.batch = ${batch}
-          ORDER BY pw."createdAt" ASC
-        `
-      : await db.$queryRaw`
-          SELECT
-            pw.id,
-            pw."requestedTitle",
-            pw.note,
-            pw."createdAt",
-            u.id AS "userId",
-            u.name AS "userName",
-            u.email AS "userEmail",
-            u."phoneNumber" AS "userPhoneNumber",
-            u.batch AS "userBatch"
-          FROM "ProgrammeWishlist" pw
-          INNER JOIN "User" u
-            ON u.id = pw."userId"
-          ORDER BY pw."createdAt" ASC
-        `;
+  const wishlist = await getWishlistEntriesForAdmin(batch);
 
   const grouped = new Map();
 
@@ -183,4 +186,28 @@ const getAdminWishlist = asyncHandler(async (_req, res) => {
   );
 });
 
-export { addToWishlist, getAdminWishlist, getMyWishlist, removeFromWishlist };
+const getAdminWishlistOverview = asyncHandler(async (req, res) => {
+  const batch = typeof req.query.batch === "string" ? req.query.batch : "";
+  const wishlist = await getWishlistEntriesForAdmin(batch);
+  const overview = await getWishlistAiOverview(wishlist);
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        batch: batch || "all",
+        wishlistCount: wishlist.length,
+        ...overview,
+      },
+      "AI wishlist overview generated successfully",
+    ),
+  );
+});
+
+export {
+  addToWishlist,
+  getAdminWishlist,
+  getAdminWishlistOverview,
+  getMyWishlist,
+  removeFromWishlist,
+};

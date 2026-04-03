@@ -1,6 +1,6 @@
 import { formatDistanceStrict } from "date-fns";
 import { type ChangeEvent } from "react";
-import { Eye, Mail } from "lucide-react";
+import { Download, Eye, Mail, Upload } from "lucide-react";
 import { type ManagedInteractiveSession, type ManagedProgrammeAssignment, type ManagedSubmission } from "@/api/programmeManager";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -76,6 +76,9 @@ interface ManagerEvaluationSectionProps {
   onOpenSubmissionFile: (submission: ManagedSubmission) => void;
   onEmailPendingAssignments: () => void;
   onEmailVisibleScholars: () => void;
+  onDownloadBulkSheet: () => void;
+  onUploadBulkSheet: (file: File) => void;
+  bulkProcessing: boolean;
   attendanceSessionMaxScore: number;
   onSessionStatusChange: (userId: string, status: "present" | "absent") => void;
   onSessionScoreChange: (userId: string, value: string) => void;
@@ -107,6 +110,9 @@ export function ManagerEvaluationSection({
   onOpenSubmissionFile,
   onEmailPendingAssignments,
   onEmailVisibleScholars,
+  onDownloadBulkSheet,
+  onUploadBulkSheet,
+  bulkProcessing,
   attendanceSessionMaxScore,
   onSessionStatusChange,
   onSessionScoreChange,
@@ -235,6 +241,28 @@ export function ManagerEvaluationSection({
               </div>
 
               <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={onDownloadBulkSheet}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Download marks sheet
+                </Button>
+                <Button asChild variant="outline" size="sm" disabled={bulkProcessing}>
+                  <label className="cursor-pointer">
+                    <Upload className="mr-2 h-4 w-4" />
+                    Upload filled sheet
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls"
+                      className="hidden"
+                      onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                        const file = event.target.files?.[0];
+                        if (file) {
+                          onUploadBulkSheet(file);
+                        }
+                        event.target.value = "";
+                      }}
+                    />
+                  </label>
+                </Button>
                 {selectedAssignmentType === "assignment" ? (
                   <Button variant="outline" size="sm" onClick={onEmailPendingAssignments}>
                     <Mail className="mr-2 h-4 w-4" />

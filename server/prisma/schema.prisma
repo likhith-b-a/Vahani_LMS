@@ -73,6 +73,13 @@ enum AttendanceStatus {
   absent
 }
 
+enum SelfEnrollmentRequestStatus {
+  pending
+  accepted
+  rejected
+  withdrawn
+}
+
 model User {
   id                        String                  @id @default(uuid())
   name                      String
@@ -81,6 +88,7 @@ model User {
   role                      UserRole                @default(scholar)
   refreshToken              String?
   batch                     String?
+  gender                    String?
   creditsEarned             Int                     @default(0)
   phoneNumber               String?
   createdAt                 DateTime                @default(now())
@@ -105,6 +113,7 @@ model User {
   updatedSettings           SystemSetting[]         @relation("SettingsUpdatedBy")
   createdInteractiveSessions InteractiveSession[]   @relation("InteractiveSessionCreator")
   interactiveSessionAttendances InteractiveSessionAttendance[]
+  selfEnrollmentRequests    SelfEnrollmentRequest[]
 }
 
 model Programme {
@@ -113,6 +122,11 @@ model Programme {
   description               String?
   credits                   Int?
   selfEnrollmentEnabled     Boolean                 @default(false)
+  selfEnrollmentSeatLimit   Int?
+  selfEnrollmentOpensAt     DateTime?
+  selfEnrollmentClosesAt    DateTime?
+  selfEnrollmentAllowedBatches String[]            @default([])
+  selfEnrollmentAllowedGenders String[]            @default([])
   spotlightTitle            String?
   spotlightMessage          String?
   resultsPublishedAt        DateTime?
@@ -131,6 +145,7 @@ model Programme {
   certificates              Certificate[]
   queries                   SupportQuery[]
   interactiveSessions       InteractiveSession[]
+  selfEnrollmentRequests    SelfEnrollmentRequest[]
 }
 
 model Enrollment {
@@ -425,4 +440,24 @@ model SystemSetting {
   updatedById               String?
 
   updatedBy                 User?                   @relation("SettingsUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+}
+
+model SelfEnrollmentRequest {
+  id                        String                      @id @default(uuid())
+  status                    SelfEnrollmentRequestStatus @default(pending)
+  requestedAt               DateTime                    @default(now())
+  decidedAt                 DateTime?
+  decisionReason            String?
+  createdAt                 DateTime                    @default(now())
+  updatedAt                 DateTime                    @updatedAt
+
+  programmeId               String
+  userId                    String
+
+  programme                 Programme                   @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  user                      User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([programmeId, userId])
+  @@index([programmeId, status, requestedAt])
+  @@index([userId, status, requestedAt])
 }

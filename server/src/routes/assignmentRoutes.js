@@ -5,6 +5,7 @@ import { uploadMemory } from "../middlewares/multer.js";
 import {
   bulkEvaluateSubmissions,
   createAssignment,
+  downloadBulkEvaluationTemplate,
   evaluateSubmission,
   getAssignmentsByProgramme,
   getManagedSubmissions,
@@ -46,6 +47,12 @@ router.post(
   isAuthorized("programme_manager"),
   uploadMemory.single("file"),
   bulkEvaluateSubmissions,
+);
+router.get(
+  "/managed/assignments/:assignmentId/bulk-template",
+  isAuthenticated,
+  isAuthorized("programme_manager"),
+  downloadBulkEvaluationTemplate,
 );
 router.get("/:programmeId", isAuthenticated, getAssignmentsByProgramme);
 router.post(

@@ -126,18 +126,28 @@ export interface DiscoverableProgramme {
   createdAt: string;
   programmeManager: ProgrammeManager | null;
   selfEnrollmentEnabled: boolean;
+  selfEnrollmentSeatLimit?: number | null;
+  selfEnrollmentOpensAt?: string | null;
+  selfEnrollmentClosesAt?: string | null;
+  allowedBatches: string[];
+  allowedGenders: string[];
   spotlightTitle: string;
   spotlightMessage: string;
   assignmentsCount: number;
   scholarsCount: number;
   enrolled: boolean;
+  requestStatus?: "pending" | "accepted" | "rejected" | "withdrawn" | null;
+  requestDecisionReason?: string;
+  requestRequestedAt?: string | null;
+  requestDecidedAt?: string | null;
+  eligibleToRequest: boolean;
+  eligibilityMessage?: string;
 }
 
 export const getDiscoverableProgrammes = async () => {
   return fetchWithAuth("/programmes/discover", {
     method: "GET",
-    cacheTtlMs: 45_000,
-    cacheKey: "scholar:discover-programmes",
+    bypassCache: true,
   });
 };
 

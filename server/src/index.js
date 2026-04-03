@@ -3,6 +3,8 @@ dotenv.config();
 
 import { app } from "./app.js";
 import { db } from "./db.js";
+import { scheduleAssignmentReminderJob } from "./jobs/assignmentReminderScheduler.js";
+import { scheduleSelfEnrollmentProcessing } from "./jobs/selfEnrollmentScheduler.js";
 import { logger } from "./utils/logger.js";
 
 async function startServer() {
@@ -16,6 +18,9 @@ async function startServer() {
         port,
         nodeEnv: process.env.NODE_ENV || "development",
       });
+
+      scheduleAssignmentReminderJob();
+      scheduleSelfEnrollmentProcessing();
     });
   } catch (error) {
     logger.error("Database connection failed", {

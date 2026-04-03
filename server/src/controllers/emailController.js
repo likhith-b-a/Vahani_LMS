@@ -106,6 +106,8 @@ const sendRoleBasedEmail = asyncHandler(async (req, res) => {
     subject,
     body,
     attachments,
+    senderName: req.user.name,
+    senderEmail: req.user.email,
   });
 
   return res.status(200).json(

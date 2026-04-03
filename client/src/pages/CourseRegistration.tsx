@@ -6,7 +6,6 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { useToast } from "../hooks/use-toast";
-import { useAuth } from "../contexts/AuthContext";
 import {
   getDiscoverableProgrammes,
   selfEnrollInProgramme,
@@ -15,7 +14,6 @@ import {
 
 export default function CourseRegistration() {
   const { toast } = useToast();
-  const { user, setAuthData } = useAuth();
   const [search, setSearch] = useState("");
   const [programmes, setProgrammes] = useState<DiscoverableProgramme[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,34 +61,13 @@ export default function CourseRegistration() {
       setProgrammes((current) =>
         current.map((programme) =>
           programme.id === programmeId
-            ? { ...programme, enrolled: true }
+            ? { ...programme, requestStatus: "pending", eligibleToRequest: false, eligibilityMessage: "Your request has already been submitted." }
             : programme,
         ),
       );
-      const enrolledProgramme = programmes.find((programme) => programme.id === programmeId);
-      if (user && enrolledProgramme) {
-        setAuthData({
-          ...user,
-          enrollments: [
-            ...(user.enrollments || []),
-            {
-              id: programmeId,
-              title: enrolledProgramme.title,
-              createdAt: enrolledProgramme.createdAt,
-              description: enrolledProgramme.description || "",
-              status: "active",
-              programmeManagerId: enrolledProgramme.programmeManager?.id || "",
-              programmeManager: {
-                name: enrolledProgramme.programmeManager?.name || "Unassigned",
-                email: enrolledProgramme.programmeManager?.email || "",
-              },
-            },
-          ],
-        });
-      }
       toast({
-        title: "Programme registered",
-        description: "The programme was added to your enrolled programmes.",
+        title: "Request submitted",
+        description: "Your enrollment request has been recorded for FCFS processing.",
       });
     } catch (error) {
       toast({
@@ -181,6 +158,12 @@ export default function CourseRegistration() {
                     <Card key={programme.id} className="overflow-hidden">
                       <div className="h-1.5 bg-gradient-to-r from-vahani-blue to-accent" />
                       <CardContent className="space-y-4 p-5">
+                        {(() => {
+                          const allowedBatches = programme.allowedBatches || [];
+                          const allowedGenders = programme.allowedGenders || [];
+
+                          return (
+                            <>
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <h3 className="font-bold text-foreground">{programme.title}</h3>
@@ -207,22 +190,64 @@ export default function CourseRegistration() {
                         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                           <span>{programme.assignmentsCount} assignments</span>
                           <span>{programme.scholarsCount} scholars</span>
+                          {programme.selfEnrollmentSeatLimit ? (
+                            <span>{programme.selfEnrollmentSeatLimit} seats</span>
+                          ) : null}
                           <span>
                             Manager: {programme.programmeManager?.name || "TBA"}
                           </span>
                         </div>
+                        {(allowedBatches.length > 0 || allowedGenders.length > 0) && (
+                          <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                            {allowedBatches.length > 0 ? (
+                              <p>Eligible batches: {allowedBatches.join(", ")}</p>
+                            ) : null}
+                            {allowedGenders.length > 0 ? (
+                              <p>Eligible genders: {allowedGenders.join(", ")}</p>
+                            ) : null}
+                          </div>
+                        )}
+                        {programme.requestStatus ? (
+                          <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                            <p className="font-medium text-foreground">
+                              Request status: {programme.requestStatus}
+                            </p>
+                            {programme.requestDecisionReason ? (
+                              <p className="mt-1">{programme.requestDecisionReason}</p>
+                            ) : null}
+                          </div>
+                        ) : programme.eligibilityMessage ? (
+                          <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                            {programme.eligibilityMessage}
+                          </div>
+                        ) : null}
 
                         <Button
                           className="w-full bg-accent text-accent-foreground hover:bg-accent/90"
-                          disabled={programme.enrolled || submittingId === programme.id}
+                          disabled={
+                            programme.enrolled ||
+                            !programme.eligibleToRequest ||
+                            submittingId === programme.id
+                          }
                           onClick={() => void handleEnroll(programme.id)}
                         >
                           {programme.enrolled
                             ? "Already Registered"
+                            : programme.requestStatus === "pending"
+                              ? "Request Submitted"
+                              : programme.requestStatus === "accepted"
+                                ? "Request Accepted"
+                                : programme.requestStatus === "rejected"
+                                  ? "Request Closed"
+                                  : !programme.eligibleToRequest
+                                    ? "Not Eligible"
                             : submittingId === programme.id
-                              ? "Registering..."
-                              : "Register for Programme"}
+                              ? "Submitting..."
+                              : "Submit enrollment request"}
                         </Button>
+                            </>
+                          );
+                        })()}
                       </CardContent>
                     </Card>
                   ))}

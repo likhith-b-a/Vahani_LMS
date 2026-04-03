@@ -19,6 +19,7 @@ import {
   getAdminUserDetail,
   getAdminUsers,
   getSystemSettings,
+  processAdminProgrammeEnrollmentRequests,
   removeScholarFromProgramme,
   updateAdminProgramme,
   updateAdminUser,
@@ -43,6 +44,7 @@ router.get("/programmes", getAdminProgrammes);
 router.get("/programmes/:programmeId", getAdminProgrammeDetail);
 router.post("/programmes", createAdminProgramme);
 router.patch("/programmes/:programmeId", updateAdminProgramme);
+router.post("/programmes/:programmeId/process-enrollment-requests", processAdminProgrammeEnrollmentRequests);
 router.delete("/programmes/:programmeId", deleteAdminProgramme);
 router.post("/programmes/:programmeId/enrollments", assignScholarsToProgramme);
 router.delete(

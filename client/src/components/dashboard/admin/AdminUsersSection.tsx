@@ -51,6 +51,7 @@ type UserSortKey =
   | "email"
   | "role"
   | "batch"
+  | "gender"
   | "phoneNumber"
   | "activeProgrammes"
   | "creditsEarned"
@@ -116,6 +117,8 @@ export function AdminUsersSection({
           return roleLabel(member.role).toLowerCase();
         case "batch":
           return (member.batch || "").toLowerCase();
+        case "gender":
+          return (member.gender || "").toLowerCase();
         case "phoneNumber":
           return member.phoneNumber || "";
         case "activeProgrammes":
@@ -353,6 +356,9 @@ export function AdminUsersSection({
                   </TableHead>
                 )}
                 <TableHead>
+                  <SortButton columnKey="gender" label="Gender" />
+                </TableHead>
+                <TableHead>
                   <SortButton columnKey="phoneNumber" label="Phone" />
                 </TableHead>
                 {showScholarColumns && (
@@ -424,6 +430,9 @@ export function AdminUsersSection({
                       {member.batch || "--"}
                     </TableCell>
                   )}
+                  <TableCell className="text-muted-foreground">
+                    {member.gender || "--"}
+                  </TableCell>
                   <TableCell className="text-muted-foreground">
                     {member.phoneNumber || "--"}
                   </TableCell>

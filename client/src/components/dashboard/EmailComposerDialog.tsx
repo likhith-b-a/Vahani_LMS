@@ -74,7 +74,8 @@ export function EmailComposerDialog({
         <DialogHeader>
           <DialogTitle>Compose email</DialogTitle>
           <DialogDescription>
-            Sending to {recipientLabel}. Add CC, BCC, body text, and attachments before sending.
+            Sending to {recipientLabel}. The message will be sent via Vahani LMS and
+            replies will come back to your account email.
           </DialogDescription>
         </DialogHeader>
 
@@ -82,6 +83,9 @@ export function EmailComposerDialog({
           <div className="rounded-2xl border border-border bg-muted/30 p-4">
             <p className="text-sm font-medium text-foreground">
               {recipients.length} recipient{recipients.length === 1 ? "" : "s"}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Sender identity: your name via Vahani LMS
             </p>
             <div className="mt-2 max-h-28 space-y-1 overflow-y-auto text-sm text-muted-foreground">
               {recipients.slice(0, 12).map((recipient) => (
@@ -166,7 +170,7 @@ export function EmailComposerDialog({
             disabled={sending || recipients.length === 0 || !subject.trim() || !body.trim()}
           >
             <Send className="mr-2 h-4 w-4" />
-            {sending ? "Sending..." : "Send email"}
+            {sending ? "Sending..." : "Send via Vahani LMS"}
           </Button>
         </DialogFooter>
       </DialogContent>

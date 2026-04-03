@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Eye, EyeOff, GraduationCap, Shield, Mail, ArrowLeft, BookOpen } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Mail } from "lucide-react";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { Label } from "../components/ui/label";
 import { Checkbox } from "../components/ui/checkbox";
-import { useAuth, type UserRole } from "../contexts/AuthContext";
+import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../hooks/use-toast";
 import vahaniLogo from "@/assets/vahani-logo.png";
 import {
@@ -15,11 +15,17 @@ import {
   verifyPasswordResetOtp,
 } from "../api/auth";
 
+const roleHints = [
+  { emoji: "🎓", label: "Scholar" },
+  { emoji: "🧑‍🏫", label: "Programme manager" },
+  { emoji: "🛡️", label: "Admin" },
+];
+
 export default function Login() {
   const { setAuthData } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [role, setRole] = useState<UserRole>("scholar");
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -27,7 +33,6 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Forgot password state
   const [forgotMode, setForgotMode] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotOtp, setForgotOtp] = useState("");
@@ -41,30 +46,16 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!email.trim() || !password.trim()) return;
 
     try {
       setLoading(true);
       setError("");
 
-      console.log("🔐 Logging in with email:", email);
       const res = await loginUser(email, password);
-
-      console.log("✅ Login response received:", res);
       const userData = res.data.user;
 
-      if (role !== userData.role) {
-        throw new Error(
-          `This account belongs to the ${String(userData.role).replaceAll("_", " ")} role. Switch the selected role and try again.`,
-        );
-      }
-
-      console.log("📦 Extracted user data:", userData);
-
-      // Save to context and localStorage
       setAuthData(userData);
-      console.log("💾 Data saved to context and localStorage");
 
       const redirectMap: Record<string, string> = {
         admin: "/admin",
@@ -79,10 +70,9 @@ export default function Login() {
         description: `Welcome back, ${userData.name}!`,
       });
 
-      console.log("🚀 Redirecting to:", redirectMap[userData.role] || "/dashboard");
       navigate(redirectMap[userData.role] || "/dashboard");
     } catch (err) {
-      console.error("❌ Login error:", err);
+      console.error("Login error:", err);
       const errorMessage = err instanceof Error ? err.message : "Login failed";
       setError(errorMessage);
       toast({
@@ -98,6 +88,7 @@ export default function Login() {
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!forgotEmail.trim()) return;
+
     setForgotLoading(true);
     setForgotError("");
 
@@ -133,6 +124,7 @@ export default function Login() {
           title: "Password Reset Successful",
           description: "You can now sign in with your new password.",
         });
+
         setForgotMode(false);
         setForgotEmail("");
         setForgotOtp("");
@@ -150,38 +142,45 @@ export default function Login() {
   if (forgotMode) {
     return (
       <div className="min-h-screen flex">
-        {/* Left panel */}
-        <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-vahani-blue via-primary to-vahani-blue relative items-center justify-center p-12">
+        <div className="relative hidden items-center justify-center bg-gradient-to-br from-vahani-blue via-primary to-vahani-blue p-12 lg:flex lg:w-1/2">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,hsl(var(--vahani-gold)/0.12),transparent_60%)]" />
-          <div className="relative text-center max-w-md">
-            <img src={vahaniLogo} alt="Vahani" className="w-16 h-16 rounded-xl mx-auto mb-8" />
-            <h2 className="text-3xl font-bold text-white mb-4">Reset Your Password</h2>
-            <p className="text-white/60 leading-relaxed">
-              Enter your registered email and we'll send you a one-time password to reset your password.
+          <div className="relative max-w-md text-center">
+            <img src={vahaniLogo} alt="Vahani" className="mx-auto mb-8 h-16 w-auto" />
+            <h2 className="mb-4 text-3xl font-bold text-white">Reset Your Password</h2>
+            <p className="leading-relaxed text-white/65">
+              Enter your registered email and we&apos;ll send you a one-time password to
+              reset your account password.
             </p>
           </div>
         </div>
 
-        {/* Right panel */}
-        <div className="flex-1 flex items-center justify-center p-6 md:p-12 bg-background">
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="w-full max-w-md">
-            <button onClick={() => {
-              setForgotMode(false);
-              setForgotStep("request");
-              setForgotError("");
-              setForgotOtp("");
-              setForgotNewPassword("");
-              setForgotConfirmPassword("");
-            }} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-8 transition-colors">
+        <div className="flex flex-1 items-center justify-center bg-background p-6 md:p-12">
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="w-full max-w-md"
+          >
+            <button
+              onClick={() => {
+                setForgotMode(false);
+                setForgotStep("request");
+                setForgotError("");
+                setForgotOtp("");
+                setForgotNewPassword("");
+                setForgotConfirmPassword("");
+              }}
+              className="mb-8 flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
               <ArrowLeft size={16} /> Back to Sign In
             </button>
 
-            <div className="w-12 h-12 rounded-lg bg-vahani-blue/10 flex items-center justify-center mb-6">
+            <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-lg bg-vahani-blue/10">
               <Mail size={22} className="text-vahani-blue" />
             </div>
 
-            <h1 className="text-2xl font-bold text-foreground mb-1">Forgot Password</h1>
-            <p className="text-muted-foreground mb-8">
+            <h1 className="mb-1 text-2xl font-bold text-foreground">Forgot Password</h1>
+            <p className="mb-8 text-muted-foreground">
               {forgotStep === "request"
                 ? "Enter your registered email address"
                 : "Enter the OTP from your email and choose a new password"}
@@ -189,7 +188,7 @@ export default function Login() {
 
             <form onSubmit={handleForgotPassword} className="space-y-5">
               {forgotError && (
-                <div className="bg-destructive/10 border border-destructive/20 text-destructive text-sm rounded-lg px-4 py-3">
+                <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                   {forgotError}
                 </div>
               )}
@@ -246,14 +245,20 @@ export default function Login() {
 
                   <button
                     type="button"
-                    onClick={() => void requestPasswordResetOtp(forgotEmail.trim()).then(() => {
-                      toast({
-                        title: "OTP Resent",
-                        description: `A fresh OTP was sent to ${forgotEmail}.`,
-                      });
-                    }).catch((err) => {
-                      setForgotError(err instanceof Error ? err.message : "Failed to resend OTP.");
-                    })}
+                    onClick={() =>
+                      void requestPasswordResetOtp(forgotEmail.trim())
+                        .then(() => {
+                          toast({
+                            title: "OTP Resent",
+                            description: `A fresh OTP was sent to ${forgotEmail}.`,
+                          });
+                        })
+                        .catch((err) => {
+                          setForgotError(
+                            err instanceof Error ? err.message : "Failed to resend OTP.",
+                          );
+                        })
+                    }
                     className="text-sm text-vahani-blue hover:underline"
                   >
                     Resend OTP
@@ -263,7 +268,7 @@ export default function Login() {
 
               <Button
                 type="submit"
-                className="w-full h-11 bg-vahani-blue hover:bg-vahani-blue/90 text-base font-semibold"
+                className="h-11 w-full bg-vahani-blue text-base font-semibold hover:bg-vahani-blue/90"
                 disabled={forgotLoading || !forgotEmail.trim()}
               >
                 {forgotLoading
@@ -283,55 +288,54 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex">
-      {/* Left panel */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-vahani-blue via-primary to-vahani-blue relative items-center justify-center p-12">
+      <div className="relative hidden items-center justify-center bg-gradient-to-br from-vahani-blue via-primary to-vahani-blue p-12 lg:flex lg:w-1/2">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,hsl(var(--vahani-gold)/0.12),transparent_60%)]" />
-        <div className="relative text-center max-w-md">
-          <img src={vahaniLogo} alt="Vahani" className="w-16 h-16 rounded-xl mx-auto mb-8" />
-          <h2 className="text-3xl font-bold text-white mb-4">Welcome Back</h2>
-          <p className="text-white/60 leading-relaxed">
-            Sign in to access your personalized learning dashboard, track progress, and continue your growth journey.
+        <div className="relative max-w-md text-center">
+          <img src={vahaniLogo} alt="Vahani" className="mx-auto mb-8 h-16 w-auto" />
+          <h2 className="mb-4 text-3xl font-bold text-white">Welcome Back</h2>
+          <p className="leading-relaxed text-white/65">
+            One secure sign-in automatically takes you to the right workspace for your
+            account.
           </p>
         </div>
       </div>
 
-      {/* Right panel */}
-      <div className="flex-1 flex items-center justify-center p-6 md:p-12 bg-background">
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="w-full max-w-md">
-          <div className="lg:hidden flex items-center gap-3 mb-8">
-            <img src={vahaniLogo} alt="Vahani" className="w-9 h-9 rounded-lg" />
-            <span className="font-bold text-lg text-foreground">Vahani LMS</span>
+      <div className="flex flex-1 items-center justify-center bg-background p-6 md:p-12">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="w-full max-w-md"
+        >
+          <div className="mb-8 flex items-center gap-3 lg:hidden">
+            <img src={vahaniLogo} alt="Vahani" className="h-10 w-auto" />
+            <span className="text-lg font-bold text-foreground">Vahani LMS</span>
           </div>
 
-          <h1 className="text-2xl font-bold text-foreground mb-1">Sign In</h1>
-          <p className="text-muted-foreground mb-8">Choose your role and enter your credentials</p>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.26em] text-vahani-blue">
+            Secure access
+          </p>
+          <h1 className="mb-2 text-2xl font-bold text-foreground">Sign In</h1>
+          <p className="text-muted-foreground">
+            Use your registered email and password. We&apos;ll detect your role and open
+            the correct workspace automatically.
+          </p>
 
-          {/* Role toggle */}
-          <div className="grid grid-cols-3 gap-3 mb-8">
-              {([
-                { value: "scholar" as const, icon: GraduationCap, label: "Scholar" },
-                { value: "programme_manager" as const, icon: BookOpen, label: "Programme Manager" },
-                { value: "admin" as const, icon: Shield, label: "Admin" },
-              ]).map((r) => (
-              <button
-                key={r.value}
-                type="button"
-                onClick={() => setRole(r.value)}
-                className={`flex items-center justify-center gap-2 py-3 rounded-lg border text-sm font-medium transition-all ${
-                  role === r.value
-                    ? "border-vahani-blue bg-vahani-blue/5 text-vahani-blue shadow-sm"
-                    : "border-border text-muted-foreground hover:border-muted-foreground/30"
-                }`}
+          <div className="mt-6 flex flex-wrap gap-2">
+            {roleHints.map((item) => (
+              <div
+                key={item.label}
+                className="rounded-full border border-border bg-card/80 px-3 py-2 text-sm text-muted-foreground"
               >
-                <r.icon size={18} />
-                {r.label}
-              </button>
+                <span className="mr-2">{item.emoji}</span>
+                {item.label}
+              </div>
             ))}
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="mt-8 space-y-5">
             {error && (
-              <div className="bg-destructive/10 border border-destructive/20 text-destructive text-sm rounded-lg px-4 py-3">
+              <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                 {error}
               </div>
             )}
@@ -362,7 +366,7 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
@@ -372,7 +376,9 @@ export default function Login() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Checkbox id="remember" checked={remember} onCheckedChange={(v) => setRemember(!!v)} />
-                <Label htmlFor="remember" className="text-sm font-normal cursor-pointer">Remember me</Label>
+                <Label htmlFor="remember" className="cursor-pointer text-sm font-normal">
+                  Remember me
+                </Label>
               </div>
               <button
                 type="button"
@@ -385,18 +391,18 @@ export default function Login() {
 
             <Button
               type="submit"
-              className="w-full h-11 bg-vahani-blue hover:bg-vahani-blue/90 text-base font-semibold"
+              className="h-11 w-full bg-vahani-blue text-base font-semibold hover:bg-vahani-blue/90"
               disabled={loading || !isFormValid}
             >
               {loading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
 
-          {/* Demo mode notice */}
-          <div className="mt-8 p-4 rounded-lg bg-accent/10 border border-accent/20">
-            <p className="text-xs font-medium text-accent-foreground mb-1">🔓 Demo Mode</p>
-            <p className="text-xs text-muted-foreground">
-              This is a demo authentication mode. Enter any email and password to log in. Real authentication will be implemented later.
+          <div className="mt-8 rounded-2xl border border-border bg-card/70 p-4">
+            <p className="text-sm font-semibold text-foreground">Need help signing in?</p>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Use your registered account credentials. If you cannot access your account,
+              use the forgot password flow to request an OTP.
             </p>
           </div>
         </motion.div>

@@ -26,6 +26,9 @@ const getMailFrom = () =>
   process.env.GMAIL ||
   "no-reply@vahani.lms";
 
+const buildFromValue = (fromName) =>
+  fromName ? { email: getMailFrom(), name: fromName } : getMailFrom();
+
 const hasNodemailerConfig = () =>
   Boolean(process.env.GMAIL && process.env.PASSWORD);
 
@@ -76,14 +79,17 @@ const sendWithSendGrid = async ({
   text,
   html,
   attachments = [],
+  replyTo,
+  fromName,
 }) => {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
   await sgMail.send({
-    from: getMailFrom(),
+    from: buildFromValue(fromName),
     to,
     cc: cc.length ? cc : undefined,
     bcc: bcc.length ? bcc : undefined,
+    replyTo: replyTo || undefined,
     subject,
     text,
     html,
@@ -99,14 +105,17 @@ const sendWithNodemailer = async ({
   text,
   html,
   attachments = [],
+  replyTo,
+  fromName,
 }) => {
   const transport = createMailTransport();
 
   await transport.sendMail({
-    from: getMailFrom(),
+    from: fromName ? `"${fromName}" <${getMailFrom()}>` : getMailFrom(),
     to,
     cc: cc.length ? cc : undefined,
     bcc: bcc.length ? bcc : undefined,
+    replyTo: replyTo || undefined,
     subject,
     text,
     html,
@@ -129,6 +138,8 @@ const sendEmail = async ({
   text,
   html,
   attachments = [],
+  replyTo,
+  fromName,
 }) => {
   const normalizedTo = normalizeEmailList(to);
   const normalizedCc = normalizeEmailList(cc);
@@ -146,6 +157,8 @@ const sendEmail = async ({
     text,
     html,
     attachments,
+    replyTo,
+    fromName,
   };
 
   if (hasSendGridConfig()) {
@@ -275,18 +288,29 @@ const sendComposedEmail = async ({
   subject,
   body,
   attachments = [],
+  senderName,
+  senderEmail,
 }) => {
   const escapedBody = escapeHtml(body).replace(/\r?\n/g, "<br />");
+  const senderLine = senderName
+    ? `${escapeHtml(senderName)} via Vahani LMS`
+    : "Vahani LMS";
+  const senderNote = senderEmail
+    ? `Replies will go to ${escapeHtml(senderEmail)}.`
+    : "Replies will be handled through the LMS support flow.";
   const html = `<!DOCTYPE html>
     <html lang="en">
       <body style="margin:0;background:#f6f8fb;padding:24px;font-family:Arial,sans-serif;color:#1f2937;">
         <div style="max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
           <div style="padding:24px 28px;background:#0f4c81;color:#ffffff;">
-            <h1 style="margin:0;font-size:20px;">Vahani LMS</h1>
-            <p style="margin:8px 0 0;font-size:13px;opacity:0.9;">Message sent from the LMS communication center</p>
+            <h1 style="margin:0;font-size:20px;">${senderLine}</h1>
+            <p style="margin:8px 0 0;font-size:13px;opacity:0.9;">Message sent through the Vahani LMS communication center</p>
           </div>
           <div style="padding:28px;">
             <div style="font-size:15px;line-height:1.7;">${escapedBody}</div>
+            <div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:13px;color:#6b7280;">
+              ${senderNote}
+            </div>
           </div>
         </div>
       </body>
@@ -300,6 +324,8 @@ const sendComposedEmail = async ({
     text: body,
     html,
     attachments,
+    replyTo: senderEmail || undefined,
+    fromName: senderLine,
   });
 };
 

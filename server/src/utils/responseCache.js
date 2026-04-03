@@ -5,24 +5,11 @@ if (!global.__responseCache__) {
 }
 
 const getCachedResponse = (key) => {
-  const entry = RESPONSE_CACHE.get(key);
-  if (!entry) {
-    return null;
-  }
-
-  if (entry.expiresAt <= Date.now()) {
-    RESPONSE_CACHE.delete(key);
-    return null;
-  }
-
-  return entry.value;
+  return null;
 };
 
 const setCachedResponse = (key, value, ttlMs = 10_000) => {
-  RESPONSE_CACHE.set(key, {
-    value,
-    expiresAt: Date.now() + ttlMs,
-  });
+  return;
 };
 
 const clearCachedResponse = (matcher) => {

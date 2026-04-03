@@ -24,7 +24,7 @@ const roleLabel = (role: AdminUserDetail["role"]) =>
       : "Scholar";
 
 const openPrintWindow = (title: string, filePrefix: string, body: string) => {
-  const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1300,height=900");
+  const printWindow = window.open("", "_blank", "width=1300,height=900");
   if (!printWindow) return;
 
   const html = `<!doctype html>

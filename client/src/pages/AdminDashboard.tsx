@@ -5,6 +5,7 @@ import {
   BellRing,
   BookOpen,
   Download,
+  Loader2,
   MessageSquareText,
   Pencil,
   Pin,
@@ -12,6 +13,7 @@ import {
   Plus,
   Search,
   Send,
+  Sparkles,
   Trash2,
   Users,
 } from "lucide-react";
@@ -30,7 +32,6 @@ import {
   getAdminSettings,
   getAdminSummary,
   getAdminUsers,
-  removeScholarFromProgramme,
   updateAdminProgramme,
   updateAdminSettings,
   updateAdminUser,
@@ -41,7 +42,11 @@ import {
   type AdminUser,
   type AdminUserRole,
 } from "@/api/admin";
-import { getAdminWishlist } from "@/api/wishlist";
+import {
+  getAdminWishlist,
+  getAdminWishlistAiOverview,
+  type AdminWishlistAiOverviewResponse,
+} from "@/api/wishlist";
 import { sendRoleBasedEmail, type EmailRecipient } from "@/api/emails";
 import {
   createAnnouncement,
@@ -64,6 +69,12 @@ import {
   BulkUserImportDialog,
 } from "@/components/dashboard/admin/AdminUserDialogs";
 import { EmailComposerDialog } from "@/components/dashboard/EmailComposerDialog";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -101,6 +112,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { downloadCsvReport, exportReportAsPdf } from "@/lib/reportExport";
+import { matchesSelfEnrollmentScholarRules } from "@/lib/selfEnrollmentEligibility";
 
 const emptyUserForm = {
   name: "",
@@ -108,6 +120,7 @@ const emptyUserForm = {
   password: "",
   role: "scholar" as AdminUserRole,
   batch: "",
+  gender: "",
   phoneNumber: "",
   creditsEarned: "0",
 };
@@ -118,6 +131,11 @@ const emptyProgrammeForm = {
   credits: "",
   programmeManagerId: "",
   selfEnrollmentEnabled: false,
+  selfEnrollmentSeatLimit: "",
+  selfEnrollmentOpensAt: "",
+  selfEnrollmentClosesAt: "",
+  selfEnrollmentAllowedBatches: [] as string[],
+  selfEnrollmentAllowedGenders: [] as string[],
   spotlightTitle: "",
   spotlightMessage: "",
 };
@@ -274,10 +292,6 @@ export default function AdminDashboard() {
   const [isProgrammeDialogOpen, setIsProgrammeDialogOpen] = useState(false);
   const [programmeDialogBatchFilter, setProgrammeDialogBatchFilter] = useState("all");
   const [programmeDialogScholarIds, setProgrammeDialogScholarIds] = useState<string[]>([]);
-  const [selectedProgrammeId, setSelectedProgrammeId] = useState("");
-  const [isProgrammeDetailOpen, setIsProgrammeDetailOpen] = useState(false);
-  const [selectedScholarIds, setSelectedScholarIds] = useState<string[]>([]);
-  const [programmeDetailBatchFilter, setProgrammeDetailBatchFilter] = useState("all");
   const [pendingDeleteProgramme, setPendingDeleteProgramme] =
     useState<AdminProgramme | null>(null);
   const [pendingDeleteAssignmentId, setPendingDeleteAssignmentId] = useState<string | null>(null);
@@ -303,6 +317,9 @@ export default function AdminDashboard() {
   const [reportType, setReportType] =
     useState<keyof typeof reportLabels>("scholar");
   const [reportData, setReportData] = useState<AdminReportResponse | null>(null);
+  const [wishlistAiOverview, setWishlistAiOverview] =
+    useState<AdminWishlistAiOverviewResponse | null>(null);
+  const [wishlistAiLoading, setWishlistAiLoading] = useState(false);
   const [reportBatchFilter, setReportBatchFilter] = useState("all");
   const [reportManagerFilter, setReportManagerFilter] = useState("all");
   const [reportDateFrom, setReportDateFrom] = useState("");
@@ -332,7 +349,6 @@ export default function AdminDashboard() {
       const response = await getAdminSummary();
       const nextSummary = response.data as AdminSummary;
       setSummary(nextSummary);
-      setSelectedProgrammeId((current) => current || nextSummary.programmes[0]?.id || "");
     } catch (error) {
       toast({
         title: "Failed to load admin dashboard",
@@ -364,7 +380,6 @@ export default function AdminDashboard() {
         ? (response.data.programmes as AdminProgramme[])
         : [];
       setProgrammes(nextProgrammes);
-      setSelectedProgrammeId((current) => current || nextProgrammes[0]?.id || "");
     } catch (error) {
       toast({
         title: "Unable to load programmes",
@@ -430,7 +445,7 @@ export default function AdminDashboard() {
       void loadUsers();
     }
     if (activeTab === "programmes") {
-      void loadProgrammes();
+      void Promise.all([loadProgrammes(), loadUsers()]);
     }
     if (activeTab === "analytics") {
       void Promise.all([loadUsers(), loadProgrammes()]);
@@ -495,10 +510,17 @@ export default function AdminDashboard() {
     [scholars],
   );
 
-  const selectedProgramme =
-    programmes.find((programme) => programme.id === selectedProgrammeId) ||
-    programmes[0] ||
-    null;
+  const scholarGenders = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          scholars
+            .map((entry) => entry.gender?.trim())
+            .filter((entry): entry is string => Boolean(entry)),
+        ),
+      ).sort(),
+    [scholars],
+  );
 
   const filteredUsers = useMemo(
     () =>
@@ -554,33 +576,27 @@ export default function AdminDashboard() {
     ],
   );
 
-  const availableScholars = useMemo(
-    () =>
-      scholars.filter(
-        (scholar) =>
-          !selectedProgramme?.enrollments.some(
-            (enrollment) => enrollment.user.id === scholar.id,
-          ),
-      ),
-    [scholars, selectedProgramme],
-  );
-
   const filteredProgrammeDialogScholars = useMemo(
     () =>
-      scholars.filter(
-        (scholar) =>
-          programmeDialogBatchFilter === "all" || scholar.batch === programmeDialogBatchFilter,
-      ),
-    [programmeDialogBatchFilter, scholars],
-  );
+      scholars.filter((scholar) => {
+        const matchesBatchFilter =
+          programmeDialogBatchFilter === "all" || scholar.batch === programmeDialogBatchFilter;
 
-  const filteredAvailableScholars = useMemo(
-    () =>
-      availableScholars.filter(
-        (scholar) =>
-          programmeDetailBatchFilter === "all" || scholar.batch === programmeDetailBatchFilter,
-      ),
-    [availableScholars, programmeDetailBatchFilter],
+        const matchesEligibility = matchesSelfEnrollmentScholarRules(scholar, {
+          enabled: programmeForm.selfEnrollmentEnabled,
+          allowedBatches: programmeForm.selfEnrollmentAllowedBatches,
+          allowedGenders: programmeForm.selfEnrollmentAllowedGenders,
+        });
+
+        return matchesBatchFilter && matchesEligibility;
+      }),
+    [
+      programmeDialogBatchFilter,
+      programmeForm.selfEnrollmentAllowedBatches,
+      programmeForm.selfEnrollmentAllowedGenders,
+      programmeForm.selfEnrollmentEnabled,
+      scholars,
+    ],
   );
 
   const announcementAudienceUsers = useMemo(
@@ -715,6 +731,7 @@ export default function AdminDashboard() {
       password: "",
       role: member.role,
       batch: member.batch || "",
+      gender: member.gender || "",
       phoneNumber: member.phoneNumber || "",
       creditsEarned: String(member.creditsEarned ?? 0),
     });
@@ -732,6 +749,21 @@ export default function AdminDashboard() {
           : "",
       programmeManagerId: programme.programmeManagerId || "",
       selfEnrollmentEnabled: programme.selfEnrollmentEnabled,
+      selfEnrollmentSeatLimit:
+        programme.selfEnrollmentSeatLimit !== null &&
+        programme.selfEnrollmentSeatLimit !== undefined
+          ? String(programme.selfEnrollmentSeatLimit)
+          : "",
+      selfEnrollmentOpensAt: programme.selfEnrollmentOpensAt
+        ? String(programme.selfEnrollmentOpensAt).slice(0, 16)
+        : "",
+      selfEnrollmentClosesAt: programme.selfEnrollmentClosesAt
+        ? String(programme.selfEnrollmentClosesAt).slice(0, 16)
+        : "",
+      selfEnrollmentAllowedBatches:
+        programme.selfEnrollmentAllowedBatches || [],
+      selfEnrollmentAllowedGenders:
+        programme.selfEnrollmentAllowedGenders || [],
       spotlightTitle: programme.spotlightTitle || "",
       spotlightMessage: programme.spotlightMessage || "",
     });
@@ -811,6 +843,7 @@ export default function AdminDashboard() {
           email: userForm.email,
           role: userForm.role,
           batch: userForm.role === "scholar" ? userForm.batch : "",
+          gender: userForm.gender,
           phoneNumber: userForm.phoneNumber,
           creditsEarned: Number(userForm.creditsEarned || 0),
           ...(userForm.password ? { password: userForm.password } : {}),
@@ -823,6 +856,7 @@ export default function AdminDashboard() {
           password: userForm.password,
           role: userForm.role,
           batch: userForm.role === "scholar" ? userForm.batch : "",
+          gender: userForm.gender,
           phoneNumber: userForm.phoneNumber,
           creditsEarned: Number(userForm.creditsEarned || 0),
         });
@@ -918,6 +952,16 @@ export default function AdminDashboard() {
         credits: programmeForm.credits !== "" ? Number(programmeForm.credits) : null,
         programmeManagerId: programmeForm.programmeManagerId,
         selfEnrollmentEnabled: programmeForm.selfEnrollmentEnabled,
+        selfEnrollmentSeatLimit:
+          programmeForm.selfEnrollmentSeatLimit !== ""
+            ? Number(programmeForm.selfEnrollmentSeatLimit)
+            : null,
+        selfEnrollmentOpensAt: programmeForm.selfEnrollmentOpensAt || null,
+        selfEnrollmentClosesAt: programmeForm.selfEnrollmentClosesAt || null,
+        selfEnrollmentAllowedBatches: programmeForm.selfEnrollmentAllowedBatches,
+        selfEnrollmentAllowedGenders: programmeForm.selfEnrollmentAllowedGenders
+          .map((entry) => entry.trim().toLowerCase())
+          .filter(Boolean),
         spotlightTitle: programmeForm.spotlightTitle.trim(),
         spotlightMessage: programmeForm.spotlightMessage.trim(),
       };
@@ -989,40 +1033,6 @@ export default function AdminDashboard() {
     } catch (error) {
       toast({
         title: "Unable to delete assignment",
-        description: error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleAssignScholars = async () => {
-    if (!selectedProgramme || selectedScholarIds.length === 0) return;
-    try {
-      await assignScholarsToProgramme(selectedProgramme.id, selectedScholarIds);
-      setSelectedScholarIds([]);
-      setProgrammeDetailBatchFilter("all");
-      await Promise.all([loadSummary(), loadProgrammes()]);
-      toast({
-        title: "Scholars added",
-        description: "Selected scholars were enrolled in the programme.",
-      });
-    } catch (error) {
-      toast({
-        title: "Unable to add scholars",
-        description: error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleRemoveScholar = async (programmeId: string, scholarId: string) => {
-    try {
-      await removeScholarFromProgramme(programmeId, scholarId);
-      await Promise.all([loadSummary(), loadProgrammes()]);
-      toast({ title: "Scholar removed", description: "Enrollment was removed." });
-    } catch (error) {
-      toast({
-        title: "Unable to remove scholar",
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
@@ -1122,6 +1132,7 @@ export default function AdminDashboard() {
 
   const handleGenerateWishlistReport = async () => {
     try {
+      setWishlistAiOverview(null);
       const response = await getAdminWishlist(
         reportBatchFilter !== "all" ? reportBatchFilter : undefined,
       );
@@ -1137,6 +1148,28 @@ export default function AdminDashboard() {
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
+      }
+    };
+
+  const handleGenerateWishlistAiOverview = async () => {
+    try {
+      setWishlistAiLoading(true);
+      const response = await getAdminWishlistAiOverview(
+        reportBatchFilter !== "all" ? reportBatchFilter : undefined,
+      );
+      setWishlistAiOverview(response.data);
+      toast({
+        title: "AI wishlist overview ready",
+        description: "Gemini generated programme suggestions from scholar wishlist demand.",
+      });
+    } catch (error) {
+      toast({
+        title: "Unable to generate AI wishlist overview",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setWishlistAiLoading(false);
     }
   };
 
@@ -1843,21 +1876,35 @@ export default function AdminDashboard() {
                       </>
                     )}
                   </div>
-                  <div className="flex flex-col gap-3 sm:flex-row">
-                    <Button onClick={() => void (reportType === "wishlist" ? handleGenerateWishlistReport() : handleGenerateReport())}>
-                      <BarChart3 className="mr-2 h-4 w-4" />
-                      {reportType === "wishlist" ? "Generate wishlist report" : "Generate report"}
-                    </Button>
-                    <Button variant="outline" disabled={!reportData || reportData.rows.length === 0} onClick={() => reportData && downloadCsvReport(reportData, `${reportType}-report`)}>
-                      <Download className="mr-2 h-4 w-4" />
-                      Export CSV
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <Button onClick={() => void (reportType === "wishlist" ? handleGenerateWishlistReport() : handleGenerateReport())}>
+                        <BarChart3 className="mr-2 h-4 w-4" />
+                        {reportType === "wishlist" ? "Generate wishlist report" : "Generate report"}
+                      </Button>
+                      {reportType === "wishlist" && (
+                        <Button
+                          variant="outline"
+                          onClick={() => void handleGenerateWishlistAiOverview()}
+                          disabled={wishlistAiLoading}
+                        >
+                          {wishlistAiLoading ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Sparkles className="mr-2 h-4 w-4" />
+                          )}
+                          AI overview
+                        </Button>
+                      )}
+                      <Button variant="outline" disabled={!reportData || reportData.rows.length === 0} onClick={() => reportData && downloadCsvReport(reportData, `${reportType}-report`)}>
+                        <Download className="mr-2 h-4 w-4" />
+                        Export CSV
                     </Button>
                     <Button variant="outline" disabled={!reportData || reportData.rows.length === 0} onClick={() => reportData && exportReportAsPdf(reportData, reportLabels[reportType], `${reportType}-report`)}>
                       Export PDF
                     </Button>
                   </div>
-                  {reportData && (
-                    <div className="space-y-4">
+                    {reportData && (
+                      <div className="space-y-4">
                       <div className="rounded-xl border border-border p-4">
                         <p className="text-sm font-medium text-foreground">{reportLabels[reportType]}</p>
                         <p className="mt-1 text-xs text-muted-foreground">
@@ -1892,10 +1939,99 @@ export default function AdminDashboard() {
                       ) : (
                         <p className="text-sm text-muted-foreground">No rows matched the selected filters.</p>
                       )}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                      </div>
+                    )}
+                    {reportType === "wishlist" && wishlistAiOverview && (
+                      <div className="space-y-4 rounded-2xl border border-border bg-card/70 p-5">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-foreground">AI wishlist overview</p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Generated using {wishlistAiOverview.model} from {wishlistAiOverview.wishlistCount} wishlist request(s).
+                            </p>
+                          </div>
+                          <Badge variant="outline">
+                            {wishlistAiOverview.summary.uniqueRequestedProgrammes} unique programme ideas
+                          </Badge>
+                        </div>
+
+                        <div className="rounded-xl bg-muted/30 p-4">
+                          <p className="text-sm leading-7 text-muted-foreground">
+                            {wishlistAiOverview.analysis.overview}
+                          </p>
+                        </div>
+
+                        <div className="grid gap-4 lg:grid-cols-2">
+                          <div className="space-y-3 rounded-xl border border-border p-4">
+                            <p className="font-medium text-foreground">Priority signals</p>
+                            <div className="space-y-3">
+                              {wishlistAiOverview.analysis.prioritySignals.map((item) => (
+                                <div key={`${item.title}-${item.reason}`} className="rounded-xl bg-muted/20 p-3">
+                                  <p className="text-sm font-semibold text-foreground">{item.title}</p>
+                                  <p className="mt-1 text-sm text-muted-foreground">{item.reason}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="space-y-3 rounded-xl border border-border p-4">
+                            <p className="font-medium text-foreground">Recommended actions</p>
+                            <div className="space-y-3">
+                              {wishlistAiOverview.analysis.recommendedActions.map((item) => (
+                                <div key={`${item.action}-${item.impact}`} className="rounded-xl bg-muted/20 p-3">
+                                  <p className="text-sm font-semibold text-foreground">{item.action}</p>
+                                  <p className="mt-1 text-sm text-muted-foreground">{item.impact}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="grid gap-4 lg:grid-cols-2">
+                          <div className="space-y-3 rounded-xl border border-border p-4">
+                            <p className="font-medium text-foreground">Batch insights</p>
+                            <div className="space-y-3">
+                              {wishlistAiOverview.analysis.batchInsights.map((item) => (
+                                <div key={`${item.batch}-${item.insight}`} className="rounded-xl bg-muted/20 p-3">
+                                  <p className="text-sm font-semibold text-foreground">{item.batch}</p>
+                                  <p className="mt-1 text-sm text-muted-foreground">{item.insight}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="space-y-3 rounded-xl border border-border p-4">
+                            <p className="font-medium text-foreground">Suggested programme ideas</p>
+                            <div className="space-y-3">
+                              {wishlistAiOverview.analysis.suggestedProgrammeIdeas.map((item) => (
+                                <div key={`${item.title}-${item.audience}`} className="rounded-xl bg-muted/20 p-3">
+                                  <p className="text-sm font-semibold text-foreground">{item.title}</p>
+                                  <p className="mt-1 text-sm text-muted-foreground">{item.why}</p>
+                                  <p className="mt-2 text-xs uppercase tracking-[0.2em] text-vahani-blue">
+                                    Audience: {item.audience}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-dashed border-border p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                            Top requested titles
+                          </p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {wishlistAiOverview.summary.topRequestedTitles.map((item) => (
+                              <Badge key={`${item.title}-${item.count}`} variant="secondary">
+                                {item.title} ({item.count})
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
             </TabsContent>
 
             <TabsContent value="settings" className="space-y-6">
@@ -1992,8 +2128,18 @@ export default function AdminDashboard() {
             <DialogTitle>{editingProgrammeId ? "Edit programme" : "Create programme"}</DialogTitle>
             <DialogDescription>Add programme details and assign a manager.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-5">
-            <div className="grid gap-4 sm:grid-cols-2">
+          <Accordion
+            type="single"
+            collapsible
+            defaultValue="basic-details"
+            className="space-y-4"
+          >
+            <AccordionItem value="basic-details" className="rounded-2xl border border-border px-4">
+              <AccordionTrigger className="py-4 text-left font-semibold text-foreground">
+                Basic details
+              </AccordionTrigger>
+              <AccordionContent className="pb-4">
+                <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5 sm:col-span-2">
                 <Label>Title</Label>
                 <Input value={programmeForm.title} onChange={(event: ChangeEvent<HTMLInputElement>) => setProgrammeForm((current) => ({ ...current, title: event.target.value }))} />
@@ -2022,30 +2168,182 @@ export default function AdminDashboard() {
                   </SelectContent>
                 </Select>
               </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="self-enroll" className="rounded-2xl border border-border px-4">
+              <AccordionTrigger className="py-4 text-left font-semibold text-foreground">
+                Self-enroll section
+              </AccordionTrigger>
+              <AccordionContent className="space-y-4 pb-4">
               <div className="flex items-center justify-between rounded-lg border border-border p-4 sm:col-span-2">
                 <div>
                   <p className="font-medium text-foreground">Scholar self-enrollment</p>
-                  <p className="text-xs text-muted-foreground">Allow scholars to enroll themselves.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Enable FCFS enrollment requests and define seats, request window,
+                    eligible batches, and eligible genders right here.
+                  </p>
                 </div>
                 <Switch checked={programmeForm.selfEnrollmentEnabled} onCheckedChange={(value) => setProgrammeForm((current) => ({ ...current, selfEnrollmentEnabled: value }))} />
               </div>
-              <div className="space-y-1.5">
-                <Label>Spotlight title</Label>
-                <Input value={programmeForm.spotlightTitle} onChange={(event: ChangeEvent<HTMLInputElement>) => setProgrammeForm((current) => ({ ...current, spotlightTitle: event.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Spotlight message</Label>
-                <Textarea value={programmeForm.spotlightMessage} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setProgrammeForm((current) => ({ ...current, spotlightMessage: event.target.value }))} />
-              </div>
-            </div>
+              {programmeForm.selfEnrollmentEnabled && (
+                <div className="space-y-4 rounded-xl border border-border p-4 sm:col-span-2">
+                  <div className="rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
+                    Scholars will submit enrollment requests first. When requests are
+                    processed, seats are allotted on a first-come, first-served basis.
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label>Seat limit</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={programmeForm.selfEnrollmentSeatLimit}
+                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                          setProgrammeForm((current) => ({
+                            ...current,
+                            selfEnrollmentSeatLimit: event.target.value,
+                          }))
+                        }
+                        placeholder="Leave blank for no limit"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Enrollment opens at</Label>
+                      <Input
+                        type="datetime-local"
+                        value={programmeForm.selfEnrollmentOpensAt}
+                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                          setProgrammeForm((current) => ({
+                            ...current,
+                            selfEnrollmentOpensAt: event.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Enrollment closes at</Label>
+                      <Input
+                        type="datetime-local"
+                        value={programmeForm.selfEnrollmentClosesAt}
+                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                          setProgrammeForm((current) => ({
+                            ...current,
+                            selfEnrollmentClosesAt: event.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Eligible batches</Label>
+                    <div className="rounded-xl border border-border p-3">
+                      <div className="mb-3 flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setProgrammeForm((current) => ({
+                              ...current,
+                              selfEnrollmentAllowedBatches: [],
+                            }))
+                          }
+                        >
+                          All batches
+                        </Button>
+                        <span className="text-xs text-muted-foreground">
+                          Leave unselected to keep this open to every batch.
+                        </span>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {scholarBatches.map((batch) => (
+                          <label key={batch} className="flex items-center gap-3 rounded-lg border border-border p-3">
+                            <Checkbox
+                              checked={programmeForm.selfEnrollmentAllowedBatches.includes(batch)}
+                              onCheckedChange={() =>
+                                setProgrammeForm((current) => ({
+                                  ...current,
+                                  selfEnrollmentAllowedBatches:
+                                    current.selfEnrollmentAllowedBatches.includes(batch)
+                                      ? current.selfEnrollmentAllowedBatches.filter((entry) => entry !== batch)
+                                      : [...current.selfEnrollmentAllowedBatches, batch],
+                                }))
+                              }
+                            />
+                            <span className="text-sm text-foreground">{batch}</span>
+                          </label>
+                        ))}
+                      </div>
+                      {scholarBatches.length === 0 && (
+                        <p className="text-sm text-muted-foreground">No scholar batches available yet.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Eligible genders</Label>
+                    <div className="rounded-xl border border-border p-3">
+                      <div className="mb-3 flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setProgrammeForm((current) => ({
+                              ...current,
+                              selfEnrollmentAllowedGenders: [],
+                            }))
+                          }
+                        >
+                          All genders
+                        </Button>
+                        <span className="text-xs text-muted-foreground">
+                          Leave unselected to keep this open to every gender.
+                        </span>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {scholarGenders.map((gender) => (
+                          <label key={gender} className="flex items-center gap-3 rounded-lg border border-border p-3">
+                            <Checkbox
+                              checked={programmeForm.selfEnrollmentAllowedGenders.includes(gender)}
+                              onCheckedChange={() =>
+                                setProgrammeForm((current) => ({
+                                  ...current,
+                                  selfEnrollmentAllowedGenders:
+                                    current.selfEnrollmentAllowedGenders.includes(gender)
+                                      ? current.selfEnrollmentAllowedGenders.filter((entry) => entry !== gender)
+                                      : [...current.selfEnrollmentAllowedGenders, gender],
+                                }))
+                              }
+                            />
+                            <span className="text-sm text-foreground">{gender}</span>
+                          </label>
+                        ))}
+                      </div>
+                      {scholarGenders.length === 0 && (
+                        <p className="text-sm text-muted-foreground">No scholar genders available yet.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+              </AccordionContent>
+            </AccordionItem>
 
             {!editingProgrammeId && (
-              <div className="space-y-3 rounded-xl border border-border p-4">
+              <AccordionItem value="add-scholars" className="rounded-2xl border border-border px-4">
+                <AccordionTrigger className="py-4 text-left font-semibold text-foreground">
+                  Add scholars section
+                </AccordionTrigger>
+                <AccordionContent className="space-y-3 pb-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h3 className="font-semibold text-foreground">Add scholars while creating</h3>
                     <p className="text-xs text-muted-foreground">
-                      Optionally pre-enroll scholars now. You can still add more later.
+                      If self-enrollment rules are enabled, only eligible scholars are suggested here.
                     </p>
                   </div>
                   <div className="flex gap-2">
@@ -2078,6 +2376,13 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
+                <div className="rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
+                  Suggested scholars: {filteredProgrammeDialogScholars.length}
+                  {programmeForm.selfEnrollmentEnabled
+                    ? " eligible by the current rules."
+                    : " available for direct enrollment."}
+                </div>
+
                 <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
                   {filteredProgrammeDialogScholars.map((scholar) => (
                     <label key={scholar.id} className="flex items-center gap-3 rounded-xl border border-border p-3">
@@ -2095,18 +2400,22 @@ export default function AdminDashboard() {
                         <p className="text-sm font-medium text-foreground">{scholar.name}</p>
                         <p className="truncate text-xs text-muted-foreground">
                           {scholar.email}
+                          {scholar.gender ? ` • ${scholar.gender}` : ""}
                           {scholar.batch ? ` • ${scholar.batch}` : ""}
                         </p>
                       </div>
                     </label>
                   ))}
                   {filteredProgrammeDialogScholars.length === 0 && (
-                    <p className="text-sm text-muted-foreground">No scholars match this batch filter.</p>
+                    <p className="text-sm text-muted-foreground">
+                      No scholars match the current batch filter and eligibility rules.
+                    </p>
                   )}
                 </div>
-              </div>
+                </AccordionContent>
+              </AccordionItem>
             )}
-          </div>
+          </Accordion>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsProgrammeDialogOpen(false)}>
               Cancel
@@ -2115,157 +2424,6 @@ export default function AdminDashboard() {
               {editingProgrammeId ? "Update programme" : "Create programme"}
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isProgrammeDetailOpen} onOpenChange={setIsProgrammeDetailOpen}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>{selectedProgramme?.title || "Programme details"}</DialogTitle>
-            <DialogDescription>
-              Review programme details, published assignments, and enrolled scholars.
-            </DialogDescription>
-          </DialogHeader>
-          {selectedProgramme && (
-            <div className="space-y-6">
-              <div className="grid gap-4 md:grid-cols-4">
-                <div className="rounded-xl border border-border p-4">
-                  <p className="text-xs text-muted-foreground">Manager</p>
-                  <p className="mt-1 font-semibold text-foreground">
-                    {selectedProgramme.programmeManager?.name || "Not assigned"}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border p-4">
-                  <p className="text-xs text-muted-foreground">Enrolled scholars</p>
-                  <p className="mt-1 font-semibold text-foreground">
-                    {selectedProgramme.enrollments.length}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border p-4">
-                  <p className="text-xs text-muted-foreground">Assignments</p>
-                  <p className="mt-1 font-semibold text-foreground">
-                    {selectedProgramme.assignments.length}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border p-4">
-                  <p className="text-xs text-muted-foreground">Created</p>
-                  <p className="mt-1 font-semibold text-foreground">
-                    {formatDate(selectedProgramme.createdAt)}
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-semibold text-foreground">Add scholars</h3>
-                    <p className="text-xs text-muted-foreground">
-                      Filter by batch to quickly select and enroll large groups.
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Select value={programmeDetailBatchFilter} onValueChange={setProgrammeDetailBatchFilter}>
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="All batches" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All batches</SelectItem>
-                        {scholarBatches.map((batch) => (
-                          <SelectItem key={batch} value={batch}>
-                            {batch}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        setSelectedScholarIds(filteredAvailableScholars.map((scholar) => scholar.id))
-                      }
-                      disabled={filteredAvailableScholars.length === 0}
-                    >
-                      Select matched
-                    </Button>
-                    <Button size="sm" onClick={() => void handleAssignScholars()} disabled={selectedScholarIds.length === 0}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Add scholars
-                    </Button>
-                  </div>
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {filteredAvailableScholars.map((scholar) => (
-                    <label key={scholar.id} className="flex items-center gap-3 rounded-xl border border-border p-3">
-                      <Checkbox
-                        checked={selectedScholarIds.includes(scholar.id)}
-                        onCheckedChange={() =>
-                          setSelectedScholarIds((current) =>
-                            current.includes(scholar.id)
-                              ? current.filter((id) => id !== scholar.id)
-                              : [...current, scholar.id],
-                          )
-                        }
-                      />
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-foreground">{scholar.name}</p>
-                        <p className="truncate text-xs text-muted-foreground">{scholar.email}</p>
-                      </div>
-                    </label>
-                  ))}
-                  {filteredAvailableScholars.length === 0 && (
-                    <div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-muted-foreground sm:col-span-2">
-                      No available scholars match this batch filter.
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <h3 className="font-semibold text-foreground">Enrolled scholars</h3>
-                {selectedProgramme.enrollments.map((enrollment) => (
-                  <div key={enrollment.id} className="flex flex-col gap-3 rounded-xl border border-border p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="font-medium text-foreground">{enrollment.user.name}</p>
-                      <p className="text-xs text-muted-foreground">{enrollment.user.email}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">{enrollment.status}</Badge>
-                      <Button variant="outline" size="sm" onClick={() => void handleRemoveScholar(selectedProgramme.id, enrollment.user.id)}>
-                        Remove
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="space-y-3">
-                <h3 className="font-semibold text-foreground">Published assignments</h3>
-                {selectedProgramme.assignments.map((assignment) => (
-                  <div key={assignment.id} className="rounded-xl border border-border p-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-semibold text-foreground">{assignment.title}</p>
-                          <Badge variant="secondary">{assignment.assignmentType}</Badge>
-                        </div>
-                        <p className="mt-1 text-sm text-muted-foreground">Due {formatDate(assignment.dueDate)}</p>
-                        <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
-                          <span>{assignment.submissionCount} / {assignment.totalScholars} submitted</span>
-                          <span>{assignment.pendingCount} pending</span>
-                          <span>{assignment.gradedCount} graded</span>
-                        </div>
-                      </div>
-                      <Button variant="outline" size="sm" onClick={() => setPendingDeleteAssignmentId(assignment.id)}>
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </DialogContent>
       </Dialog>
 

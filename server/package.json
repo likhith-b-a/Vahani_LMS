@@ -9,6 +9,7 @@
     "build": "npm install",
     "start": "node src/index.js",
     "perf:smoke": "node scripts/perf-smoke.js",
+    "reminders:test": "node scripts/local/test-assignment-reminders.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:reset": "prisma migrate reset --force",

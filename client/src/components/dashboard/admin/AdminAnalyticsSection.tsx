@@ -155,6 +155,17 @@ export function AdminAnalyticsSection({
       .slice(0, 8);
   }, [scholarUsers]);
 
+  const genderDistribution = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const user of scholarUsers) {
+      const gender = user.gender?.trim() || "Unspecified";
+      counts.set(gender, (counts.get(gender) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([gender, scholars]) => ({ gender, scholars }))
+      .sort((a, b) => b.scholars - a.scholars);
+  }, [scholarUsers]);
+
   const programmeStatusData = useMemo(() => {
     const source = programmes.length ? programmes : summary?.programmes ?? [];
     const counts = { setup: 0, active: 0, completed: 0 };
@@ -388,6 +399,31 @@ export function AdminAnalyticsSection({
               </ChartContainer>
             ) : (
               <EmptyChartState message="Batch-based scholar analytics will appear here." />
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Scholars by gender</CardTitle>
+            <CardDescription>Gender distribution across scholar profiles.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {genderDistribution.length ? (
+              <ChartContainer
+                className="h-[280px] w-full"
+                config={{ scholars: { label: "Scholars", color: "#14b8a6" } }}
+              >
+                <BarChart data={genderDistribution}>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                  <XAxis dataKey="gender" tickLine={false} axisLine={false} />
+                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="scholars" fill="var(--color-scholars)" radius={[10, 10, 0, 0]} />
+                </BarChart>
+              </ChartContainer>
+            ) : (
+              <EmptyChartState message="Gender analytics will appear once user profiles are updated." />
             )}
           </CardContent>
         </Card>

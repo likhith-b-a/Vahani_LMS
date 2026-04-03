@@ -14,6 +14,7 @@ import {
   removeProgrammeMetadata,
 } from "../utils/programmeMetadataStore.js";
 import { createNotification } from "../utils/notifications.js";
+import { processProgrammeEnrollmentRequests } from "../utils/selfEnrollment.js";
 import {
   clearCachedResponse,
   getCachedResponse,
@@ -27,6 +28,7 @@ const adminUserTemplateHeaders = [
   "password",
   "role",
   "batch",
+  "gender",
   "phoneNumber",
   "creditsEarned",
 ];
@@ -37,6 +39,7 @@ const normalizeUser = (user) => ({
   email: user.email,
   role: user.role,
   batch: user.batch,
+  gender: user.gender,
   phoneNumber: user.phoneNumber,
   creditsEarned: user.creditsEarned,
   managedProgrammesCount: user.managedProgrammes?.length || 0,
@@ -65,6 +68,7 @@ const normalizeAdminUserDetail = (user) => {
     email: user.email,
     role: user.role,
     batch: user.batch,
+    gender: user.gender,
     phoneNumber: user.phoneNumber,
     creditsEarned: user.creditsEarned,
     createdAt: user.createdAt,
@@ -199,6 +203,13 @@ const normalizeProgramme = (programme) => {
     credits: programme.credits,
     createdAt: programme.createdAt,
     selfEnrollmentEnabled: !!programme.selfEnrollmentEnabled,
+    selfEnrollmentSeatLimit: programme.selfEnrollmentSeatLimit,
+    selfEnrollmentOpensAt: programme.selfEnrollmentOpensAt,
+    selfEnrollmentClosesAt: programme.selfEnrollmentClosesAt,
+    selfEnrollmentAllowedBatches:
+      programme.selfEnrollmentAllowedBatches || [],
+    selfEnrollmentAllowedGenders:
+      programme.selfEnrollmentAllowedGenders || [],
     spotlightTitle: programme.spotlightTitle || "",
     spotlightMessage: programme.spotlightMessage || "",
     programmeManagerId: programme.programmeManagerId,
@@ -260,6 +271,14 @@ const normalizeAdminProgrammeDetail = (programme) => {
       attendanceCount: session.attendances.length,
       absentCount: session.attendances.filter((attendance) => attendance.status === "absent").length,
     })),
+    selfEnrollmentRequests: (programme.selfEnrollmentRequests || []).map((request) => ({
+      id: request.id,
+      status: request.status,
+      requestedAt: request.requestedAt,
+      decidedAt: request.decidedAt,
+      decisionReason: request.decisionReason,
+      user: request.user,
+    })),
     enrolledScholars: programme.enrollments.map((enrollment) => {
       const assignmentScore = (programme.assignments || []).reduce((sum, assignment) => {
         const submission = assignment.submissions.find(
@@ -320,6 +339,11 @@ const adminProgrammeSelect = {
   credits: true,
   createdAt: true,
   selfEnrollmentEnabled: true,
+  selfEnrollmentSeatLimit: true,
+  selfEnrollmentOpensAt: true,
+  selfEnrollmentClosesAt: true,
+  selfEnrollmentAllowedBatches: true,
+  selfEnrollmentAllowedGenders: true,
   spotlightTitle: true,
   spotlightMessage: true,
   programmeManagerId: true,
@@ -502,6 +526,7 @@ const getAdminOverview = asyncHandler(async (req, res) => {
         email: true,
         role: true,
         batch: true,
+        gender: true,
         phoneNumber: true,
         creditsEarned: true,
         managedProgrammes: {
@@ -790,7 +815,7 @@ const getAdminUserDetail = asyncHandler(async (req, res) => {
 });
 
 const createAdminUser = asyncHandler(async (req, res) => {
-  const { name, email, password, role, batch, phoneNumber, creditsEarned } = req.body;
+  const { name, email, password, role, batch, gender, phoneNumber, creditsEarned } = req.body;
 
   if (!name || !email || !password || !role) {
     throw new ApiError(400, "Name, email, password and role are required");
@@ -819,6 +844,7 @@ const createAdminUser = asyncHandler(async (req, res) => {
       password: hashedPassword,
       role,
       batch: batch || null,
+      gender: gender || null,
       phoneNumber: phoneNumber || null,
       creditsEarned:
         creditsEarned !== undefined && creditsEarned !== null
@@ -909,6 +935,7 @@ const bulkCreateAdminUsers = asyncHandler(async (req, res) => {
     const password = String(rawRow.password || "").trim();
     const role = String(rawRow.role || "").trim();
     const batch = String(rawRow.batch || "").trim();
+    const gender = String(rawRow.gender || "").trim();
     const phoneNumber = String(rawRow.phoneNumber || "").trim();
     const creditsEarnedValue = String(rawRow.creditsEarned || "").trim();
     const creditsEarned =
@@ -977,6 +1004,7 @@ const bulkCreateAdminUsers = asyncHandler(async (req, res) => {
         password: await bcrypt.hash(password, 10),
         role,
         batch: batch || null,
+        gender: gender || null,
         phoneNumber: phoneNumber || null,
         creditsEarned,
       },
@@ -1031,7 +1059,7 @@ const bulkCreateAdminUsers = asyncHandler(async (req, res) => {
 
 const updateAdminUser = asyncHandler(async (req, res) => {
   const { userId } = req.params;
-  const { name, email, password, role, batch, phoneNumber, creditsEarned } = req.body;
+  const { name, email, password, role, batch, gender, phoneNumber, creditsEarned } = req.body;
 
   if (!userId) {
     throw new ApiError(400, "User ID is required");
@@ -1079,6 +1107,7 @@ const updateAdminUser = asyncHandler(async (req, res) => {
         : {}),
       ...(role ? { role } : {}),
       ...(batch !== undefined ? { batch: batch || null } : {}),
+      ...(gender !== undefined ? { gender: gender || null } : {}),
       ...(phoneNumber !== undefined ? { phoneNumber: phoneNumber || null } : {}),
       ...(creditsEarned !== undefined && creditsEarned !== null
         ? { creditsEarned: Number(creditsEarned) }
@@ -1219,6 +1248,7 @@ const getAdminProgrammeDetail = asyncHandler(async (req, res) => {
               name: true,
               email: true,
               batch: true,
+              gender: true,
               phoneNumber: true,
             },
           },
@@ -1261,6 +1291,22 @@ const getAdminProgrammeDetail = asyncHandler(async (req, res) => {
           id: true,
         },
       },
+      selfEnrollmentRequests: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              batch: true,
+              gender: true,
+            },
+          },
+        },
+        orderBy: {
+          requestedAt: "asc",
+        },
+      },
       certificates: {
         select: {
           id: true,
@@ -1295,12 +1341,35 @@ const createAdminProgramme = asyncHandler(async (req, res) => {
     credits,
     programmeManagerId,
     selfEnrollmentEnabled,
+    selfEnrollmentSeatLimit,
+    selfEnrollmentOpensAt,
+    selfEnrollmentClosesAt,
+    selfEnrollmentAllowedBatches,
+    selfEnrollmentAllowedGenders,
     spotlightTitle,
     spotlightMessage,
   } = req.body;
 
   if (!title) {
     throw new ApiError(400, "Programme title is required");
+  }
+
+  if (
+    selfEnrollmentSeatLimit !== undefined &&
+    selfEnrollmentSeatLimit !== null &&
+    selfEnrollmentSeatLimit !== "" &&
+    Number(selfEnrollmentSeatLimit) <= 0
+  ) {
+    throw new ApiError(400, "Seat limit must be greater than 0");
+  }
+
+  if (
+    selfEnrollmentOpensAt &&
+    selfEnrollmentClosesAt &&
+    new Date(selfEnrollmentOpensAt).getTime() >=
+      new Date(selfEnrollmentClosesAt).getTime()
+  ) {
+    throw new ApiError(400, "Enrollment close time must be after open time");
   }
 
   if (programmeManagerId) {
@@ -1323,6 +1392,24 @@ const createAdminProgramme = asyncHandler(async (req, res) => {
         credits !== undefined && credits !== null ? Number(credits) : null,
       programmeManagerId: programmeManagerId || null,
       selfEnrollmentEnabled: !!selfEnrollmentEnabled,
+      selfEnrollmentSeatLimit:
+        selfEnrollmentSeatLimit !== undefined &&
+        selfEnrollmentSeatLimit !== null &&
+        selfEnrollmentSeatLimit !== ""
+          ? Number(selfEnrollmentSeatLimit)
+          : null,
+      selfEnrollmentOpensAt: selfEnrollmentOpensAt
+        ? new Date(selfEnrollmentOpensAt)
+        : null,
+      selfEnrollmentClosesAt: selfEnrollmentClosesAt
+        ? new Date(selfEnrollmentClosesAt)
+        : null,
+      selfEnrollmentAllowedBatches: Array.isArray(selfEnrollmentAllowedBatches)
+        ? selfEnrollmentAllowedBatches.filter(Boolean)
+        : [],
+      selfEnrollmentAllowedGenders: Array.isArray(selfEnrollmentAllowedGenders)
+        ? selfEnrollmentAllowedGenders.filter(Boolean)
+        : [],
       spotlightTitle: spotlightTitle || "",
       spotlightMessage: spotlightMessage || "",
     },
@@ -1399,12 +1486,35 @@ const updateAdminProgramme = asyncHandler(async (req, res) => {
     credits,
     programmeManagerId,
     selfEnrollmentEnabled,
+    selfEnrollmentSeatLimit,
+    selfEnrollmentOpensAt,
+    selfEnrollmentClosesAt,
+    selfEnrollmentAllowedBatches,
+    selfEnrollmentAllowedGenders,
     spotlightTitle,
     spotlightMessage,
   } = req.body;
 
   if (!programmeId) {
     throw new ApiError(400, "Programme ID is required");
+  }
+
+  if (
+    selfEnrollmentSeatLimit !== undefined &&
+    selfEnrollmentSeatLimit !== null &&
+    selfEnrollmentSeatLimit !== "" &&
+    Number(selfEnrollmentSeatLimit) <= 0
+  ) {
+    throw new ApiError(400, "Seat limit must be greater than 0");
+  }
+
+  if (
+    selfEnrollmentOpensAt &&
+    selfEnrollmentClosesAt &&
+    new Date(selfEnrollmentOpensAt).getTime() >=
+      new Date(selfEnrollmentClosesAt).getTime()
+  ) {
+    throw new ApiError(400, "Enrollment close time must be after open time");
   }
 
   const existingProgramme = await db.programme.findUnique({
@@ -1449,6 +1559,42 @@ const updateAdminProgramme = asyncHandler(async (req, res) => {
         : {}),
       ...(selfEnrollmentEnabled !== undefined
         ? { selfEnrollmentEnabled: !!selfEnrollmentEnabled }
+        : {}),
+      ...(selfEnrollmentSeatLimit !== undefined
+        ? {
+            selfEnrollmentSeatLimit:
+              selfEnrollmentSeatLimit !== null && selfEnrollmentSeatLimit !== ""
+                ? Number(selfEnrollmentSeatLimit)
+                : null,
+          }
+        : {}),
+      ...(selfEnrollmentOpensAt !== undefined
+        ? {
+            selfEnrollmentOpensAt: selfEnrollmentOpensAt
+              ? new Date(selfEnrollmentOpensAt)
+              : null,
+          }
+        : {}),
+      ...(selfEnrollmentClosesAt !== undefined
+        ? {
+            selfEnrollmentClosesAt: selfEnrollmentClosesAt
+              ? new Date(selfEnrollmentClosesAt)
+              : null,
+          }
+        : {}),
+      ...(selfEnrollmentAllowedBatches !== undefined
+        ? {
+            selfEnrollmentAllowedBatches: Array.isArray(selfEnrollmentAllowedBatches)
+              ? selfEnrollmentAllowedBatches.filter(Boolean)
+              : [],
+          }
+        : {}),
+      ...(selfEnrollmentAllowedGenders !== undefined
+        ? {
+            selfEnrollmentAllowedGenders: Array.isArray(selfEnrollmentAllowedGenders)
+              ? selfEnrollmentAllowedGenders.filter(Boolean)
+              : [],
+          }
         : {}),
       ...(spotlightTitle !== undefined ? { spotlightTitle: spotlightTitle || "" } : {}),
       ...(spotlightMessage !== undefined
@@ -1503,6 +1649,27 @@ const updateAdminProgramme = asyncHandler(async (req, res) => {
         "Programme updated successfully",
       ),
     );
+});
+
+const processAdminProgrammeEnrollmentRequests = asyncHandler(async (req, res) => {
+  const { programmeId } = req.params;
+
+  if (!programmeId) {
+    throw new ApiError(400, "Programme ID is required");
+  }
+
+  const result = await processProgrammeEnrollmentRequests({
+    programmeId,
+    actorId: req.user.id,
+  });
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      result,
+      "Enrollment requests processed successfully",
+    ),
+  );
 });
 
 const deleteAdminProgramme = asyncHandler(async (req, res) => {
@@ -1624,6 +1791,20 @@ const assignScholarsToProgramme = asyncHandler(async (req, res) => {
 const removeScholarFromProgramme = asyncHandler(async (req, res) => {
   const { programmeId, scholarId } = req.params;
 
+  const programme = await db.programme.findUnique({
+    where: {
+      id: programmeId,
+    },
+    select: {
+      id: true,
+      title: true,
+    },
+  });
+
+  if (!programme) {
+    throw new ApiError(404, "Programme not found");
+  }
+
   const enrollment = await db.enrollment.findUnique({
     where: {
       userId_programmeId: {
@@ -1645,6 +1826,26 @@ const removeScholarFromProgramme = asyncHandler(async (req, res) => {
       },
     },
   });
+
+  await db.selfEnrollmentRequest.updateMany({
+    where: {
+      programmeId,
+      userId: scholarId,
+      status: "accepted",
+    },
+    data: {
+      status: "withdrawn",
+      decidedAt: new Date(),
+      decisionReason:
+        "Your confirmed seat was removed by admin. You may submit a fresh enrollment request if the programme is still open.",
+    },
+  });
+
+  clearCachedResponse("admin:");
+  clearCachedResponse("programmes:discover:");
+  clearCachedResponse("programmes:mine:");
+  clearCachedResponse("programmes:schedule:");
+  clearCachedResponse("programme:detail:");
 
   return res
     .status(200)
@@ -1801,6 +2002,7 @@ const getAdminReports = asyncHandler(async (req, res) => {
           email: scholar.email,
           phoneNumber: scholar.phoneNumber || "",
           batch: scholar.batch || "",
+          gender: scholar.gender || "",
           creditsEarned: scholar.creditsEarned,
           ...programmeColumnsTop,
         },
@@ -1810,6 +2012,7 @@ const getAdminReports = asyncHandler(async (req, res) => {
           email: "",
           phoneNumber: "",
           batch: "",
+          gender: "",
           creditsEarned: "",
           ...programmeColumnsBottom,
         },
@@ -1917,6 +2120,7 @@ export {
   getAdminUserDetail,
   getAdminUsers,
   getSystemSettings,
+  processAdminProgrammeEnrollmentRequests,
   removeScholarFromProgramme,
   updateAdminProgramme,
   updateAdminUser,

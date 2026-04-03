@@ -5,7 +5,9 @@ import { uploadMemory } from "../middlewares/multer.js";
 import {
   addManagedProgrammeMeetingLink,
   addManagedProgrammeResource,
+  bulkEvaluateInteractiveSession,
   createManagedInteractiveSession,
+  downloadInteractiveSessionBulkTemplate,
   getDiscoverableProgrammes,
   getManagedProgrammeDetail,
   getManagedProgrammes,
@@ -68,6 +70,19 @@ router.put(
   isAuthenticated,
   isAuthorized("programme_manager"),
   markInteractiveSessionAttendance,
+);
+router.get(
+  "/managed/interactive-sessions/:sessionId/bulk-template",
+  isAuthenticated,
+  isAuthorized("programme_manager"),
+  downloadInteractiveSessionBulkTemplate,
+);
+router.post(
+  "/managed/interactive-sessions/:sessionId/bulk-evaluate",
+  isAuthenticated,
+  isAuthorized("programme_manager"),
+  uploadMemory.single("file"),
+  bulkEvaluateInteractiveSession,
 );
 router.post(
   "/managed/:programmeId/publish-results",

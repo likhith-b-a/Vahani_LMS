@@ -627,6 +627,106 @@ const bulkEvaluateSubmissions = asyncHandler(async (req, res) => {
   );
 });
 
+const downloadBulkEvaluationTemplate = asyncHandler(async (req, res) => {
+  const { assignmentId } = req.params;
+
+  if (!assignmentId) {
+    throw new ApiError(400, "Assignment ID is required");
+  }
+
+  const managedAssignment = await db.assignment.findFirst({
+    where: {
+      id: assignmentId,
+      programme: {
+        is: {
+          programmeManagerId: req.user.id,
+        },
+      },
+    },
+    include: {
+      programme: {
+        select: {
+          title: true,
+        },
+      },
+      submissions: {
+        include: {
+          user: {
+            select: {
+              name: true,
+              email: true,
+              batch: true,
+            },
+          },
+        },
+        orderBy: {
+          submittedAt: "asc",
+        },
+      },
+    },
+  });
+
+  if (!managedAssignment) {
+    throw new ApiError(404, "Assignment not found for this programme manager");
+  }
+
+  const workbook = XLSX.utils.book_new();
+  const worksheetRows = [
+    [
+      "scholarName",
+      "userEmail",
+      "batch",
+      "submittedAt",
+      "submissionLink",
+      "currentMarks",
+      "marks",
+    ],
+    ...managedAssignment.submissions.map((submission) => [
+      submission.user.name,
+      submission.user.email,
+      submission.user.batch || "",
+      submission.submittedAt
+        ? new Date(submission.submittedAt).toLocaleString("en-IN")
+        : "",
+      submission.fileUrl || "",
+      submission.score ?? "",
+      submission.score ?? "",
+    ]),
+  ];
+
+  const worksheet = XLSX.utils.aoa_to_sheet(worksheetRows);
+
+  worksheet["!cols"] = [
+    { wch: 28 },
+    { wch: 34 },
+    { wch: 12 },
+    { wch: 24 },
+    { wch: 60 },
+    { wch: 14 },
+    { wch: 12 },
+  ];
+
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Assignment marks");
+
+  const fileBuffer = XLSX.write(workbook, {
+    type: "buffer",
+    bookType: "xlsx",
+  });
+
+  const safeTitle = managedAssignment.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="${safeTitle || "assignment"}-marks-template.xlsx"`,
+  );
+
+  return res.status(200).send(fileBuffer);
+});
+
 const getAssignmentsByProgramme = asyncHandler(async (req, res) => {
   const { programmeId } = req.params;
 
@@ -799,6 +899,7 @@ const submitAssignment = asyncHandler(async (req, res) => {
 export {
   bulkEvaluateSubmissions,
   createAssignment,
+  downloadBulkEvaluationTemplate,
   evaluateSubmission,
   getAssignmentsByProgramme,
   getManagedSubmissions,

@@ -174,6 +174,7 @@ export default function AdminUserDetailPage() {
                             {userDetail.phoneNumber || "No phone"}
                           </span>
                           {userDetail.batch && <span>Batch: {userDetail.batch}</span>}
+                          {userDetail.gender && <span>Gender: {userDetail.gender}</span>}
                         </div>
                       </div>
                       <div className="text-sm text-muted-foreground">

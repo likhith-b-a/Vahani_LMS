@@ -8,6 +8,7 @@ export interface AdminUser {
   email: string;
   role: AdminUserRole;
   batch?: string | null;
+  gender?: string | null;
   phoneNumber?: string | null;
   creditsEarned: number;
   managedProgrammesCount: number;
@@ -33,6 +34,7 @@ export interface AdminUserDetail {
   email: string;
   role: AdminUserRole;
   batch?: string | null;
+  gender?: string | null;
   phoneNumber?: string | null;
   creditsEarned: number;
   createdAt: string;
@@ -138,6 +140,11 @@ export interface AdminProgramme {
   credits?: number | null;
   createdAt: string;
   selfEnrollmentEnabled: boolean;
+  selfEnrollmentSeatLimit?: number | null;
+  selfEnrollmentOpensAt?: string | null;
+  selfEnrollmentClosesAt?: string | null;
+  selfEnrollmentAllowedBatches?: string[];
+  selfEnrollmentAllowedGenders?: string[];
   spotlightTitle: string;
   spotlightMessage: string;
   resources?: Array<{
@@ -169,6 +176,20 @@ export interface AdminProgramme {
 
 export interface AdminProgrammeDetail extends AdminProgramme {
   resultsPublishedAt?: string | null;
+  selfEnrollmentRequests: Array<{
+    id: string;
+    status: string;
+    requestedAt: string;
+    decidedAt?: string | null;
+    decisionReason?: string | null;
+    user: {
+      id: string;
+      name: string;
+      email: string;
+      batch?: string | null;
+      gender?: string | null;
+    };
+  }>;
   interactiveSessions: Array<{
     id: string;
     title: string;
@@ -197,6 +218,7 @@ export interface AdminProgrammeDetail extends AdminProgramme {
       name: string;
       email: string;
       batch?: string | null;
+      gender?: string | null;
       phoneNumber?: string | null;
     };
     certificate?: {
@@ -296,6 +318,7 @@ export interface AdminUserPayload {
   password: string;
   role: AdminUserRole;
   batch?: string;
+  gender?: string;
   phoneNumber?: string;
   creditsEarned?: number;
 }
@@ -306,6 +329,11 @@ export interface AdminProgrammePayload {
   credits?: number | null;
   programmeManagerId: string;
   selfEnrollmentEnabled?: boolean;
+  selfEnrollmentSeatLimit?: number | null;
+  selfEnrollmentOpensAt?: string | null;
+  selfEnrollmentClosesAt?: string | null;
+  selfEnrollmentAllowedBatches?: string[];
+  selfEnrollmentAllowedGenders?: string[];
   spotlightTitle?: string;
   spotlightMessage?: string;
 }
@@ -459,6 +487,12 @@ export const removeScholarFromProgramme = async (
       method: "DELETE",
     },
   );
+};
+
+export const processProgrammeEnrollmentRequests = async (programmeId: string) => {
+  return fetchWithAuth(`/admin/programmes/${programmeId}/process-enrollment-requests`, {
+    method: "POST",
+  });
 };
 
 export const deleteAdminAssignment = async (assignmentId: string) => {

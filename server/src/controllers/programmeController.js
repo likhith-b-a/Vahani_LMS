@@ -1,6 +1,7 @@
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/AsyncHandler.js";
+import XLSX from "xlsx";
 import db from "../db.js";
 import { serializeAssignment } from "../utils/assignmentMetadata.js";
 import {
@@ -16,6 +17,10 @@ import {
   createNotification,
   getProgrammeScholarIds,
 } from "../utils/notifications.js";
+import {
+  getProgrammeSelfEnrollmentEligibility,
+  processProgrammeEnrollmentRequests,
+} from "../utils/selfEnrollment.js";
 import { uploadBufferToS3 } from "../utils/s3.js";
 
 const getMyProgrammes = asyncHandler(async (req, res) => {
@@ -849,6 +854,256 @@ const markInteractiveSessionAttendance = asyncHandler(async (req, res) => {
   );
 });
 
+const downloadInteractiveSessionBulkTemplate = asyncHandler(async (req, res) => {
+  const { sessionId } = req.params;
+
+  if (!sessionId) {
+    throw new ApiError(400, "Interactive session ID is required");
+  }
+
+  const session = await db.interactiveSession.findFirst({
+    where: {
+      id: sessionId,
+      programme: {
+        is: {
+          programmeManagerId: req.user.id,
+        },
+      },
+    },
+    include: {
+      programme: {
+        select: {
+          title: true,
+        },
+      },
+      attendances: {
+        where: {
+          status: "present",
+        },
+        include: {
+          user: {
+            select: {
+              name: true,
+              email: true,
+              batch: true,
+            },
+          },
+        },
+        orderBy: {
+          markedAt: "asc",
+        },
+      },
+    },
+  });
+
+  if (!session) {
+    throw new ApiError(404, "Interactive session not found for this manager");
+  }
+
+  if (!session.attendances.length) {
+    throw new ApiError(
+      400,
+      "Mark attendance first. The bulk marks sheet only includes present scholars.",
+    );
+  }
+
+  const workbook = XLSX.utils.book_new();
+  const worksheetRows = [
+    ["scholarName", "userEmail", "batch", "attendanceStatus", "currentMarks", "marks"],
+    ...session.attendances.map((attendance) => [
+      attendance.user.name,
+      attendance.user.email,
+      attendance.user.batch || "",
+      attendance.status,
+      attendance.score ?? "",
+      attendance.score ?? "",
+    ]),
+  ];
+
+  const worksheet = XLSX.utils.aoa_to_sheet(worksheetRows);
+
+  worksheet["!cols"] = [
+    { wch: 28 },
+    { wch: 34 },
+    { wch: 12 },
+    { wch: 18 },
+    { wch: 14 },
+    { wch: 12 },
+  ];
+
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Session marks");
+
+  const fileBuffer = XLSX.write(workbook, {
+    type: "buffer",
+    bookType: "xlsx",
+  });
+
+  const safeTitle = session.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="${safeTitle || "interactive-session"}-marks-template.xlsx"`,
+  );
+
+  return res.status(200).send(fileBuffer);
+});
+
+const bulkEvaluateInteractiveSession = asyncHandler(async (req, res) => {
+  const { sessionId } = req.params;
+
+  if (!sessionId) {
+    throw new ApiError(400, "Interactive session ID is required");
+  }
+
+  if (!req.file?.buffer) {
+    throw new ApiError(400, "Excel file is required");
+  }
+
+  const session = await db.interactiveSession.findFirst({
+    where: {
+      id: sessionId,
+      programme: {
+        is: {
+          programmeManagerId: req.user.id,
+        },
+      },
+    },
+    include: {
+      programme: {
+        select: {
+          id: true,
+          title: true,
+        },
+      },
+    },
+  });
+
+  if (!session) {
+    throw new ApiError(404, "Interactive session not found for this manager");
+  }
+
+  const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+  const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+  if (!rows.length) {
+    throw new ApiError(400, "Excel file is empty");
+  }
+
+  const results = {
+    updated: 0,
+    skipped: 0,
+    failed: [],
+  };
+
+  for (const row of rows) {
+    const userEmail = String(row.useremail || row.userEmail || row.email || "")
+      .trim()
+      .toLowerCase();
+    const marks = Number(row.marks ?? row.score ?? "");
+
+    if (!userEmail || Number.isNaN(marks)) {
+      results.skipped += 1;
+      results.failed.push({
+        userEmail: userEmail || "(missing email)",
+        reason: "Missing useremail or invalid marks",
+      });
+      continue;
+    }
+
+    if (marks < 0 || marks > session.maxScore) {
+      results.skipped += 1;
+      results.failed.push({
+        userEmail,
+        reason: `Marks should be between 0 and ${session.maxScore}`,
+      });
+      continue;
+    }
+
+    const attendance = await db.interactiveSessionAttendance.findFirst({
+      where: {
+        interactiveSessionId: sessionId,
+        status: "present",
+        user: {
+          is: {
+            email: userEmail,
+          },
+        },
+      },
+      select: {
+        id: true,
+        userId: true,
+      },
+    });
+
+    if (!attendance) {
+      results.skipped += 1;
+      results.failed.push({
+        userEmail,
+        reason: "No present attendance record found for this scholar",
+      });
+      continue;
+    }
+
+    await db.interactiveSessionAttendance.update({
+      where: {
+        id: attendance.id,
+      },
+      data: {
+        score: marks,
+        markedAt: new Date(),
+      },
+    });
+
+    await createNotification({
+      type: "grade",
+      title: `Interactive session marks updated for ${session.title}`,
+      message:
+        session.maxScore > 0
+          ? `Your marks for ${session.title} are now ${marks}/${session.maxScore}.`
+          : `Your attendance for ${session.title} has been updated.`,
+      userIds: [attendance.userId],
+      actorId: req.user.id,
+      programmeId: session.programmeId,
+      actionUrl: `/my-programmes/${session.programmeId}`,
+      metadata: {
+        interactiveSessionId: sessionId,
+        attendanceStatus: "present",
+        score: marks,
+        maxScore: session.maxScore,
+      },
+    });
+
+    clearCachedResponse(`programmes:mine:${attendance.userId}`);
+    clearCachedResponse(`programmes:schedule:${attendance.userId}`);
+    clearCachedResponse(`programme:detail:${attendance.userId}:`);
+
+    results.updated += 1;
+  }
+
+  clearCachedResponse(`programmes:managed:${req.user.id}`);
+  clearCachedResponse("programmes:managed:detail:");
+  clearCachedResponse("programmes:mine:");
+  clearCachedResponse("programmes:schedule:");
+  clearCachedResponse("programme:detail:");
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        sessionId,
+        programme: session.programme,
+        ...results,
+      },
+      "Bulk session evaluation completed",
+    ),
+  );
+});
+
 const publishProgrammeResults = asyncHandler(async (req, res) => {
   const { programmeId } = req.params;
 
@@ -1234,59 +1489,122 @@ const getDiscoverableProgrammes = asyncHandler(async (req, res) => {
     return res.status(200).json(cachedResponse);
   }
 
-  const enrolled = await db.enrollment.findMany({
-    where: {
-      userId: req.user.id,
-    },
-    select: {
-      programmeId: true,
-    },
-  });
+  const [user, enrolled, requests, programmes] = await Promise.all([
+    db.user.findUnique({
+      where: {
+        id: req.user.id,
+      },
+      select: {
+        id: true,
+        batch: true,
+        gender: true,
+      },
+    }),
+    db.enrollment.findMany({
+      where: {
+        userId: req.user.id,
+      },
+      select: {
+        programmeId: true,
+      },
+    }),
+    db.selfEnrollmentRequest.findMany({
+      where: {
+        userId: req.user.id,
+      },
+      select: {
+        programmeId: true,
+        status: true,
+        requestedAt: true,
+        decidedAt: true,
+        decisionReason: true,
+      },
+    }),
+    db.programme.findMany({
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        createdAt: true,
+        selfEnrollmentEnabled: true,
+        selfEnrollmentSeatLimit: true,
+        selfEnrollmentOpensAt: true,
+        selfEnrollmentClosesAt: true,
+        selfEnrollmentAllowedBatches: true,
+        selfEnrollmentAllowedGenders: true,
+        spotlightTitle: true,
+        spotlightMessage: true,
+        programmeManager: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        _count: {
+          select: {
+            enrollments: true,
+            assignments: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    }),
+  ]);
 
   const enrolledProgrammeIds = new Set(enrolled.map((item) => item.programmeId));
-  const programmes = await db.programme.findMany({
-    select: {
-      id: true,
-      title: true,
-      description: true,
-      createdAt: true,
-      selfEnrollmentEnabled: true,
-      spotlightTitle: true,
-      spotlightMessage: true,
-      programmeManager: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-        },
-      },
-      _count: {
-        select: {
-          enrollments: true,
-          assignments: true,
-        },
-      },
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+  const requestMap = new Map(requests.map((request) => [request.programmeId, request]));
 
   const discoverableProgrammes = programmes
     .filter((programme) => programme.selfEnrollmentEnabled)
-    .map((programme) => ({
-      id: programme.id,
-      title: programme.title,
-      description: programme.description,
-      createdAt: programme.createdAt,
-      programmeManager: programme.programmeManager,
-      selfEnrollmentEnabled: programme.selfEnrollmentEnabled,
-      spotlightTitle: programme.spotlightTitle || "",
-      spotlightMessage: programme.spotlightMessage || "",
-      assignmentsCount: programme._count.assignments,
-      scholarsCount: programme._count.enrollments,
-      enrolled: enrolledProgrammeIds.has(programme.id),
-    }));
+    .map((programme) => {
+      const existingRequest = requestMap.get(programme.id) || null;
+      const eligibility = getProgrammeSelfEnrollmentEligibility({
+        programme,
+        user,
+        enrolledCount: programme._count.enrollments,
+      });
+
+      return {
+        id: programme.id,
+        title: programme.title,
+        description: programme.description,
+        createdAt: programme.createdAt,
+        programmeManager: programme.programmeManager,
+        selfEnrollmentEnabled: programme.selfEnrollmentEnabled,
+        selfEnrollmentSeatLimit: programme.selfEnrollmentSeatLimit,
+        selfEnrollmentOpensAt: programme.selfEnrollmentOpensAt,
+        selfEnrollmentClosesAt: programme.selfEnrollmentClosesAt,
+        allowedBatches: programme.selfEnrollmentAllowedBatches || [],
+        allowedGenders: programme.selfEnrollmentAllowedGenders || [],
+        spotlightTitle: programme.spotlightTitle || "",
+        spotlightMessage: programme.spotlightMessage || "",
+        assignmentsCount: programme._count.assignments,
+        scholarsCount: programme._count.enrollments,
+        enrolled: enrolledProgrammeIds.has(programme.id),
+        requestStatus: existingRequest?.status || null,
+        requestDecisionReason: existingRequest?.decisionReason || "",
+        requestRequestedAt: existingRequest?.requestedAt || null,
+        requestDecidedAt: existingRequest?.decidedAt || null,
+        eligibleToRequest:
+          !enrolledProgrammeIds.has(programme.id) &&
+          (!existingRequest ||
+            existingRequest.status === "rejected" ||
+            existingRequest.status === "withdrawn") &&
+          eligibility.eligible,
+        eligibilityMessage: enrolledProgrammeIds.has(programme.id)
+          ? "You are already enrolled in this programme."
+          : existingRequest?.status === "pending"
+            ? "Your request has already been submitted."
+            : existingRequest?.status === "accepted"
+              ? "Your enrollment request has already been accepted."
+              : existingRequest?.status === "withdrawn"
+                ? "Your earlier seat was removed. You can submit a fresh request if this programme is still open."
+              : eligibility.reason,
+      };
+    });
 
   const response = new ApiResponse(
     200,
@@ -1370,6 +1688,18 @@ const selfEnrollInProgramme = asyncHandler(async (req, res) => {
     where: {
       id: programmeId,
     },
+    include: {
+      enrollments: {
+        where: {
+          status: {
+            in: ["active", "completed", "uncompleted"],
+          },
+        },
+        select: {
+          userId: true,
+        },
+      },
+    },
   });
 
   if (!programme) {
@@ -1380,30 +1710,83 @@ const selfEnrollInProgramme = asyncHandler(async (req, res) => {
     throw new ApiError(403, "This programme is not open for self-enrollment");
   }
 
-  const enrollment = await db.enrollment.upsert({
+  const existingEnrollment = await db.enrollment.findUnique({
     where: {
       userId_programmeId: {
         userId: req.user.id,
         programmeId,
       },
     },
-    update: {
-      status: "active",
+  });
+
+  if (existingEnrollment) {
+    throw new ApiError(409, "You are already enrolled in this programme");
+  }
+
+  const user = await db.user.findUnique({
+    where: {
+      id: req.user.id,
     },
-    create: {
-      userId: req.user.id,
-      programmeId,
-      status: "active",
+    select: {
+      id: true,
+      batch: true,
+      gender: true,
     },
   });
+
+  const existingRequest = await db.selfEnrollmentRequest.findUnique({
+    where: {
+      programmeId_userId: {
+        programmeId,
+        userId: req.user.id,
+      },
+    },
+  });
+
+  if (existingRequest?.status === "pending") {
+    throw new ApiError(409, "You have already submitted an enrollment request for this programme");
+  }
+
+  const eligibility = getProgrammeSelfEnrollmentEligibility({
+    programme,
+    user,
+    enrolledCount: programme.enrollments.length,
+  });
+
+  if (!eligibility.eligible) {
+    throw new ApiError(403, eligibility.reason);
+  }
+
+  const request = await db.selfEnrollmentRequest.upsert({
+    where: {
+      programmeId_userId: {
+        programmeId,
+        userId: req.user.id,
+      },
+    },
+    update: {
+      status: "pending",
+      requestedAt: new Date(),
+      decidedAt: null,
+      decisionReason: null,
+    },
+    create: {
+      programmeId,
+      userId: req.user.id,
+      status: "pending",
+    },
+  });
+
+  clearCachedResponse("programmes:discover:");
+  clearCachedResponse("admin:");
 
   return res.status(200).json(
     new ApiResponse(
       200,
       {
-        enrollment,
+        request,
       },
-      "Programme registration completed successfully",
+      "Enrollment request submitted successfully",
     ),
   );
 });
@@ -1543,7 +1926,9 @@ const addManagedProgrammeMeetingLink = asyncHandler(async (req, res) => {
 export {
   addManagedProgrammeMeetingLink,
   addManagedProgrammeResource,
+  bulkEvaluateInteractiveSession,
   createManagedInteractiveSession,
+  downloadInteractiveSessionBulkTemplate,
   getDiscoverableProgrammes,
   getManagedProgrammeDetail,
   getManagedProgrammes,

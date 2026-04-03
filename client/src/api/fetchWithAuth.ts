@@ -39,30 +39,7 @@ const getCacheStorageKey = (cacheKey: string) =>
   `${STORAGE_PREFIX}${getUserCacheNamespace()}:${cacheKey}`;
 
 const readCachedResponse = (cacheKey: string): unknown | null => {
-  const memoryEntry = MEMORY_CACHE.get(cacheKey);
-  if (memoryEntry && memoryEntry.expiresAt > Date.now()) {
-    return memoryEntry.data;
-  }
-
-  MEMORY_CACHE.delete(cacheKey);
-
-  try {
-    const raw = localStorage.getItem(getCacheStorageKey(cacheKey));
-    if (!raw) {
-      return null;
-    }
-
-    const parsed = JSON.parse(raw) as CachedEntry;
-    if (parsed.expiresAt <= Date.now()) {
-      localStorage.removeItem(getCacheStorageKey(cacheKey));
-      return null;
-    }
-
-    MEMORY_CACHE.set(cacheKey, parsed);
-    return parsed.data;
-  } catch {
-    return null;
-  }
+  return null;
 };
 
 const writeCachedResponse = (
@@ -70,18 +47,7 @@ const writeCachedResponse = (
   data: unknown,
   cacheTtlMs: number,
 ) => {
-  const entry: CachedEntry = {
-    data,
-    expiresAt: Date.now() + cacheTtlMs,
-  };
-
-  MEMORY_CACHE.set(cacheKey, entry);
-
-  try {
-    localStorage.setItem(getCacheStorageKey(cacheKey), JSON.stringify(entry));
-  } catch {
-    // Ignore localStorage quota or parsing failures and keep memory cache only.
-  }
+  return;
 };
 
 export const clearApiCache = () => {
@@ -177,7 +143,7 @@ export const fetchWithAuth = async <T = any>(
     ...requestOptions
   } = options;
   const method = (requestOptions.method || "GET").toUpperCase();
-  const shouldCache = method === "GET" && cacheTtlMs > 0 && !bypassCache;
+  const shouldCache = false;
 
   if (shouldCache) {
     const cachedResponse = readCachedResponse(cacheKey);

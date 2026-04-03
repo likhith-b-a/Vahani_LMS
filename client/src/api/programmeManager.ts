@@ -327,6 +327,34 @@ export const evaluateProgrammeSubmission = async (
   });
 };
 
+const downloadManagerFile = async (endpoint: string, fallbackMessage: string) => {
+  const accessToken = localStorage.getItem("accessToken") || "";
+  const headers = accessToken.trim()
+    ? { Authorization: `Bearer ${accessToken.trim()}` }
+    : undefined;
+
+  const response = await fetch(`${BASE_URL}${endpoint}`, {
+    method: "GET",
+    credentials: "include",
+    headers,
+  });
+
+  if (!response.ok) {
+    let message = fallbackMessage;
+
+    try {
+      const data = await response.json();
+      message = data?.message || message;
+    } catch {
+      // Ignore JSON parsing failure and use fallback message.
+    }
+
+    throw new Error(message);
+  }
+
+  return response.blob();
+};
+
 export const bulkEvaluateProgrammeAssignment = async (
   assignmentId: string,
   file: File,
@@ -336,6 +364,36 @@ export const bulkEvaluateProgrammeAssignment = async (
 
   return fetchWithAuth(
     `/assignments/managed/assignments/${assignmentId}/bulk-evaluate`,
+    {
+      method: "POST",
+      body: formData,
+    },
+  );
+};
+
+export const downloadProgrammeAssignmentBulkTemplate = async (
+  assignmentId: string,
+) =>
+  downloadManagerFile(
+    `/assignments/managed/assignments/${assignmentId}/bulk-template`,
+    "Unable to download assignment marks sheet",
+  );
+
+export const downloadInteractiveSessionBulkTemplate = async (sessionId: string) =>
+  downloadManagerFile(
+    `/programmes/managed/interactive-sessions/${sessionId}/bulk-template`,
+    "Unable to download session marks sheet",
+  );
+
+export const bulkEvaluateInteractiveSession = async (
+  sessionId: string,
+  file: File,
+) => {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  return fetchWithAuth(
+    `/programmes/managed/interactive-sessions/${sessionId}/bulk-evaluate`,
     {
       method: "POST",
       body: formData,

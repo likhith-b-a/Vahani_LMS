@@ -34,6 +34,7 @@ interface AdminUserFormState {
   password: string;
   role: AdminUserRole;
   batch: string;
+  gender: string;
   phoneNumber: string;
   creditsEarned: string;
 }
@@ -78,6 +79,7 @@ export function BulkUserImportDialog({
               <span className="font-medium">password</span>,{" "}
               <span className="font-medium">role</span>,{" "}
               <span className="font-medium">batch</span>,{" "}
+              <span className="font-medium">gender</span>,{" "}
               <span className="font-medium">phoneNumber</span>, and{" "}
               <span className="font-medium">creditsEarned</span>.
             </p>
@@ -200,8 +202,8 @@ export function AdminUserDialog({
               }
             />
           </div>
-          {userForm.role === "scholar" && (
-            <>
+          <>
+            {userForm.role === "scholar" && (
               <div className="space-y-1.5">
                 <Label>Batch</Label>
                 <Input
@@ -211,6 +213,18 @@ export function AdminUserDialog({
                   }
                 />
               </div>
+            )}
+            <div className="space-y-1.5">
+              <Label>Gender</Label>
+              <Input
+                value={userForm.gender}
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                  onUserFormChange((current) => ({ ...current, gender: event.target.value }))
+                }
+                placeholder="Female, male, non-binary..."
+              />
+            </div>
+            {userForm.role === "scholar" && (
               <div className="space-y-1.5">
                 <Label>Credits earned</Label>
                 <Input
@@ -225,8 +239,8 @@ export function AdminUserDialog({
                   }
                 />
               </div>
-            </>
-          )}
+            )}
+          </>
           <div className="space-y-1.5 sm:col-span-2">
             <Label>Password {editingUserId ? "(optional)" : ""}</Label>
             <Input
@@ -285,6 +299,12 @@ export function AdminUserDetailsDialog({
                 <p className="text-xs text-muted-foreground">Phone</p>
                 <p className="mt-1 font-medium text-foreground">
                   {selectedUser.phoneNumber || "--"}
+                </p>
+              </div>
+              <div className="rounded-xl bg-muted/40 p-4">
+                <p className="text-xs text-muted-foreground">Gender</p>
+                <p className="mt-1 font-medium text-foreground">
+                  {selectedUser.gender || "--"}
                 </p>
               </div>
               {selectedUser.role === "scholar" && (
