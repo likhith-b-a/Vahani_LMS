@@ -299,10 +299,6 @@ export function ManagerAnalyticsSection({
             )}
           </CardContent>
         </Card>
-
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Enrollment model mix</CardTitle>

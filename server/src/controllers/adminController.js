@@ -736,6 +736,7 @@ const getAdminUserDetail = asyncHandler(async (req, res) => {
       enrollments: {
         select: {
           id: true,
+          userId: true,
           status: true,
           progressPercent: true,
           creditsAwarded: true,
@@ -784,16 +785,37 @@ const getAdminUserDetail = asyncHandler(async (req, res) => {
                 select: {
                   id: true,
                   title: true,
+                  description: true,
                   scheduledAt: true,
                   maxScore: true,
-                  targetSessionSlots: true,
+                  occurrences: {
+                    select: {
+                      id: true,
+                      scheduledAt: true,
+                      durationMinutes: true,
+                      meetingUrl: true,
+                      assignments: {
+                        where: {
+                          userId,
+                        },
+                        select: {
+                          userId: true,
+                        },
+                      },
+                    },
+                    orderBy: {
+                      scheduledAt: "asc",
+                    },
+                  },
                   attendances: {
                     where: {
                       userId,
                     },
                     select: {
+                      userId: true,
                       status: true,
                       score: true,
+                      interactiveSessionOccurrenceId: true,
                     },
                   },
                 },
@@ -1369,11 +1391,32 @@ const getAdminProgrammeDetail = asyncHandler(async (req, res) => {
       },
       interactiveSessions: {
         include: {
+          occurrences: {
+            include: {
+              assignments: {
+                select: {
+                  userId: true,
+                },
+              },
+              attendances: {
+                select: {
+                  userId: true,
+                  status: true,
+                  score: true,
+                  interactiveSessionOccurrenceId: true,
+                },
+              },
+            },
+            orderBy: {
+              scheduledAt: "asc",
+            },
+          },
           attendances: {
             select: {
               userId: true,
               status: true,
               score: true,
+              interactiveSessionOccurrenceId: true,
             },
           },
         },
@@ -2022,11 +2065,26 @@ const getAdminReports = asyncHandler(async (req, res) => {
                 interactiveSessions: {
                   select: {
                     maxScore: true,
-                    targetSessionSlots: true,
+                    occurrences: {
+                      select: {
+                        id: true,
+                        scheduledAt: true,
+                        assignments: {
+                          select: {
+                            userId: true,
+                          },
+                        },
+                      },
+                      orderBy: {
+                        scheduledAt: "asc",
+                      },
+                    },
                     attendances: {
                       select: {
                         userId: true,
                         score: true,
+                        status: true,
+                        interactiveSessionOccurrenceId: true,
                       },
                     },
                   },

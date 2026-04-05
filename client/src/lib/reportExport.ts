@@ -4,6 +4,21 @@ export interface TabularReport {
   rows: Array<Record<string, string | number | null>>;
 }
 
+export const getReportHeaders = (rows: Array<Record<string, string | number | null>>) => {
+  const headers: string[] = [];
+  const seen = new Set<string>();
+
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      if (seen.has(key)) continue;
+      seen.add(key);
+      headers.push(key);
+    }
+  }
+
+  return headers;
+};
+
 const escapeHtml = (value: string) =>
   value
     .replaceAll("&", "&amp;")
@@ -14,7 +29,7 @@ const escapeHtml = (value: string) =>
 export const downloadCsvReport = (report: TabularReport, filePrefix = "report") => {
   if (!report.rows.length) return;
 
-  const headers = Object.keys(report.rows[0]);
+  const headers = getReportHeaders(report.rows);
   const csv = [
     headers.join(","),
     ...report.rows.map((row) =>
@@ -38,7 +53,7 @@ export const exportReportAsPdf = (
 ) => {
   if (!report.rows.length) return;
 
-  const headers = Object.keys(report.rows[0]);
+  const headers = getReportHeaders(report.rows);
   const tableRows = report.rows
     .map(
       (row) =>

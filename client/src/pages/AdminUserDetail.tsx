@@ -275,8 +275,17 @@ export default function AdminUserDetailPage() {
                                   <TableBody>
                                     {entry.interactiveSessions.map((session) => (
                                       <TableRow key={session.id}>
-                                        <TableCell>{session.title}</TableCell>
-                                        <TableCell>{session.attendanceStatus}</TableCell>
+                                        <TableCell>
+                                          <div>
+                                            <p>{session.title}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                              {formatDate(session.scheduledAt)}
+                                            </p>
+                                          </div>
+                                        </TableCell>
+                                        <TableCell className="capitalize">
+                                          {session.attendanceStatus.replaceAll("_", " ")}
+                                        </TableCell>
                                         <TableCell className="text-right">
                                           {session.score ?? "--"}
                                           {session.maxScore ? ` / ${session.maxScore}` : ""}

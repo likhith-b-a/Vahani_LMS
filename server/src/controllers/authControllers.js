@@ -17,6 +17,7 @@ import {
 } from "../utils/responseCache.js";
 import { serializeAssignment } from "../utils/assignmentMetadata.js";
 import { withProgrammeMetadataSync } from "../utils/programmeMetadataStore.js";
+import { filterSessionsForEnrollment } from "../utils/programmeGrouping.js";
 
 const getCookieOptions = () => {
   const isProduction = process.env.NODE_ENV === "production";
@@ -441,6 +442,7 @@ const warmScholarCaches = async (userId) => {
       db.enrollment.findMany({
         where: { userId },
         select: {
+          userId: true,
           status: true,
           programme: {
             select: {
@@ -451,6 +453,25 @@ const warmScholarCaches = async (userId) => {
                   id: true,
                   title: true,
                   scheduledAt: true,
+                  description: true,
+                  maxScore: true,
+                  durationMinutes: true,
+                  meetingUrl: true,
+                  occurrences: {
+                    select: {
+                      id: true,
+                      scheduledAt: true,
+                      durationMinutes: true,
+                      meetingUrl: true,
+                      assignments: {
+                        where: { userId },
+                        select: {
+                          userId: true,
+                        },
+                      },
+                    },
+                    orderBy: { scheduledAt: "asc" },
+                  },
                   attendances: {
                     where: { userId },
                     select: {
@@ -459,6 +480,7 @@ const warmScholarCaches = async (userId) => {
                       score: true,
                       markedAt: true,
                       userId: true,
+                      interactiveSessionOccurrenceId: true,
                     },
                   },
                 },
@@ -507,6 +529,25 @@ const warmScholarCaches = async (userId) => {
                   id: true,
                   title: true,
                   scheduledAt: true,
+                  description: true,
+                  maxScore: true,
+                  durationMinutes: true,
+                  meetingUrl: true,
+                  occurrences: {
+                    select: {
+                      id: true,
+                      scheduledAt: true,
+                      durationMinutes: true,
+                      meetingUrl: true,
+                      assignments: {
+                        where: { userId },
+                        select: {
+                          userId: true,
+                        },
+                      },
+                    },
+                    orderBy: { scheduledAt: "asc" },
+                  },
                   attendances: {
                     where: { userId },
                     select: {
@@ -515,6 +556,7 @@ const warmScholarCaches = async (userId) => {
                       score: true,
                       markedAt: true,
                       userId: true,
+                      interactiveSessionOccurrenceId: true,
                     },
                   },
                 },
@@ -566,7 +608,11 @@ const warmScholarCaches = async (userId) => {
           id: enrollment.programme.id,
           title: enrollment.programme.title,
           status: enrollment.status,
-          interactiveSessions: enrollment.programme.interactiveSessions,
+          interactiveSessions: filterSessionsForEnrollment(
+            enrollment.programme.interactiveSessions,
+            enrollment,
+            enrollment.programme,
+          ),
         })),
       },
       "Programme schedule fetched successfully",
@@ -579,7 +625,11 @@ const warmScholarCaches = async (userId) => {
     assignments: enrollment.programme.assignments.map((assignment) =>
       serializeAssignment(assignment),
     ),
-    interactiveSessions: enrollment.programme.interactiveSessions,
+    interactiveSessions: filterSessionsForEnrollment(
+      enrollment.programme.interactiveSessions,
+      enrollment,
+      enrollment.programme,
+    ),
     status: enrollment.status,
     enrolledAt: enrollment.enrolledAt,
   }));

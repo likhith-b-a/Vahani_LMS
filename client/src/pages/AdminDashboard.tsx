@@ -111,7 +111,7 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { downloadCsvReport, exportReportAsPdf } from "@/lib/reportExport";
+import { downloadCsvReport, exportReportAsPdf, getReportHeaders } from "@/lib/reportExport";
 import { matchesSelfEnrollmentScholarRules } from "@/lib/selfEnrollmentEligibility";
 
 const emptyUserForm = {
@@ -320,6 +320,10 @@ export default function AdminDashboard() {
   const [reportType, setReportType] =
     useState<keyof typeof reportLabels>("scholar");
   const [reportData, setReportData] = useState<AdminReportResponse | null>(null);
+  const reportHeaders = useMemo(
+    () => (reportData ? getReportHeaders(reportData.rows) : []),
+    [reportData],
+  );
   const [wishlistAiOverview, setWishlistAiOverview] =
     useState<AdminWishlistAiOverviewResponse | null>(null);
   const [wishlistAiLoading, setWishlistAiLoading] = useState(false);
@@ -1961,7 +1965,7 @@ export default function AdminDashboard() {
                           <table className="min-w-full divide-y divide-border text-sm">
                             <thead className="bg-muted/40">
                               <tr>
-                                {Object.keys(reportData.rows[0]).map((key) => (
+                                {reportHeaders.map((key) => (
                                   <th key={key} className="px-4 py-3 text-left font-medium text-foreground">
                                     {key}
                                   </th>
@@ -1971,7 +1975,7 @@ export default function AdminDashboard() {
                             <tbody className="divide-y divide-border">
                               {reportData.rows.slice(0, 10).map((row, index) => (
                                 <tr key={`${reportData.type}-${index}`}>
-                                  {Object.keys(reportData.rows[0]).map((key) => (
+                                  {reportHeaders.map((key) => (
                                     <td key={key} className="px-4 py-3 text-muted-foreground">
                                       {String(row[key] ?? "")}
                                     </td>

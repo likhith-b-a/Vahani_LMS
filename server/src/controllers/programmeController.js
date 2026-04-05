@@ -318,6 +318,7 @@ const getMyProgrammeSchedule = asyncHandler(async (req, res) => {
       userId,
     },
     select: {
+      userId: true,
       status: true,
       trackGroup: true,
       sessionSlot: true,
@@ -330,6 +331,7 @@ const getMyProgrammeSchedule = asyncHandler(async (req, res) => {
             select: {
               id: true,
               title: true,
+              description: true,
               scheduledAt: true,
               durationMinutes: true,
               maxScore: true,
@@ -2423,15 +2425,12 @@ const getManagedProgrammeReport = asyncHandler(async (req, res) => {
     const sessionColumns = Object.fromEntries(
       applicableSessions.map((session) => {
         const attendance = session.attendances?.[0] || null;
-        const assignedDate = session.assignedOccurrence?.scheduledAt
-          ? new Date(session.assignedOccurrence.scheduledAt).toLocaleDateString("en-IN")
-          : "";
         const value = !attendance
           ? new Date(session.scheduledAt).getTime() > Date.now()
             ? "Upcoming"
             : "Not marked"
           : `${attendance.status === "absent" ? "Absent" : "Present"}${session.maxScore > 0 ? ` - ${attendance.score ?? 0}/${session.maxScore ?? 0}` : ""}`;
-        return [`Session: ${session.title}${assignedDate ? ` (${assignedDate})` : ""}`, value];
+        return [`Session: ${session.title}`, value];
       }),
     );
 

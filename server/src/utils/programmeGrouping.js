@@ -36,10 +36,40 @@ const assignmentAppliesToEnrollment = (assignment, enrollment, programme = null)
 const getSessionOccurrences = (session) =>
   Array.isArray(session?.occurrences) ? session.occurrences : [];
 
-const getAssignedOccurrenceForUser = (session, userId) =>
-  getSessionOccurrences(session).find((occurrence) =>
-    (occurrence.assignments || []).some((assignment) => assignment.userId === userId),
-  ) || null;
+const getAssignedOccurrenceForUser = (session, userId) => {
+  const occurrences = getSessionOccurrences(session);
+  const assignedOccurrence =
+    occurrences.find((occurrence) =>
+      (occurrence.assignments || []).some((assignment) => assignment.userId === userId),
+    ) || null;
+
+  if (assignedOccurrence) {
+    return assignedOccurrence;
+  }
+
+  const userAttendances = (session?.attendances || []).filter(
+    (entry) => entry.userId === userId,
+  );
+
+  const attendanceLinkedOccurrence =
+    userAttendances.length > 0
+      ? occurrences.find((occurrence) =>
+          userAttendances.some(
+            (entry) => entry.interactiveSessionOccurrenceId === occurrence.id,
+          ),
+        ) || null
+      : null;
+
+  if (attendanceLinkedOccurrence) {
+    return attendanceLinkedOccurrence;
+  }
+
+  if (occurrences.length === 1 && userAttendances.length > 0) {
+    return occurrences[0];
+  }
+
+  return null;
+};
 
 const sessionAppliesToEnrollment = (session, enrollment) =>
   !!(enrollment?.userId && getAssignedOccurrenceForUser(session, enrollment.userId));
@@ -55,12 +85,14 @@ const serializeSessionForEnrollment = (session, enrollment) => {
     return null;
   }
 
+  const userAttendances = (session.attendances || []).filter(
+    (entry) => entry.userId === enrollment.userId,
+  );
   const userAttendance =
-    (session.attendances || []).find(
-      (entry) =>
-        entry.userId === enrollment.userId &&
-        entry.interactiveSessionOccurrenceId === assignedOccurrence.id,
-    ) || null;
+    userAttendances.find(
+      (entry) => entry.interactiveSessionOccurrenceId === assignedOccurrence.id,
+    ) ||
+    (getSessionOccurrences(session).length === 1 ? userAttendances[0] || null : null);
 
   return {
     ...session,

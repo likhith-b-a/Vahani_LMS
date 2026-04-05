@@ -78,7 +78,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { downloadCsvReport, exportReportAsPdf } from "@/lib/reportExport";
+import { downloadCsvReport, exportReportAsPdf, getReportHeaders } from "@/lib/reportExport";
 import { useLocation, useNavigate } from "react-router-dom";
 
 const emptyAssignmentForm = {
@@ -280,6 +280,10 @@ export default function TutorDashboard() {
   const [attendanceDrafts, setAttendanceDrafts] = useState<Record<string, "present" | "absent">>({});
   const [attendanceScoreDrafts, setAttendanceScoreDrafts] = useState<Record<string, string>>({});
   const [reportData, setReportData] = useState<ProgrammeManagerReportResponse | null>(null);
+  const reportHeaders = useMemo(
+    () => (reportData ? getReportHeaders(reportData.rows) : []),
+    [reportData],
+  );
   const [selectedEmailStudentIds, setSelectedEmailStudentIds] = useState<string[]>([]);
   const [emailRecipients, setEmailRecipients] = useState<EmailRecipient[]>([]);
   const [emailRecipientLabel, setEmailRecipientLabel] = useState("selected scholars");
@@ -2180,7 +2184,7 @@ export default function TutorDashboard() {
                           <table className="min-w-full divide-y divide-border text-sm">
                             <thead className="bg-muted/40">
                               <tr>
-                                {Object.keys(reportData.rows[0]).map((key) => (
+                                {reportHeaders.map((key) => (
                                   <th
                                     key={key}
                                     className="px-4 py-3 text-left font-medium text-foreground"
@@ -2193,7 +2197,7 @@ export default function TutorDashboard() {
                             <tbody className="divide-y divide-border">
                               {reportData.rows.map((row, index) => (
                                 <tr key={`${reportData.programme.id}-${index}`}>
-                                  {Object.keys(reportData.rows[0]).map((key) => (
+                                  {reportHeaders.map((key) => (
                                     <td
                                       key={key}
                                       className="px-4 py-3 text-muted-foreground"
