@@ -1,4 +1,4 @@
-import { Bell, Flame, ChevronDown, LogOut, User, Settings, Lock } from "lucide-react";
+import { Bell, ChevronDown, LogOut, User, Settings, Lock } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useState, useRef, useEffect } from "react";
@@ -46,12 +46,6 @@ export function TopNavbar() {
           Scholar Dashboard
         </h1>
         <div className="flex items-center gap-2 sm:gap-5">
-          {/* Streak - hidden on very small screens */}
-          <div className="hidden sm:flex items-center gap-2 bg-vahani-gold-light px-3 py-1.5 rounded-full border border-vahani-gold-border">
-            <Flame size={16} className="text-accent fill-accent" />
-            <span className="text-sm font-bold text-accent-foreground tabular-nums">12 Day Streak</span>
-          </div>
-
           {/* Notifications */}
           <div className="relative" ref={notificationsRef}>
             <button

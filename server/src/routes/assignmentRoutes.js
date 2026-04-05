@@ -5,6 +5,7 @@ import { uploadMemory } from "../middlewares/multer.js";
 import {
   bulkEvaluateSubmissions,
   createAssignment,
+  deleteAssignment,
   downloadBulkEvaluationTemplate,
   evaluateSubmission,
   getAssignmentsByProgramme,
@@ -34,6 +35,12 @@ router.patch(
   isAuthenticated,
   isAuthorized("programme_manager"),
   updateAssignment,
+);
+router.delete(
+  "/managed/assignments/:assignmentId",
+  isAuthenticated,
+  isAuthorized("programme_manager"),
+  deleteAssignment,
 );
 router.patch(
   "/submissions/:submissionId/evaluate",

@@ -1,7 +1,12 @@
 import { formatDistanceStrict } from "date-fns";
 import { type ChangeEvent } from "react";
 import { Download, Eye, Mail, Upload } from "lucide-react";
-import { type ManagedInteractiveSession, type ManagedProgrammeAssignment, type ManagedSubmission } from "@/api/programmeManager";
+import {
+  type ManagedInteractiveSession,
+  type ManagedInteractiveSessionOccurrence,
+  type ManagedProgrammeAssignment,
+  type ManagedSubmission,
+} from "@/api/programmeManager";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +26,7 @@ interface EvaluationStudentRow {
     name: string;
     email: string;
     batch?: string | null;
+    trackGroup?: string | null;
   };
   status: "present" | "absent";
   score: string;
@@ -70,6 +76,9 @@ interface ManagerEvaluationSectionProps {
   filteredSubmissions: ManagedSubmission[];
   filteredSessionStudents: EvaluationStudentRow[];
   selectedEvaluationSession: ManagedInteractiveSession | null;
+  selectedEvaluationOccurrence: ManagedInteractiveSessionOccurrence | null;
+  isSelectedEvaluationOccurrenceOpen: boolean;
+  onSelectedEvaluationOccurrenceChange: (value: string) => void;
   scoreDrafts: Record<string, string>;
   onScoreDraftChange: (submissionId: string, value: string) => void;
   onSaveMarks: (submissionId: string) => void;
@@ -104,6 +113,9 @@ export function ManagerEvaluationSection({
   filteredSubmissions,
   filteredSessionStudents,
   selectedEvaluationSession,
+  selectedEvaluationOccurrence,
+  isSelectedEvaluationOccurrenceOpen,
+  onSelectedEvaluationOccurrenceChange,
   scoreDrafts,
   onScoreDraftChange,
   onSaveMarks,
@@ -178,6 +190,26 @@ export function ManagerEvaluationSection({
                 </select>
               </div>
             ) : null}
+
+            {selectedAssignmentType === "session" && selectedEvaluationSession ? (
+              <div className="max-w-xl space-y-2">
+                <Label>Select session date</Label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={selectedEvaluationOccurrence?.id || ""}
+                  onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                    onSelectedEvaluationOccurrenceChange(event.target.value)
+                  }
+                >
+                  <option value="">Select a session date</option>
+                  {selectedEvaluationSession.occurrences.map((occurrence) => (
+                    <option key={occurrence.id} value={occurrence.id}>
+                      {formatDateTime(occurrence.scheduledAt)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -193,7 +225,8 @@ export function ManagerEvaluationSection({
             </div>
           ) : null}
 
-          {selectedAssignmentId ? (
+          {selectedAssignmentId &&
+          (selectedAssignmentType !== "session" || selectedEvaluationOccurrence) ? (
             <>
               <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/20 p-4 xl:flex-row xl:items-center xl:justify-between">
                 <div>
@@ -241,11 +274,26 @@ export function ManagerEvaluationSection({
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" onClick={onDownloadBulkSheet}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onDownloadBulkSheet}
+                  disabled={
+                    selectedAssignmentType === "session" && !isSelectedEvaluationOccurrenceOpen
+                  }
+                >
                   <Download className="mr-2 h-4 w-4" />
                   Download marks sheet
                 </Button>
-                <Button asChild variant="outline" size="sm" disabled={bulkProcessing}>
+                <Button
+                  asChild
+                  variant="outline"
+                  size="sm"
+                  disabled={
+                    bulkProcessing ||
+                    (selectedAssignmentType === "session" && !isSelectedEvaluationOccurrenceOpen)
+                  }
+                >
                   <label className="cursor-pointer">
                     <Upload className="mr-2 h-4 w-4" />
                     Upload filled sheet
@@ -329,9 +377,10 @@ export function ManagerEvaluationSection({
                         ) : null}
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {submission.student.email}
-                        {submission.student.batch ? ` | ${submission.student.batch}` : ""}
-                      </p>
+                      {submission.student.email}
+                      {submission.student.batch ? ` | ${submission.student.batch}` : ""}
+                      {submission.student.trackGroup ? ` | Track ${submission.student.trackGroup}` : ""}
+                    </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         Last submission {formatDateTime(submission.submittedAt)}
                       </p>
@@ -372,7 +421,9 @@ export function ManagerEvaluationSection({
             </div>
           ) : null}
 
-          {selectedAssignmentType === "session" && selectedEvaluationSession && (
+          {selectedAssignmentType === "session" &&
+          selectedEvaluationSession &&
+          selectedEvaluationOccurrence && (
             <div className="space-y-4">
               <div className="rounded-xl border border-border bg-muted/20 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -381,20 +432,28 @@ export function ManagerEvaluationSection({
                       {selectedEvaluationSession.title}
                     </p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {formatDateTime(selectedEvaluationSession.scheduledAt)}
+                      {formatDateTime(selectedEvaluationOccurrence.scheduledAt)}
                     </p>
                   </div>
                   <Badge variant="outline">Max marks {selectedEvaluationSession.maxScore}</Badge>
                 </div>
               </div>
 
-              {filteredSessionStudents.length === 0 && (
+              {!isSelectedEvaluationOccurrenceOpen ? (
+                <div className="rounded-xl border border-dashed border-amber-400/40 bg-amber-500/5 p-4 text-sm text-amber-900">
+                  This session date is still in the future. Evaluation opens after{" "}
+                  {formatDateTime(selectedEvaluationOccurrence.scheduledAt)}.
+                </div>
+              ) : null}
+
+              {isSelectedEvaluationOccurrenceOpen && filteredSessionStudents.length === 0 && (
                 <p className="text-sm text-muted-foreground">
                   No scholars match the current search or filter.
                 </p>
               )}
 
-              {filteredSessionStudents.map((entry) => (
+              {isSelectedEvaluationOccurrenceOpen &&
+                filteredSessionStudents.map((entry) => (
                 <div
                   key={entry.user.id}
                   className="grid gap-3 rounded-lg border border-border p-4 sm:grid-cols-[1fr_160px_140px]"
@@ -404,6 +463,7 @@ export function ManagerEvaluationSection({
                     <p className="text-xs text-muted-foreground">
                       {entry.user.email}
                       {entry.user.batch ? ` | ${entry.user.batch}` : ""}
+                      {entry.user.trackGroup ? ` | Track ${entry.user.trackGroup}` : ""}
                     </p>
                   </div>
                   <select
@@ -419,22 +479,30 @@ export function ManagerEvaluationSection({
                     <option value="present">Present</option>
                     <option value="absent">Absent</option>
                   </select>
-                  <Input
-                    type="number"
-                    min="0"
-                    max={attendanceSessionMaxScore}
-                    disabled={entry.status === "absent"}
-                    value={entry.status === "absent" ? "0" : entry.score}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                      onSessionScoreChange(entry.user.id, event.target.value)
-                    }
-                  />
+                  {attendanceSessionMaxScore > 0 ? (
+                    <Input
+                      type="number"
+                      min="0"
+                      max={attendanceSessionMaxScore}
+                      disabled={entry.status === "absent"}
+                      value={entry.status === "absent" ? "0" : entry.score}
+                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                        onSessionScoreChange(entry.user.id, event.target.value)
+                      }
+                    />
+                  ) : (
+                    <div className="flex h-10 items-center rounded-md border border-dashed border-border px-3 text-sm text-muted-foreground">
+                      Non-graded
+                    </div>
+                  )}
                 </div>
               ))}
 
-              <div className="flex justify-end">
-                <Button onClick={onSaveSessionEvaluation}>Save session evaluation</Button>
-              </div>
+              {isSelectedEvaluationOccurrenceOpen ? (
+                <div className="flex justify-end">
+                  <Button onClick={onSaveSessionEvaluation}>Save session evaluation</Button>
+                </div>
+              ) : null}
             </div>
           )}
         </CardContent>

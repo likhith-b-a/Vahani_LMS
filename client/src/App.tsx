@@ -15,6 +15,8 @@ import AdminUserDetailPage from "./pages/AdminUserDetail";
 import AdminProgrammeDetailPage from "./pages/AdminProgrammeDetail";
 import TutorDashboard from "./pages/TutorDashboard";
 import ManagerProgrammeDetail from "./pages/ManagerProgrammeDetail";
+import ManagerProgrammeGrouping from "./pages/ManagerProgrammeGrouping";
+import ManagerInteractiveSessionEditor from "./pages/ManagerInteractiveSessionEditor";
 import CourseRegistration from "./pages/CourseRegistration";
 import Certificates from "./pages/Certificates";
 import Attendance from "./pages/Attendance";
@@ -198,6 +200,30 @@ const App = () => (
                 }
               />
               <Route
+                path="/programme-manager/programmes/:id/grouping"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <ManagerProgrammeGrouping />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/programme-manager/programmes/:id/sessions/new"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <ManagerInteractiveSessionEditor />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/programme-manager/programmes/:id/sessions/:sessionId"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <ManagerInteractiveSessionEditor />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/tutor"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
@@ -210,6 +236,30 @@ const App = () => (
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
                     <ManagerProgrammeDetail />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tutor/programmes/:id/grouping"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <ManagerProgrammeGrouping />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tutor/programmes/:id/sessions/new"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <ManagerInteractiveSessionEditor />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tutor/programmes/:id/sessions/:sessionId"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <ManagerInteractiveSessionEditor />
                   </ProtectedRoute>
                 }
               />

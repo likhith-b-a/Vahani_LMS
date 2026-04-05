@@ -4,6 +4,7 @@ import {
   CalendarCheck,
   CheckCircle2,
   Mail,
+  Mars,
   Save,
   Trophy,
   User,
@@ -41,6 +42,7 @@ export default function Profile() {
   const [programmes, setProgrammes] = useState<Programme[]>([]);
   const [name, setName] = useState("");
   const [batch, setBatch] = useState("");
+  const [gender, setGender] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -58,6 +60,7 @@ export default function Profile() {
         setProfile(profileData);
         setName(profileData.name);
         setBatch(profileData.batch || "");
+        setGender(profileData.gender || "");
         setPhoneNumber(profileData.phoneNumber || "");
         setProgrammes(
           Array.isArray(programmesResponse?.data?.programmes)
@@ -131,6 +134,7 @@ export default function Profile() {
       profile?.email,
       profile?.phoneNumber,
       profile?.batch,
+      profile?.gender,
       profile?.enrollments.length ? "programmes" : "",
       assignmentStats.total > 0 ? "assignments" : "",
     ];
@@ -161,12 +165,14 @@ export default function Profile() {
       const response = await updateMyProfile({
         name: name.trim(),
         batch: batch.trim(),
+        gender: gender.trim(),
         phoneNumber: phoneNumber.trim(),
       });
       const updatedProfile = response.data as MyProfileResponse;
       setProfile(updatedProfile);
       setName(updatedProfile.name);
       setBatch(updatedProfile.batch || "");
+      setGender(updatedProfile.gender || "");
       setPhoneNumber(updatedProfile.phoneNumber || "");
 
       if (user) {
@@ -275,6 +281,16 @@ export default function Profile() {
                       />
                     </div>
                     <div className="space-y-1.5">
+                      <Label htmlFor="profile-gender">Gender</Label>
+                      <Input
+                        id="profile-gender"
+                        value={gender}
+                        onChange={(event) => setGender(event.target.value)}
+                        placeholder="Female"
+                        disabled={loading}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
                       <Label htmlFor="profile-phone">Phone Number</Label>
                       <Input
                         id="profile-phone"
@@ -286,7 +302,7 @@ export default function Profile() {
                     </div>
                   </div>
 
-                  <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="grid gap-4 sm:grid-cols-4">
                     <div className="rounded-xl border border-border p-4">
                       <p className="text-xs text-muted-foreground">Credits Earned</p>
                       <p className="mt-2 text-2xl font-bold">
@@ -297,6 +313,12 @@ export default function Profile() {
                       <p className="text-xs text-muted-foreground">Batch</p>
                       <p className="mt-2 text-base font-semibold">
                         {profile?.batch || "Not added"}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border p-4">
+                      <p className="text-xs text-muted-foreground">Gender</p>
+                      <p className="mt-2 text-base font-semibold">
+                        {profile?.gender || "Not added"}
                       </p>
                     </div>
                     <div className="rounded-xl border border-border p-4">
@@ -396,10 +418,10 @@ export default function Profile() {
               <Card>
                 <CardContent className="pt-5">
                   <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Uncompleted</span>
-                    <Users size={16} className="text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Gender on Record</span>
+                    <Mars size={16} className="text-muted-foreground" />
                   </div>
-                  <p className="text-2xl font-bold">{programmeStats.uncompleted}</p>
+                  <p className="text-lg font-bold">{profile?.gender || "Add to profile"}</p>
                 </CardContent>
               </Card>
             </div>

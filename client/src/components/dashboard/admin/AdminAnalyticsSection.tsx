@@ -1,8 +1,6 @@
 import { useMemo } from "react";
-import { Activity, BookOpen, GraduationCap, Users } from "lucide-react";
+import { BookOpen, GraduationCap, Users } from "lucide-react";
 import type { AdminProgramme, AdminSummary, AdminUser } from "@/api/admin";
-import type { Announcement } from "@/api/announcements";
-import type { SupportQuery } from "@/api/queries";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -18,8 +16,6 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  Line,
-  LineChart,
   Pie,
   PieChart,
   XAxis,
@@ -35,19 +31,9 @@ const adminChartConfig = {
   setup: { label: "Setup", color: "#f59e0b" },
   active: { label: "Active", color: "#0c6acc" },
   completed: { label: "Completed", color: "#22c55e" },
-  queries: { label: "Queries", color: "#0c6acc" },
-  announcements: { label: "Announcements", color: "#14b8a6" },
   selfEnroll: { label: "Self-enrollable", color: "#7c3aed" },
   compulsory: { label: "Compulsory", color: "#f59e0b" },
 } satisfies ChartConfig;
-
-const formatMonth = (value: string) =>
-  new Date(value).toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
-
-const safeDate = (value?: string | null) => {
-  const date = value ? new Date(value) : null;
-  return date && !Number.isNaN(date.getTime()) ? date : null;
-};
 
 const getProgrammeStatus = (programme: AdminProgramme | AdminSummary["programmes"][number]) => {
   const enrollmentsCount =
@@ -66,41 +52,6 @@ const getProgrammeStatus = (programme: AdminProgramme | AdminSummary["programmes
   return "active";
 };
 
-function buildTrendData(announcements: Announcement[], queries: SupportQuery[]) {
-  const bucket = new Map<string, { period: string; announcements: number; queries: number }>();
-
-  for (const item of announcements) {
-    const date = safeDate(item.createdAt);
-    if (!date) continue;
-    const period = `${date.getFullYear()}-${date.getMonth()}`;
-    const current = bucket.get(period) ?? {
-      period: formatMonth(date.toISOString()),
-      announcements: 0,
-      queries: 0,
-    };
-    current.announcements += 1;
-    bucket.set(period, current);
-  }
-
-  for (const item of queries) {
-    const date = safeDate(item.createdAt);
-    if (!date) continue;
-    const period = `${date.getFullYear()}-${date.getMonth()}`;
-    const current = bucket.get(period) ?? {
-      period: formatMonth(date.toISOString()),
-      announcements: 0,
-      queries: 0,
-    };
-    current.queries += 1;
-    bucket.set(period, current);
-  }
-
-  return Array.from(bucket.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .slice(-6)
-    .map(([, value]) => value);
-}
-
 function EmptyChartState({ message }: { message: string }) {
   return (
     <div className="flex h-[260px] items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 text-sm text-muted-foreground">
@@ -113,14 +64,10 @@ export function AdminAnalyticsSection({
   summary,
   users,
   programmes,
-  announcements,
-  queries,
 }: {
   summary: AdminSummary | null;
   users: AdminUser[];
   programmes: AdminProgramme[];
-  announcements: Announcement[];
-  queries: SupportQuery[];
 }) {
   const scholarUsers = useMemo(
     () => users.filter((user) => user.role === "scholar"),
@@ -192,24 +139,6 @@ export function AdminAnalyticsSection({
       .slice(0, 6);
   }, [programmes, summary]);
 
-  const enrollmentStatusData = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const programme of programmes) {
-      for (const enrollment of programme.enrollments) {
-        counts.set(enrollment.status, (counts.get(enrollment.status) ?? 0) + 1);
-      }
-    }
-    return Array.from(counts.entries()).map(([status, value]) => ({
-      status: status.replace(/_/g, " "),
-      value,
-    }));
-  }, [programmes]);
-
-  const activityTrendData = useMemo(
-    () => buildTrendData(announcements, queries),
-    [announcements, queries],
-  );
-
   const selfEnrollProgrammes = useMemo(
     () => programmes.filter((programme) => programme.selfEnrollmentEnabled),
     [programmes],
@@ -260,21 +189,6 @@ export function AdminAnalyticsSection({
       .slice(0, 8);
   }, [scholarUsers, selfEnrollProgrammes]);
 
-  const selfEnrollEnrollmentStatus = useMemo(() => {
-    const counts = new Map<string, number>();
-
-    for (const programme of selfEnrollProgrammes) {
-      for (const enrollment of programme.enrollments) {
-        counts.set(enrollment.status, (counts.get(enrollment.status) ?? 0) + 1);
-      }
-    }
-
-    return Array.from(counts.entries()).map(([status, value]) => ({
-      status: status.replace(/_/g, " "),
-      value,
-    }));
-  }, [selfEnrollProgrammes]);
-
   const completionSnapshot = summary
     ? Math.round(
         ((summary.stats.gradedSubmissions || 0) /
@@ -294,7 +208,7 @@ export function AdminAnalyticsSection({
               </Badge>
               <CardTitle className="text-2xl tracking-tight">Operational quality at a glance</CardTitle>
               <CardDescription className="max-w-3xl text-sm leading-6">
-                Track user growth, programme health, enrolment status, and communication activity
+                Track user growth, scholar distribution, manager load, and self-enrollment demand
                 from one visual surface.
               </CardDescription>
             </div>
@@ -345,10 +259,10 @@ export function AdminAnalyticsSection({
         <Card>
           <CardContent className="flex items-center justify-between p-6">
             <div>
-              <p className="text-sm text-muted-foreground">Activity items</p>
-              <p className="mt-2 text-3xl font-semibold">{announcements.length + queries.length}</p>
+              <p className="text-sm text-muted-foreground">Self-enroll enabled</p>
+              <p className="mt-2 text-3xl font-semibold">{selfEnrollProgrammes.length}</p>
             </div>
-            <Activity className="h-10 w-10 text-violet-500" />
+            <GraduationCap className="h-10 w-10 text-violet-500" />
           </CardContent>
         </Card>
       </div>
@@ -484,71 +398,7 @@ export function AdminAnalyticsSection({
             )}
           </CardContent>
         </Card>
-      </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Communication trend</CardTitle>
-            <CardDescription>Announcements and support queries over the most recent periods.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {activityTrendData.length ? (
-              <ChartContainer className="h-[300px] w-full" config={adminChartConfig}>
-                <LineChart data={activityTrendData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="period" tickLine={false} axisLine={false} />
-                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Line
-                    type="monotone"
-                    dataKey="announcements"
-                    stroke="var(--color-announcements)"
-                    strokeWidth={3}
-                    dot={{ r: 4 }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="queries"
-                    stroke="var(--color-queries)"
-                    strokeWidth={3}
-                    dot={{ r: 4 }}
-                  />
-                </LineChart>
-              </ChartContainer>
-            ) : (
-              <EmptyChartState message="Announcement and query activity will appear here." />
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Enrollment status</CardTitle>
-            <CardDescription>Snapshot of current learner outcomes across programmes.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {enrollmentStatusData.length ? (
-              <ChartContainer
-                className="h-[300px] w-full"
-                config={{ value: { label: "Enrollments", color: "#0c6acc" } }}
-              >
-                <BarChart data={enrollmentStatusData}>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                  <XAxis dataKey="status" tickLine={false} axisLine={false} />
-                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="value" fill="var(--color-value)" radius={[10, 10, 0, 0]} />
-                </BarChart>
-              </ChartContainer>
-            ) : (
-              <EmptyChartState message="Enrollment status analytics will appear once programmes are loaded." />
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Programme delivery mode</CardTitle>
@@ -572,7 +422,9 @@ export function AdminAnalyticsSection({
             )}
           </CardContent>
         </Card>
+      </div>
 
+      <div className="grid gap-6 xl:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Self-enroll uptake</CardTitle>
@@ -623,30 +475,6 @@ export function AdminAnalyticsSection({
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Self-enroll outcome status</CardTitle>
-            <CardDescription>Track active, completed, and uncompleted outcomes inside self-enrollable courses.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {selfEnrollEnrollmentStatus.length ? (
-              <ChartContainer
-                className="h-[280px] w-full"
-                config={{ value: { label: "Enrollments", color: "#14b8a6" } }}
-              >
-                <BarChart data={selfEnrollEnrollmentStatus}>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                  <XAxis dataKey="status" tickLine={false} axisLine={false} />
-                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="value" fill="var(--color-value)" radius={[10, 10, 0, 0]} />
-                </BarChart>
-              </ChartContainer>
-            ) : (
-              <EmptyChartState message="Self-enroll outcome analytics will appear here." />
-            )}
-          </CardContent>
-        </Card>
       </div>
     </div>
   );

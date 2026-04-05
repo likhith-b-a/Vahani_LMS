@@ -415,6 +415,7 @@ export default function AdminProgrammeDetailPage() {
                             <TableHead>Gender</TableHead>
                             <TableHead className="text-right">Assignment score</TableHead>
                             <TableHead className="text-right">Session score</TableHead>
+                            <TableHead className="text-right">Attendance</TableHead>
                             <TableHead className="text-right">Overall</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead>Certificate</TableHead>
@@ -434,6 +435,12 @@ export default function AdminProgrammeDetailPage() {
                               <TableCell>{scholar.user.gender || "--"}</TableCell>
                               <TableCell className="text-right">{scholar.assignmentScore}</TableCell>
                               <TableCell className="text-right">{scholar.sessionScore}</TableCell>
+                              <TableCell className="text-right">
+                                {scholar.attendancePercent !== null &&
+                                scholar.attendancePercent !== undefined
+                                  ? `${scholar.attendancePercent}%`
+                                  : "--"}
+                              </TableCell>
                               <TableCell className="text-right">
                                 {scholar.totalScore}
                                 {scholar.totalPossibleScore > 0
@@ -483,19 +490,43 @@ export default function AdminProgrammeDetailPage() {
                         </div>
                       ))}
 
-                      {programme.interactiveSessions.map((session) => (
+                      {programme.interactiveSessions.map((session) => {
+                        const occurrenceRows =
+                          session.occurrences && session.occurrences.length > 0
+                            ? session.occurrences
+                            : session.scheduledAt
+                              ? [
+                                  {
+                                    id: session.id,
+                                    scheduledAt: session.scheduledAt,
+                                    attendanceCount: session.attendanceCount,
+                                    absentCount: session.absentCount,
+                                  },
+                                ]
+                              : [];
+
+                        return (
                         <div key={session.id} className="rounded-2xl border border-border p-4">
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
                               <p className="font-semibold text-foreground">{session.title}</p>
-                              <p className="mt-1 text-sm text-muted-foreground">
-                                {formatDate(session.scheduledAt)} • {session.attendanceCount} marked • {session.absentCount} absent
-                              </p>
+                              <div className="mt-1 space-y-1 text-sm text-muted-foreground">
+                                {occurrenceRows.map((occurrence, index) => (
+                                  <p key={occurrence.id || `${session.id}-${index}`}>
+                                    {formatDate(occurrence.scheduledAt)}
+                                    {" • "}
+                                    {occurrence.attendanceCount} marked
+                                    {" • "}
+                                    {occurrence.absentCount} absent
+                                  </p>
+                                ))}
+                              </div>
                             </div>
                             <Badge variant="outline">Interactive session</Badge>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </CardContent>
                   </Card>
                 </div>

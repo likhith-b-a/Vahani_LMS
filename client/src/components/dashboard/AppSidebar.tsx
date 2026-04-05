@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, BookPlus, BookOpen, Award,
-  CalendarCheck, ClipboardList, FolderOpen, Megaphone,
+  CalendarCheck, ClipboardList, Megaphone,
   BarChart3, Settings, LogOut, Menu, X, CircleHelp
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -17,7 +17,6 @@ const mainNav = [
   { icon: ClipboardList, label: "Assignments", path: "/assignments" },
   { icon: CircleHelp, label: "Queries", path: "/queries" },
   { icon: BookPlus, label: "Wishlist", path: "/wishlist" },
-  { icon: FolderOpen, label: "Resources", path: "/dashboard" },
   { icon: Megaphone, label: "Announcements", path: "/updates" },
   { icon: BarChart3, label: "Marks", path: "/marks" },
 ];
@@ -42,6 +41,12 @@ export function AppSidebar({ activePage = "Overview" }: { activePage?: string })
   const handleBottomClick = (label: string) => {
     if (label === "Logout") {
       void logout().then(() => navigate("/"));
+      return;
+    }
+
+    if (label === "Settings") {
+      navigate("/settings");
+      setOpen(false);
     }
   };
 

@@ -1017,35 +1017,37 @@ const getCurrentUserProfile = asyncHandler(async (req, res) => {
   if (req.user.role !== "scholar") {
     const response = new ApiResponse(
       200,
-      {
-        id: req.user.id,
-        name: req.user.name,
-        email: req.user.email,
-        role: req.user.role,
-        batch: null,
-        phoneNumber: null,
-        creditsEarned: 0,
-        enrollments: [],
-      },
+        {
+          id: req.user.id,
+          name: req.user.name,
+          email: req.user.email,
+          role: req.user.role,
+          batch: null,
+          gender: null,
+          phoneNumber: null,
+          creditsEarned: 0,
+          enrollments: [],
+        },
       "Profile fetched successfully",
     );
 
     setCachedResponse(cacheKey, response, 300_000);
-    return res.status(200).json(response);
-  }
-
-  const user = await db.user.findUnique({
+      return res.status(200).json(response);
+    }
+  
+    const user = await db.user.findUnique({
     where: {
       id: req.user.id,
     },
     select: {
       id: true,
-      name: true,
-      email: true,
-      role: true,
-      batch: true,
-      phoneNumber: true,
-      creditsEarned: true,
+        name: true,
+        email: true,
+        role: true,
+        batch: true,
+        gender: true,
+        phoneNumber: true,
+        creditsEarned: true,
       enrollments: {
         select: {
           id: true,
@@ -1093,7 +1095,7 @@ const getCurrentUserProfile = asyncHandler(async (req, res) => {
 });
 
 const updateCurrentUserProfile = asyncHandler(async (req, res) => {
-  const { name, batch, phoneNumber } = req.body;
+  const { name, batch, gender, phoneNumber } = req.body;
 
   if (!name || !String(name).trim()) {
     throw new ApiError(400, "Name is required");
@@ -1103,11 +1105,12 @@ const updateCurrentUserProfile = asyncHandler(async (req, res) => {
     where: {
       id: req.user.id,
     },
-    data: {
-      name: String(name).trim(),
-      ...(batch !== undefined ? { batch: batch || null } : {}),
-      ...(phoneNumber !== undefined ? { phoneNumber: phoneNumber || null } : {}),
-    },
+      data: {
+        name: String(name).trim(),
+        ...(batch !== undefined ? { batch: batch || null } : {}),
+        ...(gender !== undefined ? { gender: gender || null } : {}),
+        ...(phoneNumber !== undefined ? { phoneNumber: phoneNumber || null } : {}),
+      },
     include: {
       enrollments: {
         include: {

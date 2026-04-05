@@ -81,7 +81,7 @@ enum SelfEnrollmentRequestStatus {
 }
 
 model User {
-  id                        String                  @id @default(uuid())
+  id                        String                  @id @default(uuid(7))
   name                      String
   email                     String                  @unique
   password                  String
@@ -113,11 +113,12 @@ model User {
   updatedSettings           SystemSetting[]         @relation("SettingsUpdatedBy")
   createdInteractiveSessions InteractiveSession[]   @relation("InteractiveSessionCreator")
   interactiveSessionAttendances InteractiveSessionAttendance[]
+  interactiveSessionOccurrenceAssignments InteractiveSessionOccurrenceAssignment[]
   selfEnrollmentRequests    SelfEnrollmentRequest[]
 }
 
 model Programme {
-  id                        String                  @id @default(uuid())
+  id                        String                  @id @default(uuid(7))
   title                     String
   description               String?
   credits                   Int?
@@ -127,6 +128,9 @@ model Programme {
   selfEnrollmentClosesAt    DateTime?
   selfEnrollmentAllowedBatches String[]            @default([])
   selfEnrollmentAllowedGenders String[]            @default([])
+  groupedDeliveryEnabled    Boolean                 @default(false)
+  groupTrackGroups          String[]                @default([])
+  groupSessionSlots         String[]                @default([])
   spotlightTitle            String?
   spotlightMessage          String?
   resultsPublishedAt        DateTime?
@@ -149,10 +153,12 @@ model Programme {
 }
 
 model Enrollment {
-  id                        String                  @id @default(uuid())
+  id                        String                  @id @default(uuid(7))
   status                    EnrollmentStatus        @default(active)
   progressPercent           Int                     @default(0)
   creditsAwarded            Int                     @default(0)
+  trackGroup                String?
+  sessionSlot               String?
   enrolledAt                DateTime                @default(now())
   completedAt               DateTime?
   lastActivityAt            DateTime?
@@ -169,13 +175,14 @@ model Enrollment {
 }
 
 model Assignment {
-  id                        String                  @id @default(uuid())
+  id                        String                  @id @default(uuid(7))
   title                     String
   description               String?
   dueDate                   DateTime?
   maxScore                  Int?
   type                      AssignmentType          @default(document)
   acceptedFileTypes         String[]                @default([".pdf", ".doc", ".docx", ".png", ".jpg", ".jpeg"])
+  targetTrackGroups         String[]                @default([])
   isGraded                  Boolean                 @default(true)
   isPublished               Boolean                 @default(true)
   allowResubmission         Boolean                 @default(true)
@@ -196,7 +203,7 @@ model Assignment {
 }
 
 model Submission {
-  id                        String                  @id @default(uuid())
+  id                        String                  @id @default(uuid(7))
   fileUrl                   String?
   linkUrl                   String?
   textResponse              String?
@@ -221,7 +228,7 @@ model Submission {
 }
 
 model ProgrammeResource {
-  id                        String                  @id @default(uuid())
+  id                        String                  @id @default(uuid(7))
   title                     String
   description               String?
   resourceType              ResourceType            @default(study_material)
@@ -240,13 +247,14 @@ model ProgrammeResource {
 }
 
 model InteractiveSession {
-  id                        String                        @id @default(uuid())
+  id                        String                        @id @default(uuid(7))
   title                     String
   description               String?
   scheduledAt               DateTime
   durationMinutes           Int?                          @default(60)
   maxScore                  Int                           @default(0)
   meetingUrl                String?
+  targetSessionSlots        String[]                      @default([])
   createdAt                 DateTime                      @default(now())
   updatedAt                 DateTime                      @updatedAt
 
@@ -255,13 +263,45 @@ model InteractiveSession {
 
   programme                 Programme                     @relation(fields: [programmeId], references: [id], onDelete: Cascade)
   createdBy                 User?                         @relation("InteractiveSessionCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  occurrences               InteractiveSessionOccurrence[]
   attendances               InteractiveSessionAttendance[]
 
   @@index([programmeId, scheduledAt])
 }
 
+model InteractiveSessionOccurrence {
+  id                        String                                @id @default(uuid(7))
+  scheduledAt               DateTime
+  durationMinutes           Int?                                  @default(60)
+  meetingUrl                String?
+  createdAt                 DateTime                              @default(now())
+  updatedAt                 DateTime                              @updatedAt
+
+  interactiveSessionId      String
+
+  interactiveSession        InteractiveSession                    @relation(fields: [interactiveSessionId], references: [id], onDelete: Cascade)
+  assignments               InteractiveSessionOccurrenceAssignment[]
+  attendances               InteractiveSessionAttendance[]
+
+  @@index([interactiveSessionId, scheduledAt])
+}
+
+model InteractiveSessionOccurrenceAssignment {
+  id                                  String                        @id @default(uuid(7))
+  createdAt                           DateTime                      @default(now())
+
+  interactiveSessionOccurrenceId      String
+  userId                              String
+
+  occurrence                          InteractiveSessionOccurrence  @relation(fields: [interactiveSessionOccurrenceId], references: [id], onDelete: Cascade)
+  user                                User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([interactiveSessionOccurrenceId, userId])
+  @@index([userId])
+}
+
 model InteractiveSessionAttendance {
-  id                        String            @id @default(uuid())
+  id                        String            @id @default(uuid(7))
   status                    AttendanceStatus  @default(present)
   score                     Int?
   markedAt                  DateTime          @default(now())
@@ -269,17 +309,20 @@ model InteractiveSessionAttendance {
   updatedAt                 DateTime          @updatedAt
 
   interactiveSessionId      String
+  interactiveSessionOccurrenceId String?
   userId                    String
 
   interactiveSession        InteractiveSession @relation(fields: [interactiveSessionId], references: [id], onDelete: Cascade)
+  occurrence                InteractiveSessionOccurrence? @relation(fields: [interactiveSessionOccurrenceId], references: [id], onDelete: SetNull)
   user                      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([interactiveSessionId, userId])
   @@index([userId])
+  @@index([interactiveSessionOccurrenceId])
 }
 
 model Announcement {
-  id                        String                  @id @default(uuid())
+  id                        String                  @id @default(uuid(7))
   title                     String
   message                   String
   targetBatch               String?
@@ -296,7 +339,7 @@ model Announcement {
 }
 
 model AnnouncementRecipient {
-  id                        String                  @id @default(uuid())
+  id                        String                  @id @default(uuid(7))
   createdAt                 DateTime                @default(now())
 
   announcementId            String
@@ -310,7 +353,7 @@ model AnnouncementRecipient {
 }
 
 model Notification {
-  id                        String                  @id @default(uuid())
+  id                        String                  @id @default(uuid(7))
   type                      NotificationType
   title                     String
   message                   String
@@ -331,7 +374,7 @@ model Notification {
 }
 
 model NotificationRecipient {
-  id                        String                  @id @default(uuid())
+  id                        String                  @id @default(uuid(7))
   isRead                    Boolean                 @default(false)
   readAt                    DateTime?
   createdAt                 DateTime                @default(now())
@@ -347,7 +390,7 @@ model NotificationRecipient {
 }
 
 model Certificate {
-  id                        String                  @id @default(uuid())
+  id                        String                  @id @default(uuid(7))
   credentialId              String                  @unique
   title                     String
   description               String?
@@ -372,7 +415,7 @@ model Certificate {
 }
 
 model ProgrammeWishlist {
-  id                        String                  @id @default(uuid())
+  id                        String                  @id @default(uuid(7))
   requestedTitle            String
   note                      String?
   createdAt                 DateTime                @default(now())
@@ -388,7 +431,7 @@ model ProgrammeWishlist {
 }
 
 model SupportQuery {
-  id                        String                  @id @default(uuid())
+  id                        String                  @id @default(uuid(7))
   subject                   String
   message                   String
   status                    QueryStatus             @default(open)
@@ -412,7 +455,7 @@ model SupportQuery {
 }
 
 model SupportQueryMessage {
-  id                        String                  @id @default(uuid())
+  id                        String                  @id @default(uuid(7))
   message                   String
   createdAt                 DateTime                @default(now())
 
@@ -424,7 +467,7 @@ model SupportQueryMessage {
 }
 
 model PasswordResetOtp {
-  id                        String                  @id @default(uuid())
+  id                        String                  @id @default(uuid(7))
   email                     String                  @unique
   otpHash                   String
   expiresAt                 DateTime
@@ -443,7 +486,7 @@ model SystemSetting {
 }
 
 model SelfEnrollmentRequest {
-  id                        String                      @id @default(uuid())
+  id                        String                      @id @default(uuid(7))
   status                    SelfEnrollmentRequestStatus @default(pending)
   requestedAt               DateTime                    @default(now())
   decidedAt                 DateTime?

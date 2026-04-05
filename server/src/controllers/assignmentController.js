@@ -9,6 +9,10 @@ import {
   serializeAssignment,
 } from "../utils/assignmentMetadata.js";
 import {
+  assignmentAppliesToEnrollment,
+  normalizeStringArray,
+} from "../utils/programmeGrouping.js";
+import {
   createNotification,
   getProgrammeScholarIds,
 } from "../utils/notifications.js";
@@ -33,6 +37,21 @@ const getUserAssignments = asyncHandler(async (req, res) => {
     return res.status(200).json(cachedResponse);
   }
 
+  const enrollments = await db.enrollment.findMany({
+    where: {
+      userId,
+    },
+    select: {
+      programmeId: true,
+      trackGroup: true,
+      sessionSlot: true,
+    },
+  });
+
+  const enrollmentByProgrammeId = new Map(
+    enrollments.map((enrollment) => [enrollment.programmeId, enrollment]),
+  );
+
   const assignments = await db.assignment.findMany({
     where: {
       programme: {
@@ -50,6 +69,7 @@ const getUserAssignments = asyncHandler(async (req, res) => {
         select: {
           id: true,
           title: true,
+          groupedDeliveryEnabled: true,
         },
       },
       submissions: {
@@ -69,13 +89,21 @@ const getUserAssignments = asyncHandler(async (req, res) => {
     },
   });
 
-  if (!assignments.length) {
+  const visibleAssignments = assignments.filter((assignment) =>
+    assignmentAppliesToEnrollment(
+      assignment,
+      enrollmentByProgrammeId.get(assignment.programme.id) || null,
+      assignment.programme,
+    ),
+  );
+
+  if (!visibleAssignments.length) {
     return res
       .status(200)
       .json(new ApiResponse(200, [], "No enrollments found"));
   }
 
-  const formattedAssignments = assignments.map((assignment) => ({
+  const formattedAssignments = visibleAssignments.map((assignment) => ({
     ...serializeAssignment(assignment),
     submission: assignment.submissions[0] || null,
     status:
@@ -110,6 +138,7 @@ const createAssignment = asyncHandler(async (req, res) => {
     allowLateSubmission,
     allowResubmission,
     meetingUrl,
+    targetTrackGroups,
   } = req.body;
 
   if (!programmeId) {
@@ -127,6 +156,8 @@ const createAssignment = asyncHandler(async (req, res) => {
     },
     select: {
       id: true,
+      groupedDeliveryEnabled: true,
+      groupTrackGroups: true,
     },
   });
 
@@ -136,6 +167,19 @@ const createAssignment = asyncHandler(async (req, res) => {
 
   const normalizedAssignmentType =
     typeof assignmentType === "string" ? assignmentType : "document";
+  const normalizedTargetTrackGroups = normalizeStringArray(targetTrackGroups);
+
+  if (
+    programme.groupedDeliveryEnabled &&
+    normalizedTargetTrackGroups.length > 0 &&
+    Array.isArray(programme.groupTrackGroups) &&
+    programme.groupTrackGroups.length > 0 &&
+    normalizedTargetTrackGroups.some(
+      (group) => !programme.groupTrackGroups.includes(group),
+    )
+  ) {
+    throw new ApiError(400, "Assignment targets include unknown track groups");
+  }
 
   if (normalizedAssignmentType === "interactive_session") {
     throw new ApiError(
@@ -165,6 +209,7 @@ const createAssignment = asyncHandler(async (req, res) => {
       allowResubmission:
         allowResubmission !== undefined ? !!allowResubmission : true,
       meetingUrl: meetingUrl || null,
+      targetTrackGroups: normalizedTargetTrackGroups,
       programmeId,
       createdById: req.user.id,
     },
@@ -213,6 +258,7 @@ const updateAssignment = asyncHandler(async (req, res) => {
     allowLateSubmission,
     allowResubmission,
     meetingUrl,
+    targetTrackGroups,
   } = req.body;
 
   if (!assignmentId) {
@@ -233,6 +279,12 @@ const updateAssignment = asyncHandler(async (req, res) => {
       programmeId: true,
       title: true,
       type: true,
+      programme: {
+        select: {
+          groupedDeliveryEnabled: true,
+          groupTrackGroups: true,
+        },
+      },
     },
   });
 
@@ -244,6 +296,20 @@ const updateAssignment = asyncHandler(async (req, res) => {
     typeof assignmentType === "string" && assignmentType.trim()
       ? assignmentType
       : assignment.type;
+  const normalizedTargetTrackGroups = normalizeStringArray(targetTrackGroups);
+
+  if (
+    targetTrackGroups !== undefined &&
+    assignment.programme.groupedDeliveryEnabled &&
+    normalizedTargetTrackGroups.length > 0 &&
+    Array.isArray(assignment.programme.groupTrackGroups) &&
+    assignment.programme.groupTrackGroups.length > 0 &&
+    normalizedTargetTrackGroups.some(
+      (group) => !assignment.programme.groupTrackGroups.includes(group),
+    )
+  ) {
+    throw new ApiError(400, "Assignment targets include unknown track groups");
+  }
 
   if (normalizedAssignmentType === "interactive_session") {
     throw new ApiError(
@@ -289,6 +355,9 @@ const updateAssignment = asyncHandler(async (req, res) => {
         ? { allowResubmission: !!allowResubmission }
         : {}),
       ...(meetingUrl !== undefined ? { meetingUrl: meetingUrl?.trim() || null } : {}),
+      ...(targetTrackGroups !== undefined
+        ? { targetTrackGroups: normalizedTargetTrackGroups }
+        : {}),
     },
   });
 
@@ -303,6 +372,55 @@ const updateAssignment = asyncHandler(async (req, res) => {
       200,
       serializeAssignment(updatedAssignment),
       "Assignment updated successfully",
+    ),
+  );
+});
+
+const deleteAssignment = asyncHandler(async (req, res) => {
+  const { assignmentId } = req.params;
+
+  if (!assignmentId) {
+    throw new ApiError(400, "Assignment ID is required");
+  }
+
+  const assignment = await db.assignment.findFirst({
+    where: {
+      id: assignmentId,
+      programme: {
+        is: {
+          programmeManagerId: req.user.id,
+        },
+      },
+    },
+    select: {
+      id: true,
+      title: true,
+      programmeId: true,
+    },
+  });
+
+  if (!assignment) {
+    throw new ApiError(404, "Assignment not found for this programme manager");
+  }
+
+  await db.assignment.delete({
+    where: {
+      id: assignmentId,
+    },
+  });
+
+  clearCachedResponse("assignments:user:");
+  clearCachedResponse("programmes:mine:");
+  clearCachedResponse("programme:detail:");
+  clearCachedResponse(`programmes:managed:${req.user.id}`);
+  clearCachedResponse("programmes:managed:detail:");
+  clearCachedResponse("programmes:schedule:");
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      { assignmentId },
+      "Assignment deleted successfully",
     ),
   );
 });
@@ -656,6 +774,7 @@ const downloadBulkEvaluationTemplate = asyncHandler(async (req, res) => {
               name: true,
               email: true,
               batch: true,
+              gender: true,
             },
           },
         },
@@ -676,6 +795,7 @@ const downloadBulkEvaluationTemplate = asyncHandler(async (req, res) => {
       "scholarName",
       "userEmail",
       "batch",
+      "gender",
       "submittedAt",
       "submissionLink",
       "currentMarks",
@@ -685,6 +805,7 @@ const downloadBulkEvaluationTemplate = asyncHandler(async (req, res) => {
       submission.user.name,
       submission.user.email,
       submission.user.batch || "",
+      submission.user.gender || "",
       submission.submittedAt
         ? new Date(submission.submittedAt).toLocaleString("en-IN")
         : "",
@@ -700,6 +821,7 @@ const downloadBulkEvaluationTemplate = asyncHandler(async (req, res) => {
     { wch: 28 },
     { wch: 34 },
     { wch: 12 },
+    { wch: 14 },
     { wch: 24 },
     { wch: 60 },
     { wch: 14 },
@@ -739,11 +861,31 @@ const getAssignmentsByProgramme = asyncHandler(async (req, res) => {
     select: {
       id: true,
       title: true,
+      groupedDeliveryEnabled: true,
     },
   });
 
   if (!programme) {
     throw new ApiError(404, "Programme not found");
+  }
+
+  const enrollment = await db.enrollment.findUnique({
+    where: {
+      userId_programmeId: {
+        userId: req.user.id,
+        programmeId,
+      },
+    },
+    select: {
+      userId: true,
+      programmeId: true,
+      trackGroup: true,
+      sessionSlot: true,
+    },
+  });
+
+  if (!enrollment) {
+    throw new ApiError(403, "You are not enrolled in this programme");
   }
 
   const assignments = await db.assignment.findMany({
@@ -755,12 +897,16 @@ const getAssignmentsByProgramme = asyncHandler(async (req, res) => {
     },
   });
 
+  const visibleAssignments = assignments.filter((assignment) =>
+    assignmentAppliesToEnrollment(assignment, enrollment, programme),
+  );
+
   return res.status(200).json(
     new ApiResponse(
       200,
       {
         programme,
-        assignments: assignments.map((assignment) => serializeAssignment(assignment)),
+        assignments: visibleAssignments.map((assignment) => serializeAssignment(assignment)),
       },
       "Assignments fetched successfully",
     ),
@@ -788,6 +934,12 @@ const submitAssignment = asyncHandler(async (req, res) => {
       acceptedFileTypes: true,
       allowResubmission: true,
       allowLateSubmission: true,
+      targetTrackGroups: true,
+      programme: {
+        select: {
+          groupedDeliveryEnabled: true,
+        },
+      },
     },
   });
 
@@ -832,6 +984,13 @@ const submitAssignment = asyncHandler(async (req, res) => {
 
   if (!enrollment) {
     throw new ApiError(403, "You are not enrolled in this programme");
+  }
+
+  if (!assignmentAppliesToEnrollment(assignment, enrollment, assignment.programme)) {
+    throw new ApiError(
+      403,
+      "This assignment is not assigned to your programme group",
+    );
   }
 
   const existingSubmission = await db.submission.findFirst({
@@ -899,6 +1058,7 @@ const submitAssignment = asyncHandler(async (req, res) => {
 export {
   bulkEvaluateSubmissions,
   createAssignment,
+  deleteAssignment,
   downloadBulkEvaluationTemplate,
   evaluateSubmission,
   getAssignmentsByProgramme,

@@ -1,15 +1,18 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { AppSidebar } from "../components/dashboard/AppSidebar";
 import { TopNavbar } from "../components/dashboard/TopNavbar";
+import { ManagerSidebar } from "../components/dashboard/ManagerSidebar";
+import { AdminSidebar } from "../components/dashboard/AdminSidebar";
 import { useAuth } from "../contexts/AuthContext";
 import { Moon, Sun, Type, Zap, Lock } from "lucide-react";
 import { Switch } from "../components/ui/switch";
-import { Label } from "../components/ui/label";
 import { Button } from "../components/ui/button";
 import { ChangePasswordModal } from "../components/dashboard/ChangePasswordModal";
 
 export default function Settings() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [darkMode, setDarkMode] = useState(() => document.documentElement.classList.contains("dark"));
   const [fontSize, setFontSize] = useState<"small" | "medium" | "large">("medium");
   const [animations, setAnimations] = useState(true);
@@ -32,16 +35,63 @@ export default function Settings() {
     { value: "large" as const, label: "Large", desc: "Easier to read" },
   ];
 
+  const isManager = user?.role === "programme_manager" || user?.role === "tutor";
+  const isAdmin = user?.role === "admin";
+
+  const settingsCopy = useMemo(() => {
+    if (isManager) {
+      return {
+        title: "Manager Settings",
+        description: "Adjust how your programme workspace feels and behaves.",
+        roleLabel: "Programme Manager",
+      };
+    }
+
+    if (isAdmin) {
+      return {
+        title: "Workspace Settings",
+        description: "Control how the admin workspace feels while you review the platform.",
+        roleLabel: "Admin Control",
+      };
+    }
+
+    return {
+      title: "Settings",
+      description: "Customize your LMS experience",
+      roleLabel: "Scholar Workspace",
+    };
+  }, [isAdmin, isManager]);
+
   return (
     <div className="flex min-h-screen bg-background">
-      <AppSidebar activePage="Overview" />
+      {isManager ? (
+        <ManagerSidebar
+          activeSection="settings"
+          onSelectSection={(section) => navigate(`/programme-manager?section=${section}`)}
+        />
+      ) : isAdmin ? (
+        <AdminSidebar activeSection="settings" onSelectSection={() => navigate("/admin")} />
+      ) : (
+        <AppSidebar activePage="Overview" />
+      )}
       <div className="flex-1 flex flex-col min-w-0">
-        <TopNavbar />
+        {isManager || isAdmin ? (
+          <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-border bg-card/80 px-4 pl-14 backdrop-blur-md lg:px-8 lg:pl-8">
+            <div>
+              <h1 className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
+                {settingsCopy.roleLabel}
+              </h1>
+              <p className="text-xs text-muted-foreground">Welcome, {user?.name}</p>
+            </div>
+          </header>
+        ) : (
+          <TopNavbar />
+        )}
         <main className="flex-1 overflow-y-auto">
           <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto space-y-6">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
-              <p className="text-muted-foreground text-sm">Customize your LMS experience</p>
+              <h1 className="text-2xl font-bold tracking-tight">{settingsCopy.title}</h1>
+              <p className="text-muted-foreground text-sm">{settingsCopy.description}</p>
             </div>
 
             {/* Theme */}

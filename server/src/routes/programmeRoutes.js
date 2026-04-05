@@ -5,8 +5,11 @@ import { uploadMemory } from "../middlewares/multer.js";
 import {
   addManagedProgrammeMeetingLink,
   addManagedProgrammeResource,
+  bulkAssignManagedProgrammeGrouping,
   bulkEvaluateInteractiveSession,
   createManagedInteractiveSession,
+  deleteManagedInteractiveSession,
+  downloadManagedProgrammeGroupingTemplate,
   downloadInteractiveSessionBulkTemplate,
   getDiscoverableProgrammes,
   getManagedProgrammeDetail,
@@ -19,6 +22,8 @@ import {
   markInteractiveSessionAttendance,
   publishProgrammeResults,
   selfEnrollInProgramme,
+  updateManagedProgrammeGrouping,
+  updateManagedProgrammeScholarGrouping,
   updateManagedInteractiveSession,
 } from "../controllers/programmeController.js";
 
@@ -48,10 +53,41 @@ router.post(
   createManagedInteractiveSession,
 );
 router.patch(
+  "/managed/:programmeId/grouping",
+  isAuthenticated,
+  isAuthorized("programme_manager"),
+  updateManagedProgrammeGrouping,
+);
+router.patch(
+  "/managed/:programmeId/enrollments/:enrollmentId/grouping",
+  isAuthenticated,
+  isAuthorized("programme_manager"),
+  updateManagedProgrammeScholarGrouping,
+);
+router.get(
+  "/managed/:programmeId/grouping-template",
+  isAuthenticated,
+  isAuthorized("programme_manager"),
+  downloadManagedProgrammeGroupingTemplate,
+);
+router.post(
+  "/managed/:programmeId/grouping-upload",
+  isAuthenticated,
+  isAuthorized("programme_manager"),
+  uploadMemory.single("file"),
+  bulkAssignManagedProgrammeGrouping,
+);
+router.patch(
   "/managed/interactive-sessions/:sessionId",
   isAuthenticated,
   isAuthorized("programme_manager"),
   updateManagedInteractiveSession,
+);
+router.delete(
+  "/managed/interactive-sessions/:sessionId",
+  isAuthenticated,
+  isAuthorized("programme_manager"),
+  deleteManagedInteractiveSession,
 );
 router.get(
   "/managed/:programmeId/detail",

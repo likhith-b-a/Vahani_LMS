@@ -67,7 +67,10 @@ interface AdminUsersSectionProps {
   onUserRoleFilterChange: (value: AdminUserRole) => void;
   userBatchFilter: string;
   onUserBatchFilterChange: (value: string) => void;
+  userGenderFilter: string;
+  onUserGenderFilterChange: (value: string) => void;
   scholarBatches: string[];
+  scholarGenders: string[];
   filteredUsers: AdminUser[];
   selectedEmailUserIds: string[];
   onToggleEmailUser: (userId: string) => void;
@@ -88,7 +91,10 @@ export function AdminUsersSection({
   onUserRoleFilterChange,
   userBatchFilter,
   onUserBatchFilterChange,
+  userGenderFilter,
+  onUserGenderFilterChange,
   scholarBatches,
+  scholarGenders,
   filteredUsers,
   selectedEmailUserIds,
   onToggleEmailUser,
@@ -267,7 +273,7 @@ export function AdminUsersSection({
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="grid gap-3 lg:grid-cols-[1.2fr_220px_220px]">
+        <div className="grid gap-3 lg:grid-cols-[1.2fr_220px_220px_220px]">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -311,6 +317,19 @@ export function AdminUsersSection({
               {filteredUsers.length} users matched
             </div>
           )}
+          <Select value={userGenderFilter} onValueChange={onUserGenderFilterChange}>
+            <SelectTrigger>
+              <SelectValue placeholder="All genders" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All genders</SelectItem>
+              {scholarGenders.map((gender) => (
+                <SelectItem key={gender} value={gender}>
+                  {gender}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/20 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
   ArrowLeft,
   BookOpen,
@@ -11,14 +11,19 @@ import {
   Plus,
   RefreshCw,
   ShieldCheck,
+  Trash2,
   Users,
 } from "lucide-react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   addProgrammeMeetingLink,
   addProgrammeResource,
+  bulkAssignManagedProgrammeGrouping,
   createInteractiveSession,
   createProgrammeAssignment,
+  deleteInteractiveSession,
+  deleteProgrammeAssignment,
+  downloadManagedProgrammeGroupingTemplate,
   generateProgrammeCertificates,
   getManagedProgrammeDetail,
   getManagedCertificateDownloadUrl,
@@ -29,10 +34,18 @@ import {
   type ManagedCertificate,
   type ManagedProgramme,
   updateInteractiveSession,
+  updateManagedProgrammeGrouping,
+  updateManagedProgrammeScholarGrouping,
   updateProgrammeAssignment,
   updateProgrammeCertificate,
 } from "../api/programmeManager";
 import { ManagerSidebar } from "../components/dashboard/ManagerSidebar";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "../components/ui/accordion";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader } from "../components/ui/card";
@@ -46,6 +59,7 @@ import {
 } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { Switch } from "../components/ui/switch";
 import { Textarea } from "../components/ui/textarea";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../hooks/use-toast";
@@ -56,6 +70,7 @@ const emptyAssignmentForm = {
   dueDate: "",
   maxScore: "",
   assignmentType: "document",
+  targetTrackGroups: [] as string[],
   isGraded: true,
   allowLateSubmission: true,
   allowResubmission: true,
@@ -64,10 +79,15 @@ const emptyAssignmentForm = {
 const emptySessionForm = {
   title: "",
   description: "",
-  scheduledAt: "",
-  durationMinutes: "60",
   maxScore: "0",
-  meetingUrl: "",
+  occurrences: [
+    {
+      scheduledAt: "",
+      durationMinutes: "60",
+      meetingUrl: "",
+      assignedUserIds: [] as string[],
+    },
+  ],
 };
 
 const emptyResourceForm = {
@@ -112,6 +132,11 @@ const formatDateTime = (value?: string | null) =>
 
 const resetAssignmentForm = () => ({ ...emptyAssignmentForm });
 const resetSessionForm = () => ({ ...emptySessionForm });
+const parseCommaSeparatedValues = (value: string) =>
+  value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 
 export default function ManagerProgrammeDetail() {
   const { user } = useAuth();
@@ -128,6 +153,7 @@ export default function ManagerProgrammeDetail() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] =
     useState<(typeof tabs)[number]["id"]>("assignments");
+  const [assignmentTrackFilter, setAssignmentTrackFilter] = useState("all");
 
   const [showAssignmentDialog, setShowAssignmentDialog] = useState(false);
   const [showSessionDialog, setShowSessionDialog] = useState(false);
@@ -136,14 +162,19 @@ export default function ManagerProgrammeDetail() {
   const [showAttendanceDialog, setShowAttendanceDialog] = useState(false);
   const [showCertificatesDialog, setShowCertificatesDialog] = useState(false);
   const [showEditCertificateDialog, setShowEditCertificateDialog] = useState(false);
+  const [showGroupingDialog, setShowGroupingDialog] = useState(false);
   const [editingAssignmentId, setEditingAssignmentId] = useState<string | null>(null);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const groupingUploadInputRef = useRef<HTMLInputElement | null>(null);
 
   const [assignmentForm, setAssignmentForm] = useState(emptyAssignmentForm);
   const [sessionForm, setSessionForm] = useState(emptySessionForm);
   const [resourceForm, setResourceForm] = useState(emptyResourceForm);
   const [meetingForm, setMeetingForm] = useState(emptyMeetingForm);
   const [attendanceSessionId, setAttendanceSessionId] = useState<string | null>(null);
+  const [attendanceOccurrenceId, setAttendanceOccurrenceId] = useState<string | null>(null);
+  const [sessionDialogOpenSection, setSessionDialogOpenSection] = useState("basic-details");
+  const [sessionScholarSearch, setSessionScholarSearch] = useState("");
   const [attendanceDrafts, setAttendanceDrafts] = useState<Record<string, "present" | "absent">>({});
   const [attendanceScoreDrafts, setAttendanceScoreDrafts] = useState<Record<string, string>>({});
   const [certificates, setCertificates] = useState<ManagedCertificate[]>([]);
@@ -154,6 +185,15 @@ export default function ManagerProgrammeDetail() {
     programmeTitle: "",
     issuedAt: "",
   });
+  const [groupingForm, setGroupingForm] = useState({
+    enabled: false,
+    trackGroupsText: "",
+  });
+  const [groupingSaving, setGroupingSaving] = useState(false);
+  const [updatingEnrollmentId, setUpdatingEnrollmentId] = useState<string | null>(null);
+  const [groupingUploading, setGroupingUploading] = useState(false);
+  const [groupingSearch, setGroupingSearch] = useState("");
+  const [groupingBatchFilter, setGroupingBatchFilter] = useState("all");
 
   const loadProgramme = useCallback(async () => {
     if (!id) {
@@ -180,6 +220,13 @@ export default function ManagerProgrammeDetail() {
   useEffect(() => {
     void loadProgramme();
   }, [loadProgramme]);
+
+  useEffect(() => {
+    setGroupingForm({
+      enabled: !!programme?.groupedDeliveryEnabled,
+      trackGroupsText: (programme?.groupTrackGroups || []).join(", "),
+    });
+  }, [programme?.groupTrackGroups, programme?.groupedDeliveryEnabled]);
 
   const loadCertificates = useCallback(async () => {
     if (!id) return;
@@ -215,22 +262,118 @@ export default function ManagerProgrammeDetail() {
       null,
     [attendanceSessionId, programme],
   );
+  const selectedAttendanceOccurrence = useMemo(
+    () =>
+      selectedAttendanceSession?.occurrences.find(
+        (occurrence) => occurrence.id === attendanceOccurrenceId,
+      ) || null,
+    [attendanceOccurrenceId, selectedAttendanceSession],
+  );
 
-  const openAttendanceDialog = (session: ManagedInteractiveSession) => {
+  const selectedAttendanceEnrollments = useMemo(() => {
+    if (!programme || !selectedAttendanceOccurrence) {
+      return [];
+    }
+    const assignedUserIds = new Set(
+      selectedAttendanceOccurrence.assignments.map((assignment) => assignment.userId),
+    );
+
+    return programme.enrollments.filter((enrollment) =>
+      assignedUserIds.has(enrollment.user.id),
+    );
+  }, [programme, selectedAttendanceOccurrence]);
+
+  const groupingBatchOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (programme?.enrollments || [])
+            .map((enrollment) => enrollment.user.batch?.trim())
+            .filter((batch): batch is string => Boolean(batch)),
+        ),
+      ).sort((left, right) => left.localeCompare(right)),
+    [programme?.enrollments],
+  );
+
+  const filteredGroupingEnrollments = useMemo(() => {
+    if (!programme) {
+      return [];
+    }
+
+    return programme.enrollments.filter((enrollment) => {
+      const matchesSearch =
+        !groupingSearch.trim() ||
+        `${enrollment.user.name} ${enrollment.user.email} ${enrollment.user.batch || ""} ${enrollment.trackGroup || ""}`
+          .toLowerCase()
+          .includes(groupingSearch.toLowerCase());
+      const matchesBatch =
+        groupingBatchFilter === "all" ||
+        (enrollment.user.batch || "").toLowerCase() === groupingBatchFilter.toLowerCase();
+      return matchesSearch && matchesBatch;
+    });
+  }, [groupingBatchFilter, groupingSearch, programme]);
+
+  const assignmentTrackGroupOptions = useMemo(
+    () => (programme?.groupTrackGroups || []).filter(Boolean),
+    [programme?.groupTrackGroups],
+  );
+
+  const filteredAssignments = useMemo(() => {
+    if (!programme) {
+      return [];
+    }
+
+    if (assignmentTrackFilter === "all") {
+      return programme.assignments;
+    }
+
+    if (assignmentTrackFilter === "__open__") {
+      return programme.assignments.filter(
+        (assignment) => !assignment.targetTrackGroups || assignment.targetTrackGroups.length === 0,
+      );
+    }
+
+    return programme.assignments.filter((assignment) =>
+      assignment.targetTrackGroups?.includes(assignmentTrackFilter),
+    );
+  }, [assignmentTrackFilter, programme]);
+
+  const openAttendanceDialog = (
+    session: ManagedInteractiveSession,
+    occurrenceId: string,
+  ) => {
     if (!programme) return;
+    const occurrence = session.occurrences.find((entry) => entry.id === occurrenceId);
+    if (!occurrence) return;
+    const assignedUserIds = new Set(
+      occurrence.assignments.map((assignment) => assignment.userId),
+    );
+    const eligibleEnrollments = programme.enrollments.filter((enrollment) =>
+      assignedUserIds.has(enrollment.user.id),
+    );
+
     setAttendanceSessionId(session.id);
+    setAttendanceOccurrenceId(occurrenceId);
     setAttendanceDrafts(
       Object.fromEntries(
-        programme.enrollments.map((enrollment) => {
-          const attendance = session.attendances.find((entry) => entry.userId === enrollment.user.id);
+        eligibleEnrollments.map((enrollment) => {
+          const attendance = session.attendances.find(
+            (entry) =>
+              entry.userId === enrollment.user.id &&
+              entry.interactiveSessionOccurrenceId === occurrenceId,
+          );
           return [enrollment.user.id, attendance?.status || "present"];
         }),
       ) as Record<string, "present" | "absent">,
     );
     setAttendanceScoreDrafts(
       Object.fromEntries(
-        programme.enrollments.map((enrollment) => {
-          const attendance = session.attendances.find((entry) => entry.userId === enrollment.user.id);
+        eligibleEnrollments.map((enrollment) => {
+          const attendance = session.attendances.find(
+            (entry) =>
+              entry.userId === enrollment.user.id &&
+              entry.interactiveSessionOccurrenceId === occurrenceId,
+          );
           return [
             enrollment.user.id,
             attendance?.score !== null && attendance?.score !== undefined
@@ -266,6 +409,7 @@ export default function ManagerProgrammeDetail() {
         dueDate: assignmentForm.dueDate,
         maxScore: Number(assignmentForm.maxScore),
         assignmentType: assignmentForm.assignmentType,
+        targetTrackGroups: assignmentForm.targetTrackGroups,
         isGraded: assignmentForm.isGraded,
         allowLateSubmission: assignmentForm.allowLateSubmission,
         allowResubmission: assignmentForm.allowResubmission,
@@ -297,10 +441,16 @@ export default function ManagerProgrammeDetail() {
 
   const handleAddSession = async () => {
     if (!programme) return;
-    if (!sessionForm.title.trim() || !sessionForm.scheduledAt) {
+    if (
+      !sessionForm.title.trim() ||
+      sessionForm.occurrences.some(
+        (occurrence) =>
+          !occurrence.scheduledAt || !occurrence.assignedUserIds.length,
+      )
+    ) {
       toast({
         title: "Session details required",
-        description: "Add a title and scheduled time for the session.",
+        description: "Add a title, every session date, and at least one scholar for each date.",
         variant: "destructive",
       });
       return;
@@ -310,10 +460,13 @@ export default function ManagerProgrammeDetail() {
       const payload = {
         title: sessionForm.title.trim(),
         description: sessionForm.description.trim(),
-        scheduledAt: sessionForm.scheduledAt,
-        durationMinutes: Number(sessionForm.durationMinutes || 60),
         maxScore: Number(sessionForm.maxScore || 0),
-        meetingUrl: sessionForm.meetingUrl.trim() || undefined,
+        occurrences: sessionForm.occurrences.map((occurrence) => ({
+          scheduledAt: occurrence.scheduledAt,
+          durationMinutes: Number(occurrence.durationMinutes || 60),
+          meetingUrl: occurrence.meetingUrl.trim() || undefined,
+          assignedUserIds: occurrence.assignedUserIds,
+        })),
       };
 
       if (editingSessionId) {
@@ -401,13 +554,162 @@ export default function ManagerProgrammeDetail() {
     }
   };
 
+  const handleDeleteAssignment = async (assignmentId: string, title: string) => {
+    if (!window.confirm(`Delete assignment "${title}"? This will remove its submissions too.`)) {
+      return;
+    }
+
+    try {
+      await deleteProgrammeAssignment(assignmentId);
+      await loadProgramme();
+      toast({
+        title: "Assignment deleted",
+        description: "The assignment has been removed from this programme.",
+      });
+    } catch (error) {
+      toast({
+        title: "Unable to delete assignment",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteSession = async (sessionId: string, title: string) => {
+    if (
+      !window.confirm(
+        `Delete interactive session "${title}"? All scheduled dates and attendance for it will be removed.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await deleteInteractiveSession(sessionId);
+      await loadProgramme();
+      toast({
+        title: "Interactive session deleted",
+        description: "The session and its scheduled dates have been removed.",
+      });
+    } catch (error) {
+      toast({
+        title: "Unable to delete interactive session",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSaveGroupingSettings = async () => {
+    if (!programme) return;
+
+    try {
+      setGroupingSaving(true);
+      await updateManagedProgrammeGrouping(programme.id, {
+        groupedDeliveryEnabled: groupingForm.enabled,
+        groupTrackGroups: parseCommaSeparatedValues(groupingForm.trackGroupsText),
+      });
+      await loadProgramme();
+      toast({
+        title: "Grouping settings updated",
+        description: groupingForm.enabled
+          ? "Track groups and session slots are now available in this programme."
+          : "Grouped delivery has been disabled for this programme.",
+      });
+    } catch (error) {
+      toast({
+        title: "Unable to update grouping settings",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setGroupingSaving(false);
+    }
+  };
+
+  const handleUpdateScholarGrouping = async (
+    enrollmentId: string,
+    nextValues: { trackGroup?: string | null },
+  ) => {
+    if (!programme) return;
+
+    try {
+      setUpdatingEnrollmentId(enrollmentId);
+      await updateManagedProgrammeScholarGrouping(programme.id, enrollmentId, nextValues);
+      await loadProgramme();
+      toast({
+        title: "Scholar grouping updated",
+        description: "The scholar assignment has been saved.",
+      });
+    } catch (error) {
+      toast({
+        title: "Unable to update scholar grouping",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingEnrollmentId(null);
+    }
+  };
+
+  const handleDownloadGroupingTemplate = async () => {
+    if (!programme) return;
+
+    try {
+      const blob = await downloadManagedProgrammeGroupingTemplate(programme.id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${programme.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-scholar-grouping.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast({
+        title: "Unable to download grouping template",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleGroupingUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    if (!programme) return;
+
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setGroupingUploading(true);
+      await bulkAssignManagedProgrammeGrouping(programme.id, file);
+      await loadProgramme();
+      toast({
+        title: "Scholar grouping uploaded",
+        description: "The uploaded scholar assignments have been applied.",
+      });
+    } catch (error) {
+      toast({
+        title: "Unable to upload grouping file",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setGroupingUploading(false);
+      if (groupingUploadInputRef.current) {
+        groupingUploadInputRef.current.value = "";
+      }
+    }
+  };
+
   const handleSaveAttendance = async () => {
-    if (!programme || !attendanceSessionId) return;
+    if (!programme || !attendanceSessionId || !attendanceOccurrenceId) return;
 
     try {
       await markInteractiveSessionAttendance(
         attendanceSessionId,
-        programme.enrollments.map((enrollment) => ({
+        attendanceOccurrenceId,
+        selectedAttendanceEnrollments.map((enrollment) => ({
           userId: enrollment.user.id,
           status: attendanceDrafts[enrollment.user.id] || "present",
           score: Number(
@@ -489,6 +791,7 @@ export default function ManagerProgrammeDetail() {
       dueDate: assignment.dueDate ? new Date(assignment.dueDate).toISOString().slice(0, 16) : "",
       maxScore: assignment.maxScore !== null && assignment.maxScore !== undefined ? String(assignment.maxScore) : "",
       assignmentType: assignment.assignmentType,
+      targetTrackGroups: assignment.targetTrackGroups || [],
       isGraded: true,
       allowLateSubmission: true,
       allowResubmission: true,
@@ -507,17 +810,34 @@ export default function ManagerProgrammeDetail() {
     setSessionForm({
       title: session.title,
       description: session.description || "",
-      scheduledAt: new Date(session.scheduledAt).toISOString().slice(0, 16),
-      durationMinutes: String(session.durationMinutes || 60),
       maxScore: String(session.maxScore || 0),
-      meetingUrl: session.meetingUrl || "",
+      occurrences:
+        session.occurrences.length > 0
+          ? session.occurrences.map((occurrence) => ({
+              scheduledAt: new Date(occurrence.scheduledAt).toISOString().slice(0, 16),
+              durationMinutes: String(occurrence.durationMinutes || 60),
+              meetingUrl: occurrence.meetingUrl || "",
+              assignedUserIds: occurrence.assignments.map((assignment) => assignment.userId),
+            }))
+          : [
+              {
+                scheduledAt: "",
+                durationMinutes: "60",
+                meetingUrl: "",
+                assignedUserIds: [],
+              },
+            ],
     });
+    setSessionDialogOpenSection("basic-details");
+    setSessionScholarSearch("");
     setShowSessionDialog(true);
   };
 
   const openAddSessionDialog = () => {
     setEditingSessionId(null);
     setSessionForm(resetSessionForm());
+    setSessionDialogOpenSection("basic-details");
+    setSessionScholarSearch("");
     setShowSessionDialog(true);
   };
 
@@ -534,6 +854,8 @@ export default function ManagerProgrammeDetail() {
     if (!open) {
       setEditingSessionId(null);
       setSessionForm(resetSessionForm());
+      setSessionDialogOpenSection("basic-details");
+      setSessionScholarSearch("");
     }
   };
 
@@ -618,7 +940,12 @@ export default function ManagerProgrammeDetail() {
                   <Plus className="mr-2 h-4 w-4" />
                   Add assignment
                 </Button>
-                <Button variant="outline" onClick={openAddSessionDialog}>
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    navigate(`${dashboardBasePath}/programmes/${programme.id}/sessions/new`)
+                  }
+                >
                   <Plus className="mr-2 h-4 w-4" />
                   Interactive session
                 </Button>
@@ -629,6 +956,13 @@ export default function ManagerProgrammeDetail() {
                 <Button variant="outline" onClick={() => setShowMeetingDialog(true)}>
                   <Plus className="mr-2 h-4 w-4" />
                   Online meeting
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => navigate(`${dashboardBasePath}/programmes/${programme.id}/grouping`)}
+                >
+                  <Users className="mr-2 h-4 w-4" />
+                  Grouped delivery
                 </Button>
                 <Button variant="secondary" onClick={() => void handlePublishResults()}>
                   Publish results
@@ -657,41 +991,48 @@ export default function ManagerProgrammeDetail() {
               </Card>
             ) : (
               <>
-                <section className="overflow-hidden rounded-[2rem] border border-border bg-[linear-gradient(135deg,rgba(12,106,204,0.10),rgba(255,255,255,0.98),rgba(32,201,151,0.06))] p-6 shadow-sm sm:p-8">
-                  <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
-                    <div className="space-y-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-vahani-blue">
-                        Programme Workspace
-                      </p>
-                      <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-                        {programme.title}
-                      </h2>
-                      <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-                        {programme.description || "No programme description added yet."}
-                      </p>
-                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                        <span>Created {formatDate(programme.createdAt)}</span>
-                        <span>Managed by {programme.programmeManager?.name || "Unassigned"}</span>
-                      </div>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2 xl:w-[460px]">
-                      <div className="rounded-2xl border border-border bg-card/80 p-4">
-                        <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Scholars</p>
-                        <p className="mt-2 text-lg font-semibold text-foreground">{summary.scholars}</p>
-                      </div>
-                      <div className="rounded-2xl border border-border bg-card/80 p-4">
-                        <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Assignments</p>
-                        <p className="mt-2 text-lg font-semibold text-foreground">{summary.assignments}</p>
-                      </div>
-                      <div className="rounded-2xl border border-border bg-card/80 p-4">
-                        <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Live sessions</p>
-                        <p className="mt-2 text-lg font-semibold text-foreground">{summary.sessions}</p>
-                      </div>
-                      <div className="rounded-2xl border border-border bg-card/80 p-4">
-                        <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Resources + meetings</p>
-                        <p className="mt-2 text-lg font-semibold text-foreground">
-                          {summary.resources + summary.meetings}
+                <section className="overflow-hidden rounded-[1.75rem] border border-border bg-[linear-gradient(135deg,rgba(12,106,204,0.10),rgba(255,255,255,0.98),rgba(32,201,151,0.06))] p-5 shadow-sm sm:p-6">
+                  <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 space-y-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-vahani-blue">
+                          Programme Workspace
                         </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+                            {programme.title}
+                          </h2>
+                          <Badge variant="outline">
+                            {summary.scholars} scholars
+                          </Badge>
+                        </div>
+                        <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+                          {programme.description || "No programme description added yet."}
+                        </p>
+                        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          <span>Created {formatDate(programme.createdAt)}</span>
+                          <span>Managed by {programme.programmeManager?.name || "Unassigned"}</span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:min-w-[420px]">
+                        {[
+                          { label: "Scholars", value: summary.scholars },
+                          { label: "Assignments", value: summary.assignments },
+                          { label: "Live sessions", value: summary.sessions },
+                          { label: "Resources + meetings", value: summary.resources + summary.meetings },
+                        ].map((item) => (
+                          <div
+                            key={item.label}
+                            className="rounded-xl border border-border bg-card/85 px-3 py-2.5"
+                          >
+                            <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                              {item.label}
+                            </p>
+                            <p className="mt-1 text-base font-semibold text-foreground">
+                              {item.value}
+                            </p>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>
@@ -730,7 +1071,40 @@ export default function ManagerProgrammeDetail() {
                           No assignments published for this programme yet.
                         </p>
                       ) : (
-                        programme.assignments.map((assignment) => (
+                        <div className="space-y-4">
+                          {programme.groupedDeliveryEnabled &&
+                          assignmentTrackGroupOptions.length > 0 ? (
+                            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-muted/20 p-4">
+                              <Label className="text-sm font-medium text-foreground">
+                                Filter by track group
+                              </Label>
+                              <select
+                                className="h-10 min-w-[180px] rounded-md border border-input bg-background px-3 text-sm"
+                                value={assignmentTrackFilter}
+                                onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                                  setAssignmentTrackFilter(event.target.value)
+                                }
+                              >
+                                <option value="all">All groups</option>
+                                <option value="__open__">Open to all scholars</option>
+                                {assignmentTrackGroupOptions.map((group) => (
+                                  <option key={group} value={group}>
+                                    {group}
+                                  </option>
+                                ))}
+                              </select>
+                              <p className="text-xs text-muted-foreground">
+                                Narrow the assignment list to one track when grouped delivery is enabled.
+                              </p>
+                            </div>
+                          ) : null}
+
+                          {filteredAssignments.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">
+                              No assignments match the current filter.
+                            </p>
+                          ) : (
+                            filteredAssignments.map((assignment) => (
                           <div key={assignment.id} className="rounded-2xl border border-border p-4">
                             <div className="flex flex-wrap items-start justify-between gap-3">
                               <div>
@@ -744,7 +1118,15 @@ export default function ManagerProgrammeDetail() {
                               </div>
                               <div className="flex flex-wrap items-center gap-2">
                                 <Badge variant="secondary">
-                                  {assignment.submissions.length}/{programme.enrollments.length} submitted
+                                  {assignment.submissions.length}/
+                                  {(programme.groupedDeliveryEnabled && assignment.targetTrackGroups?.length
+                                    ? programme.enrollments.filter(
+                                        (enrollment) =>
+                                          enrollment.trackGroup &&
+                                          assignment.targetTrackGroups.includes(enrollment.trackGroup),
+                                      ).length
+                                    : programme.enrollments.length)}{" "}
+                                  submitted
                                 </Badge>
                                 <Button
                                   size="sm"
@@ -754,14 +1136,30 @@ export default function ManagerProgrammeDetail() {
                                   <Pencil className="mr-2 h-4 w-4" />
                                   Edit
                                 </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    void handleDeleteAssignment(assignment.id, assignment.title)
+                                  }
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Delete
+                                </Button>
                               </div>
                             </div>
                             <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
                               <span>Due {formatDateTime(assignment.dueDate)}</span>
                               <span>Max marks {assignment.maxScore ?? 0}</span>
+                              {programme.groupedDeliveryEnabled &&
+                              assignment.targetTrackGroups?.length ? (
+                                <span>Track groups: {assignment.targetTrackGroups.join(", ")}</span>
+                              ) : null}
                             </div>
                           </div>
-                        ))
+                            ))
+                          )}
+                        </div>
                       ))}
 
                     {activeTab === "sessions" &&
@@ -774,8 +1172,22 @@ export default function ManagerProgrammeDetail() {
                           const canMarkAttendance =
                             new Date(session.scheduledAt).getTime() <= Date.now();
                           return (
-                            <div key={session.id} className="rounded-2xl border border-border p-4">
-                              <div className="flex flex-wrap items-start justify-between gap-3">
+                            <details key={session.id} className="rounded-2xl border border-border">
+                              <summary className="cursor-pointer list-none px-4 py-4">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-semibold text-foreground">{session.title}</p>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                      {session.description || "No session description."}
+                                    </p>
+                                  </div>
+                                  <Badge variant="outline">
+                                    {session.occurrences.length} date{session.occurrences.length === 1 ? "" : "s"}
+                                  </Badge>
+                                </div>
+                              </summary>
+                              <div className="border-t border-border px-4 pb-4 pt-4">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
                                 <div>
                                   <p className="font-semibold text-foreground">{session.title}</p>
                                   <p className="mt-1 text-sm text-muted-foreground">
@@ -786,7 +1198,11 @@ export default function ManagerProgrammeDetail() {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => openEditSessionDialog(session)}
+                                    onClick={() =>
+                                      navigate(
+                                        `${dashboardBasePath}/programmes/${programme.id}/sessions/${session.id}`,
+                                      )
+                                    }
                                   >
                                     <Pencil className="mr-2 h-4 w-4" />
                                     Edit
@@ -794,31 +1210,75 @@ export default function ManagerProgrammeDetail() {
                                   <Button
                                     size="sm"
                                     variant="outline"
+                                    onClick={() => void handleDeleteSession(session.id, session.title)}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
                                     disabled={!canMarkAttendance}
-                                    onClick={() => openAttendanceDialog(session)}
+                                    onClick={() =>
+                                      openAttendanceDialog(
+                                        session,
+                                        session.occurrences[0]?.id || "",
+                                      )
+                                    }
                                   >
                                     Mark attendance
                                   </Button>
                                 </div>
                               </div>
-                              <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
-                                <span>{formatDateTime(session.scheduledAt)}</span>
-                                <span>Max marks {session.maxScore}</span>
-                                <span>
-                                  {session.attendances.length}/{programme.enrollments.length} marked
-                                </span>
+                              <div className="mt-4 space-y-3">
+                                {session.occurrences.map((occurrence, index) => {
+                                  const assignedCount = occurrence.assignments.length;
+                                  const markedCount = session.attendances.filter(
+                                    (attendance) =>
+                                      attendance.interactiveSessionOccurrenceId === occurrence.id,
+                                  ).length;
+
+                                  return (
+                                    <div
+                                      key={occurrence.id}
+                                      className="rounded-xl border border-border/70 bg-muted/20 p-3"
+                                    >
+                                      <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <div className="space-y-1 text-sm">
+                                          <p className="font-medium text-foreground">
+                                            Date {index + 1}: {formatDateTime(occurrence.scheduledAt)}
+                                          </p>
+                                          <p className="text-xs text-muted-foreground">
+                                            {assignedCount} scholars assigned
+                                            {" • "}
+                                            {markedCount}/{assignedCount} marked
+                                          </p>
+                                        </div>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          disabled={new Date(occurrence.scheduledAt).getTime() > Date.now()}
+                                          onClick={() => openAttendanceDialog(session, occurrence.id)}
+                                        >
+                                          Mark attendance
+                                        </Button>
+                                      </div>
+                                      {occurrence.meetingUrl ? (
+                                        <a
+                                          href={occurrence.meetingUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="mt-2 inline-block text-sm text-vahani-blue underline-offset-4 hover:underline"
+                                        >
+                                          {occurrence.meetingUrl}
+                                        </a>
+                                      ) : null}
+                                    </div>
+                                  );
+                                })}
                               </div>
-                              {session.meetingUrl ? (
-                                <a
-                                  href={session.meetingUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="mt-3 inline-block text-sm text-vahani-blue underline-offset-4 hover:underline"
-                                >
-                                  {session.meetingUrl}
-                                </a>
-                              ) : null}
-                            </div>
+                              </div>
+                            </details>
                           );
                         })
                       ))}
@@ -877,24 +1337,65 @@ export default function ManagerProgrammeDetail() {
                           No scholars enrolled in this programme yet.
                         </p>
                       ) : (
-                        <div className="grid gap-4 md:grid-cols-2">
-                          {programme.enrollments.map((enrollment) => (
-                            <div key={enrollment.id} className="rounded-2xl border border-border p-4">
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <p className="font-semibold text-foreground">{enrollment.user.name}</p>
-                                  <p className="mt-1 text-sm text-muted-foreground">
-                                    {enrollment.user.email}
-                                  </p>
-                                </div>
-                                <Badge variant="outline">{enrollment.status}</Badge>
-                              </div>
-                              <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
-                                <span>{enrollment.user.batch || "No batch"}</span>
-                                <span>Enrolled {formatDate(enrollment.enrolledAt)}</span>
-                              </div>
+                        <div className="space-y-4">
+                          {programme.groupedDeliveryEnabled ? (
+                            <div className="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                              Track groups are managed from the grouped delivery dialog. Session dates are assigned directly inside each interactive session.
                             </div>
-                          ))}
+                          ) : null}
+                          <div className="overflow-hidden rounded-2xl border border-border">
+                            <div className="overflow-x-auto">
+                              <table className="min-w-full divide-y divide-border text-sm">
+                                <thead className="bg-muted/30">
+                                  <tr className="text-left text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                                    <th className="px-4 py-3 font-medium">Scholar</th>
+                                    <th className="px-4 py-3 font-medium">Batch</th>
+                                    <th className="px-4 py-3 font-medium">Gender</th>
+                                    {programme.groupedDeliveryEnabled ? (
+                                      <th className="px-4 py-3 font-medium">Track group</th>
+                                    ) : null}
+                                    <th className="px-4 py-3 font-medium">Status</th>
+                                    <th className="px-4 py-3 font-medium">Enrolled on</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border bg-card">
+                                  {programme.enrollments.map((enrollment) => (
+                                    <tr key={enrollment.id} className="align-top">
+                                      <td className="px-4 py-4">
+                                        <div>
+                                          <p className="font-semibold text-foreground">
+                                            {enrollment.user.name}
+                                          </p>
+                                          <p className="mt-1 text-xs text-muted-foreground">
+                                            {enrollment.user.email}
+                                          </p>
+                                        </div>
+                                      </td>
+                                      <td className="px-4 py-4 text-muted-foreground">
+                                        {enrollment.user.batch || "No batch"}
+                                      </td>
+                                      <td className="px-4 py-4 text-muted-foreground">
+                                        {enrollment.user.gender || "No gender"}
+                                      </td>
+                                      {programme.groupedDeliveryEnabled ? (
+                                        <td className="px-4 py-4">
+                                          <Badge variant="secondary">
+                                            {enrollment.trackGroup || "Unassigned"}
+                                          </Badge>
+                                        </td>
+                                      ) : null}
+                                      <td className="px-4 py-4">
+                                        <Badge variant="outline">{enrollment.status}</Badge>
+                                      </td>
+                                      <td className="px-4 py-4 text-muted-foreground">
+                                        {formatDate(enrollment.enrolledAt)}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
                         </div>
                       ))}
                   </CardContent>
@@ -979,6 +1480,36 @@ export default function ManagerProgrammeDetail() {
                 }
               />
             </div>
+            {programme?.groupedDeliveryEnabled && (programme.groupTrackGroups || []).length > 0 ? (
+              <div className="space-y-2">
+                <Label>Target track groups</Label>
+                <div className="flex flex-wrap gap-2">
+                  {programme.groupTrackGroups?.map((group) => (
+                    <label
+                      key={group}
+                      className="flex items-center gap-2 rounded-full border border-border px-3 py-2 text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={assignmentForm.targetTrackGroups.includes(group)}
+                        onChange={() =>
+                          setAssignmentForm((current) => ({
+                            ...current,
+                            targetTrackGroups: current.targetTrackGroups.includes(group)
+                              ? current.targetTrackGroups.filter((entry) => entry !== group)
+                              : [...current.targetTrackGroups, group],
+                          }))
+                        }
+                      />
+                      <span>{group}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Leave all unchecked to show the assignment to every scholar in the programme.
+                </p>
+              </div>
+            ) : null}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => handleAssignmentDialogChange(false)}>
@@ -1004,6 +1535,27 @@ export default function ManagerProgrammeDetail() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <div className="rounded-xl border border-border bg-muted/20 p-3">
+              <Input
+                placeholder="Search scholars by name, email, batch, or track group"
+                value={sessionScholarSearch}
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                  setSessionScholarSearch(event.target.value)
+                }
+              />
+            </div>
+            <Accordion
+              type="single"
+              collapsible
+              value={sessionDialogOpenSection}
+              onValueChange={(value) => setSessionDialogOpenSection(value || "basic-details")}
+              className="space-y-3"
+            >
+              <AccordionItem value="basic-details" className="rounded-2xl border border-border px-4">
+                <AccordionTrigger className="py-4 text-left text-base font-semibold text-foreground hover:no-underline">
+                  Basic details
+                </AccordionTrigger>
+                <AccordionContent className="space-y-4 pb-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Title</Label>
@@ -1011,33 +1563,6 @@ export default function ManagerProgrammeDetail() {
                   value={sessionForm.title}
                   onChange={(event: ChangeEvent<HTMLInputElement>) =>
                     setSessionForm((current) => ({ ...current, title: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Scheduled at</Label>
-                <Input
-                  type="datetime-local"
-                  value={sessionForm.scheduledAt}
-                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                    setSessionForm((current) => ({
-                      ...current,
-                      scheduledAt: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Duration (minutes)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={sessionForm.durationMinutes}
-                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                    setSessionForm((current) => ({
-                      ...current,
-                      durationMinutes: event.target.value,
-                    }))
                   }
                 />
               </div>
@@ -1051,6 +1576,9 @@ export default function ManagerProgrammeDetail() {
                     setSessionForm((current) => ({ ...current, maxScore: event.target.value }))
                   }
                 />
+                <p className="text-xs text-muted-foreground">
+                  Set this to 0 for attendance-only, non-graded sessions.
+                </p>
               </div>
             </div>
             <div className="space-y-2">
@@ -1063,15 +1591,219 @@ export default function ManagerProgrammeDetail() {
                 }
               />
             </div>
-            <div className="space-y-2">
-              <Label>Meeting URL</Label>
-              <Input
-                value={sessionForm.meetingUrl}
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  setSessionForm((current) => ({ ...current, meetingUrl: event.target.value }))
-                }
-              />
+                </AccordionContent>
+              </AccordionItem>
+            <div className="space-y-3">
+              {sessionForm.occurrences.map((occurrence, index) => {
+                const assignedUserIds = new Set(occurrence.assignedUserIds);
+                const assignedElsewhere = new Set(
+                  sessionForm.occurrences.flatMap((entry, occurrenceIndex) =>
+                    occurrenceIndex === index ? [] : entry.assignedUserIds,
+                  ),
+                );
+                const searchableEnrollments = (programme?.enrollments || []).filter((enrollment) =>
+                  !sessionScholarSearch.trim() ||
+                  `${enrollment.user.name} ${enrollment.user.email} ${enrollment.user.batch || ""} ${enrollment.trackGroup || ""}`
+                    .toLowerCase()
+                    .includes(sessionScholarSearch.toLowerCase()),
+                );
+                const assignedEnrollments = searchableEnrollments.filter((enrollment) =>
+                  assignedUserIds.has(enrollment.user.id),
+                );
+                const availableEnrollments = searchableEnrollments.filter(
+                  (enrollment) =>
+                    !assignedUserIds.has(enrollment.user.id) &&
+                    !assignedElsewhere.has(enrollment.user.id),
+                );
+
+                return (
+                <AccordionItem
+                  key={`${index}-${occurrence.scheduledAt}`}
+                  value={`date-${index}`}
+                  className="rounded-2xl border border-border px-4"
+                >
+                  <AccordionTrigger className="py-4 text-left hover:no-underline">
+                    <div className="flex min-w-0 flex-1 items-center justify-between gap-3 pr-3">
+                      <div>
+                        <p className="font-semibold text-foreground">Session date {index + 1}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {occurrence.scheduledAt
+                            ? formatDateTime(occurrence.scheduledAt)
+                            : `Date ${index + 1}`}
+                        </p>
+                      </div>
+                      <Badge variant="outline">
+                        {occurrence.assignedUserIds.length} scholar
+                        {occurrence.assignedUserIds.length === 1 ? "" : "s"}
+                      </Badge>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-4 pb-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium text-foreground">
+                        Configure date, link, and scholar audience
+                      </p>
+                      {sessionForm.occurrences.length > 1 ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            const nextSection =
+                              index > 0 || sessionForm.occurrences.length - 1 > 1
+                                ? `date-${Math.max(0, index - 1)}`
+                                : "basic-details";
+                            setSessionForm((current) => ({
+                              ...current,
+                              occurrences: current.occurrences.filter(
+                                (_, occurrenceIndex) => occurrenceIndex !== index,
+                              ),
+                            }));
+                            setSessionDialogOpenSection(nextSection);
+                          }}
+                        >
+                          Remove
+                        </Button>
+                      ) : null}
+                    </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Scheduled at</Label>
+                      <Input
+                        type="datetime-local"
+                        value={occurrence.scheduledAt}
+                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                          setSessionForm((current) => ({
+                            ...current,
+                            occurrences: current.occurrences.map((entry, occurrenceIndex) =>
+                              occurrenceIndex === index
+                                ? { ...entry, scheduledAt: event.target.value }
+                                : entry,
+                            ),
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Duration (minutes)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={occurrence.durationMinutes}
+                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                          setSessionForm((current) => ({
+                            ...current,
+                            occurrences: current.occurrences.map((entry, occurrenceIndex) =>
+                              occurrenceIndex === index
+                                ? { ...entry, durationMinutes: event.target.value }
+                                : entry,
+                            ),
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label>Meeting URL</Label>
+                      <Input
+                        value={occurrence.meetingUrl}
+                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                          setSessionForm((current) => ({
+                            ...current,
+                            occurrences: current.occurrences.map((entry, occurrenceIndex) =>
+                              occurrenceIndex === index
+                                ? { ...entry, meetingUrl: event.target.value }
+                                : entry,
+                            ),
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    <Label>
+                      Scholars for this date ({assignedEnrollments.length} assigned, {availableEnrollments.length} available)
+                    </Label>
+                    <div className="max-h-52 space-y-2 overflow-y-auto rounded-xl border border-border/70 p-3">
+                      {searchableEnrollments
+                        .filter(
+                          (enrollment) =>
+                            assignedUserIds.has(enrollment.user.id) ||
+                            !assignedElsewhere.has(enrollment.user.id),
+                        )
+                        .map((enrollment) => (
+                        <label
+                          key={`${occurrence.scheduledAt}-${enrollment.user.id}`}
+                          className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 text-sm"
+                        >
+                          <div>
+                            <p className="font-medium text-foreground">{enrollment.user.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {enrollment.user.email}
+                              {enrollment.trackGroup ? ` • Track ${enrollment.trackGroup}` : ""}
+                            </p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={occurrence.assignedUserIds.includes(enrollment.user.id)}
+                            onChange={() =>
+                              setSessionForm((current) => ({
+                                ...current,
+                                occurrences: current.occurrences.map((entry, occurrenceIndex) =>
+                                  occurrenceIndex === index
+                                    ? {
+                                        ...entry,
+                                        assignedUserIds: entry.assignedUserIds.includes(enrollment.user.id)
+                                          ? entry.assignedUserIds.filter((userId) => userId !== enrollment.user.id)
+                                          : [...entry.assignedUserIds, enrollment.user.id],
+                                      }
+                                    : {
+                                        ...entry,
+                                        assignedUserIds: entry.assignedUserIds.filter((userId) => userId !== enrollment.user.id),
+                                      },
+                                ),
+                              }))
+                            }
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      A scholar can only be assigned to one date for this interactive session.
+                    </p>
+                  </div>
+                  </AccordionContent>
+                </AccordionItem>
+                );
+              })}
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setSessionForm((current) => {
+                      const nextOccurrences = [
+                        ...current.occurrences,
+                        {
+                          scheduledAt: "",
+                          durationMinutes: "60",
+                          meetingUrl: "",
+                          assignedUserIds: [],
+                        },
+                      ];
+                      setSessionDialogOpenSection(`date-${nextOccurrences.length - 1}`);
+                      return {
+                        ...current,
+                        occurrences: nextOccurrences,
+                      };
+                    })
+                  }
+                >
+                  Add another date
+                </Button>
+              </div>
             </div>
+            </Accordion>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => handleSessionDialogChange(false)}>
@@ -1079,6 +1811,173 @@ export default function ManagerProgrammeDetail() {
             </Button>
             <Button onClick={() => void handleAddSession()}>
               {editingSessionId ? "Update session" : "Schedule session"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showGroupingDialog}
+        onOpenChange={(open) => {
+          setShowGroupingDialog(open);
+          if (!open) {
+            setGroupingSearch("");
+            setGroupingBatchFilter("all");
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Grouped delivery</DialogTitle>
+            <DialogDescription>
+              Enable grouped English delivery, define track groups, and assign scholars here or through the Excel template.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/20 p-4">
+              <div>
+                <p className="font-medium text-foreground">Enable grouped delivery</p>
+                <p className="text-sm text-muted-foreground">
+                  Use this only when assignments need track-group targeting.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-muted-foreground">
+                  {groupingForm.enabled ? "Enabled" : "Disabled"}
+                </span>
+                <Switch
+                  checked={groupingForm.enabled}
+                  onCheckedChange={(value) =>
+                    setGroupingForm((current) => ({ ...current, enabled: value }))
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Track groups</Label>
+              <Input
+                placeholder="A, B, C"
+                value={groupingForm.trackGroupsText}
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                  setGroupingForm((current) => ({
+                    ...current,
+                    trackGroupsText: event.target.value,
+                  }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Example: A, B, C. These are used for assignment targeting and scholar grouping.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => void handleSaveGroupingSettings()} disabled={groupingSaving}>
+                {groupingSaving ? "Saving..." : "Save grouped delivery settings"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void handleDownloadGroupingTemplate()}
+                disabled={!groupingForm.enabled}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Download grouping sheet
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => groupingUploadInputRef.current?.click()}
+                disabled={!groupingForm.enabled || groupingUploading}
+              >
+                {groupingUploading ? "Uploading..." : "Upload filled sheet"}
+              </Button>
+              <input
+                ref={groupingUploadInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={handleGroupingUpload}
+              />
+            </div>
+
+            {groupingForm.enabled ? (
+              <div className="space-y-4 rounded-xl border border-border p-4">
+                <div className="grid gap-3 sm:grid-cols-[1fr_220px]">
+                  <Input
+                    placeholder="Filter scholars by name, email, batch, or current group"
+                    value={groupingSearch}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                      setGroupingSearch(event.target.value)
+                    }
+                  />
+                  <select
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    value={groupingBatchFilter}
+                    onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                      setGroupingBatchFilter(event.target.value)
+                    }
+                  >
+                    <option value="all">All batches</option>
+                    {groupingBatchOptions.map((batch) => (
+                      <option key={batch} value={batch}>
+                        {batch}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="max-h-[45vh] space-y-3 overflow-y-auto pr-1">
+                  {filteredGroupingEnrollments.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No scholars match the current filter.
+                    </p>
+                  ) : (
+                    filteredGroupingEnrollments.map((enrollment) => (
+                      <div
+                        key={enrollment.id}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 p-3"
+                      >
+                        <div>
+                          <p className="font-medium text-foreground">{enrollment.user.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {enrollment.user.email}
+                            {enrollment.user.batch ? ` • ${enrollment.user.batch}` : ""}
+                            {enrollment.user.gender ? ` • ${enrollment.user.gender}` : ""}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-muted-foreground">
+                            Current: {enrollment.trackGroup || "Unassigned"}
+                          </span>
+                          <select
+                            className="h-10 min-w-[160px] rounded-md border border-input bg-background px-3 text-sm"
+                            value={enrollment.trackGroup || ""}
+                            disabled={updatingEnrollmentId === enrollment.id}
+                            onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                              void handleUpdateScholarGrouping(enrollment.id, {
+                                trackGroup: event.target.value || null,
+                              })
+                            }
+                          >
+                            <option value="">Unassigned</option>
+                            {parseCommaSeparatedValues(groupingForm.trackGroupsText).map((group) => (
+                              <option key={group} value={group}>
+                                {group}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowGroupingDialog(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1184,11 +2083,21 @@ export default function ManagerProgrammeDetail() {
           <DialogHeader>
             <DialogTitle>{selectedAttendanceSession?.title || "Mark attendance"}</DialogTitle>
             <DialogDescription>
-              All scholars start as present. Mark absentees, adjust marks, and save.
+              All assigned scholars start as present. Mark absentees, adjust marks when graded, and save.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            {(programme?.enrollments || []).map((enrollment) => (
+            {selectedAttendanceOccurrence ? (
+              <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+                <p className="font-medium text-foreground">
+                  {formatDateTime(selectedAttendanceOccurrence.scheduledAt)}
+                </p>
+                <p className="mt-1">
+                  Max marks {selectedAttendanceSession?.maxScore ?? 0}
+                </p>
+              </div>
+            ) : null}
+            {selectedAttendanceEnrollments.map((enrollment) => (
               <div
                 key={enrollment.user.id}
                 className="grid gap-3 rounded-xl border border-border p-4 sm:grid-cols-[1fr_160px_140px] sm:items-center"
@@ -1222,24 +2131,30 @@ export default function ManagerProgrammeDetail() {
                   <option value="present">Present</option>
                   <option value="absent">Absent</option>
                 </select>
-                <Input
-                  type="number"
-                  min="0"
-                  max={selectedAttendanceSession?.maxScore ?? 0}
-                  disabled={(attendanceDrafts[enrollment.user.id] || "present") === "absent"}
-                  value={
-                    (attendanceDrafts[enrollment.user.id] || "present") === "absent"
-                      ? "0"
-                      : attendanceScoreDrafts[enrollment.user.id] ||
-                        String(selectedAttendanceSession?.maxScore ?? 0)
-                  }
-                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                    setAttendanceScoreDrafts((current) => ({
-                      ...current,
-                      [enrollment.user.id]: event.target.value,
-                    }))
-                  }
-                />
+                {selectedAttendanceSession?.maxScore ? (
+                  <Input
+                    type="number"
+                    min="0"
+                    max={selectedAttendanceSession?.maxScore ?? 0}
+                    disabled={(attendanceDrafts[enrollment.user.id] || "present") === "absent"}
+                    value={
+                      (attendanceDrafts[enrollment.user.id] || "present") === "absent"
+                        ? "0"
+                        : attendanceScoreDrafts[enrollment.user.id] ||
+                          String(selectedAttendanceSession?.maxScore ?? 0)
+                    }
+                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                      setAttendanceScoreDrafts((current) => ({
+                        ...current,
+                        [enrollment.user.id]: event.target.value,
+                      }))
+                    }
+                  />
+                ) : (
+                  <div className="flex h-10 items-center rounded-md border border-dashed border-border px-3 text-sm text-muted-foreground">
+                    Non-graded
+                  </div>
+                )}
               </div>
             ))}
           </div>

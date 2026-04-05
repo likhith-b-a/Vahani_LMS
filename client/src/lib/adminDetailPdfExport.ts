@@ -485,14 +485,35 @@ export const exportAdminProgrammeDetailPdf = (programme: AdminProgrammeDetail) =
           </thead>
           <tbody>
             ${programme.interactiveSessions
-              .map(
-                (session) => `
+              .flatMap((session) => {
+                const occurrences =
+                  session.occurrences && session.occurrences.length > 0
+                    ? session.occurrences.map((occurrence) => ({
+                        sessionTitle: session.title,
+                        scheduledAt: occurrence.scheduledAt,
+                        attendanceCount: occurrence.attendanceCount,
+                        absentCount: occurrence.absentCount,
+                      }))
+                    : session.scheduledAt
+                      ? [
+                          {
+                            sessionTitle: session.title,
+                            scheduledAt: session.scheduledAt,
+                            attendanceCount: session.attendanceCount,
+                            absentCount: session.absentCount,
+                          },
+                        ]
+                      : [];
+
+                return occurrences.map(
+                  (occurrence) => `
                 <tr>
-                  <td>${escapeHtml(session.title)}</td>
-                  <td>${escapeHtml(formatDate(session.scheduledAt))}</td>
-                  <td class="right">${escapeHtml(String(session.attendanceCount))} marked / ${escapeHtml(String(session.absentCount))} absent</td>
+                  <td>${escapeHtml(occurrence.sessionTitle)}</td>
+                  <td>${escapeHtml(formatDate(occurrence.scheduledAt))}</td>
+                  <td class="right">${escapeHtml(String(occurrence.attendanceCount))} marked / ${escapeHtml(String(occurrence.absentCount))} absent</td>
                 </tr>`,
-              )
+                );
+              })
               .join("")}
           </tbody>
         </table>

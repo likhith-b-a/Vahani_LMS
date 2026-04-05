@@ -22,6 +22,34 @@ import {
   processProgrammeEnrollmentRequests,
 } from "../utils/selfEnrollment.js";
 import { uploadBufferToS3 } from "../utils/s3.js";
+import {
+  filterAssignmentsForEnrollment,
+  filterSessionsForEnrollment,
+  getAssignedOccurrenceForUser,
+  getEligibleEnrollmentsForOccurrence,
+  getProgrammeSessionSlots,
+  getProgrammeTrackGroups,
+  hasGroupedDelivery,
+  normalizeStringArray,
+} from "../utils/programmeGrouping.js";
+
+const buildEnrollmentGroupingSnapshot = (enrollment) => ({
+  trackGroup: enrollment?.trackGroup || null,
+  sessionSlot: enrollment?.sessionSlot || null,
+});
+
+const getApplicableProgrammeContent = (programme, enrollment) => ({
+  assignments: filterAssignmentsForEnrollment(
+    programme?.assignments || [],
+    enrollment,
+    programme,
+  ),
+  interactiveSessions: filterSessionsForEnrollment(
+    programme?.interactiveSessions || [],
+    enrollment,
+    programme,
+  ),
+});
 
 const getMyProgrammes = asyncHandler(async (req, res) => {
   const userId = req?.user?.id;
@@ -84,6 +112,25 @@ const getMyProgrammes = asyncHandler(async (req, res) => {
               durationMinutes: true,
               maxScore: true,
               meetingUrl: true,
+              occurrences: {
+                select: {
+                  id: true,
+                  scheduledAt: true,
+                  durationMinutes: true,
+                  meetingUrl: true,
+                  assignments: {
+                    where: {
+                      userId,
+                    },
+                    select: {
+                      userId: true,
+                    },
+                  },
+                },
+                orderBy: {
+                  scheduledAt: "asc",
+                },
+              },
               attendances: {
                 where: {
                   userId,
@@ -94,6 +141,7 @@ const getMyProgrammes = asyncHandler(async (req, res) => {
                   score: true,
                   markedAt: true,
                   userId: true,
+                  interactiveSessionOccurrenceId: true,
                 },
               },
             },
@@ -108,10 +156,17 @@ const getMyProgrammes = asyncHandler(async (req, res) => {
 
   const programmes = enrollments.map((enrollment) => ({
     ...withProgrammeMetadataSync(enrollment.programme),
-    assignments: enrollment.programme.assignments.map((assignment) =>
+    ...buildEnrollmentGroupingSnapshot(enrollment),
+    assignments: getApplicableProgrammeContent(
+      enrollment.programme,
+      enrollment,
+    ).assignments.map((assignment) =>
       serializeAssignment(assignment),
     ),
-    interactiveSessions: enrollment.programme.interactiveSessions,
+    interactiveSessions: getApplicableProgrammeContent(
+      enrollment.programme,
+      enrollment,
+    ).interactiveSessions,
     status: enrollment.status,
     enrolledAt: enrollment.enrolledAt,
   }));
@@ -176,6 +231,25 @@ const getMyProgrammes = asyncHandler(async (req, res) => {
             },
             interactiveSessions: {
               include: {
+                occurrences: {
+                  select: {
+                    id: true,
+                    scheduledAt: true,
+                    durationMinutes: true,
+                    meetingUrl: true,
+                    assignments: {
+                      where: {
+                        userId,
+                      },
+                      select: {
+                        userId: true,
+                      },
+                    },
+                  },
+                  orderBy: {
+                    scheduledAt: "asc",
+                  },
+                },
                 attendances: {
                   where: {
                     userId,
@@ -186,6 +260,7 @@ const getMyProgrammes = asyncHandler(async (req, res) => {
                     score: true,
                     markedAt: true,
                     userId: true,
+                    interactiveSessionOccurrenceId: true,
                   },
                 },
               },
@@ -244,15 +319,40 @@ const getMyProgrammeSchedule = asyncHandler(async (req, res) => {
     },
     select: {
       status: true,
+      trackGroup: true,
+      sessionSlot: true,
       programme: {
         select: {
           id: true,
           title: true,
+          groupedDeliveryEnabled: true,
           interactiveSessions: {
             select: {
               id: true,
               title: true,
               scheduledAt: true,
+              durationMinutes: true,
+              maxScore: true,
+              meetingUrl: true,
+              occurrences: {
+                select: {
+                  id: true,
+                  scheduledAt: true,
+                  durationMinutes: true,
+                  meetingUrl: true,
+                  assignments: {
+                    where: {
+                      userId,
+                    },
+                    select: {
+                      userId: true,
+                    },
+                  },
+                },
+                orderBy: {
+                  scheduledAt: "asc",
+                },
+              },
               attendances: {
                 where: {
                   userId,
@@ -263,6 +363,7 @@ const getMyProgrammeSchedule = asyncHandler(async (req, res) => {
                   score: true,
                   markedAt: true,
                   userId: true,
+                  interactiveSessionOccurrenceId: true,
                 },
               },
             },
@@ -282,7 +383,11 @@ const getMyProgrammeSchedule = asyncHandler(async (req, res) => {
         id: enrollment.programme.id,
         title: enrollment.programme.title,
         status: enrollment.status,
-        interactiveSessions: enrollment.programme.interactiveSessions,
+        interactiveSessions: filterSessionsForEnrollment(
+          enrollment.programme.interactiveSessions,
+          enrollment,
+          enrollment.programme,
+        ),
       })),
     },
     "Programme schedule fetched successfully",
@@ -300,6 +405,21 @@ const getProgrammeDetail = asyncHandler(async (req, res) => {
   if (cachedResponse) {
     return res.status(200).json(cachedResponse);
   }
+
+  const enrollment = await db.enrollment.findUnique({
+    where: {
+      userId_programmeId: {
+        userId: req.user.id,
+        programmeId: id,
+      },
+    },
+    select: {
+      userId: true,
+      programmeId: true,
+      trackGroup: true,
+      sessionSlot: true,
+    },
+  });
 
   const programmeData = await db.programme.findUnique({
     where: { id },
@@ -342,6 +462,25 @@ const getProgrammeDetail = asyncHandler(async (req, res) => {
       },
       interactiveSessions: {
         include: {
+          occurrences: {
+            select: {
+              id: true,
+              scheduledAt: true,
+              durationMinutes: true,
+              meetingUrl: true,
+              assignments: {
+                where: {
+                  userId: req.user.id,
+                },
+                select: {
+                  userId: true,
+                },
+              },
+            },
+            orderBy: {
+              scheduledAt: "asc",
+            },
+          },
           attendances: {
             where: {
               userId: req.user.id,
@@ -352,6 +491,7 @@ const getProgrammeDetail = asyncHandler(async (req, res) => {
               score: true,
               markedAt: true,
               userId: true,
+              interactiveSessionOccurrenceId: true,
             },
           },
         },
@@ -368,8 +508,18 @@ const getProgrammeDetail = asyncHandler(async (req, res) => {
 
   const programmeWithMetadata = withProgrammeMetadataSync({
     ...programmeData,
-    assignments: programmeData.assignments.map((assignment) =>
+    ...buildEnrollmentGroupingSnapshot(enrollment),
+    assignments: filterAssignmentsForEnrollment(
+      programmeData.assignments,
+      enrollment,
+      programmeData,
+    ).map((assignment) =>
       serializeAssignment(assignment),
+    ),
+    interactiveSessions: filterSessionsForEnrollment(
+      programmeData.interactiveSessions,
+      enrollment,
+      programmeData,
     ),
   });
 
@@ -459,6 +609,8 @@ const getManagedProgrammeDetail = asyncHandler(async (req, res) => {
       createdAt: true,
       resultsPublishedAt: true,
       selfEnrollmentEnabled: true,
+      groupedDeliveryEnabled: true,
+      groupTrackGroups: true,
       spotlightTitle: true,
       spotlightMessage: true,
       programmeManagerId: true,
@@ -473,6 +625,8 @@ const getManagedProgrammeDetail = asyncHandler(async (req, res) => {
         select: {
           id: true,
           status: true,
+          trackGroup: true,
+          sessionSlot: true,
           enrolledAt: true,
           user: {
             select: {
@@ -480,6 +634,7 @@ const getManagedProgrammeDetail = asyncHandler(async (req, res) => {
               name: true,
               email: true,
               batch: true,
+              gender: true,
             },
           },
         },
@@ -493,6 +648,7 @@ const getManagedProgrammeDetail = asyncHandler(async (req, res) => {
           maxScore: true,
           type: true,
           acceptedFileTypes: true,
+          targetTrackGroups: true,
           submissions: {
             select: {
               id: true,
@@ -530,12 +686,47 @@ const getManagedProgrammeDetail = asyncHandler(async (req, res) => {
           durationMinutes: true,
           maxScore: true,
           meetingUrl: true,
+          occurrences: {
+            select: {
+              id: true,
+              scheduledAt: true,
+              durationMinutes: true,
+              meetingUrl: true,
+              assignments: {
+                select: {
+                  userId: true,
+                  user: {
+                    select: {
+                      id: true,
+                      name: true,
+                      email: true,
+                      batch: true,
+                      gender: true,
+                    },
+                  },
+                },
+              },
+              attendances: {
+                select: {
+                  id: true,
+                  userId: true,
+                  status: true,
+                  score: true,
+                  interactiveSessionOccurrenceId: true,
+                },
+              },
+            },
+            orderBy: {
+              scheduledAt: "asc",
+            },
+          },
           attendances: {
             select: {
               id: true,
               userId: true,
               status: true,
               score: true,
+              interactiveSessionOccurrenceId: true,
             },
           },
         },
@@ -567,20 +758,102 @@ const getManagedProgrammeDetail = asyncHandler(async (req, res) => {
   return res.status(200).json(response);
 });
 
+const normalizeInteractiveSessionOccurrences = (occurrences = []) =>
+  Array.isArray(occurrences)
+    ? occurrences
+        .map((occurrence) => ({
+          id: occurrence?.id || undefined,
+          scheduledAt: occurrence?.scheduledAt,
+          durationMinutes:
+            occurrence?.durationMinutes !== undefined &&
+            occurrence?.durationMinutes !== null &&
+            occurrence?.durationMinutes !== ""
+              ? Number(occurrence.durationMinutes)
+              : 60,
+          meetingUrl: String(occurrence?.meetingUrl || "").trim() || null,
+          assignedUserIds: Array.from(
+            new Set(
+              Array.isArray(occurrence?.assignedUserIds)
+                ? occurrence.assignedUserIds
+                    .map((userId) => String(userId || "").trim())
+                    .filter(Boolean)
+                : [],
+            ),
+          ),
+        }))
+        .filter((occurrence) => occurrence.scheduledAt)
+    : [];
+
+const validateInteractiveSessionOccurrences = (
+  occurrences,
+  validUserIds,
+  maxScore,
+) => {
+  if (!occurrences.length) {
+    throw new ApiError(
+      400,
+      "Add at least one session date and assign scholars before saving the session",
+    );
+  }
+
+  const assignedUsers = new Set();
+
+  occurrences.forEach((occurrence, index) => {
+    if (Number.isNaN(new Date(occurrence.scheduledAt).getTime())) {
+      throw new ApiError(400, `Occurrence ${index + 1} has an invalid date`);
+    }
+
+    if (
+      Number.isNaN(occurrence.durationMinutes) ||
+      occurrence.durationMinutes < 0
+    ) {
+      throw new ApiError(400, `Occurrence ${index + 1} has an invalid duration`);
+    }
+
+    if (!occurrence.assignedUserIds.length) {
+      throw new ApiError(
+        400,
+        `Occurrence ${index + 1} must have at least one assigned scholar`,
+      );
+    }
+
+    occurrence.assignedUserIds.forEach((userId) => {
+      if (!validUserIds.has(userId)) {
+        throw new ApiError(400, "One or more selected scholars are not enrolled in this programme");
+      }
+
+      if (assignedUsers.has(userId)) {
+        throw new ApiError(
+          400,
+          "A scholar can only be assigned to one date for the same interactive session",
+        );
+      }
+
+      assignedUsers.add(userId);
+    });
+  });
+
+  if (Number.isNaN(maxScore) || maxScore < 0) {
+    throw new ApiError(400, "Interactive session max score must be 0 or more");
+  }
+};
+
 const createManagedInteractiveSession = asyncHandler(async (req, res) => {
   const { programmeId } = req.params;
-  const { title, description, scheduledAt, durationMinutes, meetingUrl, maxScore } = req.body;
+  const {
+    title,
+    description,
+    maxScore,
+    occurrences,
+  } = req.body;
 
-  if (!programmeId || !title?.trim() || !scheduledAt) {
-    throw new ApiError(400, "Programme, title and scheduled date are required");
+  if (!programmeId || !title?.trim()) {
+    throw new ApiError(400, "Programme and title are required");
   }
 
   const normalizedMaxScore =
     maxScore !== undefined && maxScore !== null ? Number(maxScore) : 0;
-
-  if (Number.isNaN(normalizedMaxScore) || normalizedMaxScore < 0) {
-    throw new ApiError(400, "Interactive session max score must be 0 or more");
-  }
+  const normalizedOccurrences = normalizeInteractiveSessionOccurrences(occurrences);
 
   const programme = await db.programme.findFirst({
     where: {
@@ -590,6 +863,16 @@ const createManagedInteractiveSession = asyncHandler(async (req, res) => {
     select: {
       id: true,
       title: true,
+      enrollments: {
+        where: {
+          status: {
+            in: ["active", "completed", "uncompleted"],
+          },
+        },
+        select: {
+          userId: true,
+        },
+      },
     },
   });
 
@@ -597,23 +880,62 @@ const createManagedInteractiveSession = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Programme not found for this manager");
   }
 
+  const validUserIds = new Set(programme.enrollments.map((enrollment) => enrollment.userId));
+  validateInteractiveSessionOccurrences(
+    normalizedOccurrences,
+    validUserIds,
+    normalizedMaxScore,
+  );
+
+  const sortedOccurrences = [...normalizedOccurrences].sort(
+    (left, right) =>
+      new Date(left.scheduledAt).getTime() - new Date(right.scheduledAt).getTime(),
+  );
+  const firstOccurrence = sortedOccurrences[0];
+
   const session = await db.interactiveSession.create({
     data: {
       title: title.trim(),
       description: description?.trim() || null,
-      scheduledAt: new Date(scheduledAt),
-      durationMinutes:
-        durationMinutes !== undefined && durationMinutes !== null
-          ? Number(durationMinutes)
-          : 60,
+      scheduledAt: new Date(firstOccurrence.scheduledAt),
+      durationMinutes: firstOccurrence.durationMinutes,
       maxScore: normalizedMaxScore,
-      meetingUrl: meetingUrl?.trim() || null,
+      meetingUrl: firstOccurrence.meetingUrl,
       programmeId,
       createdById: req.user.id,
+      occurrences: {
+        create: sortedOccurrences.map((occurrence) => ({
+          scheduledAt: new Date(occurrence.scheduledAt),
+          durationMinutes: occurrence.durationMinutes,
+          meetingUrl: occurrence.meetingUrl,
+          assignments: {
+            create: occurrence.assignedUserIds.map((userId) => ({
+              userId,
+            })),
+          },
+        })),
+      },
+    },
+    include: {
+      occurrences: {
+        include: {
+          assignments: {
+            select: {
+              userId: true,
+            },
+          },
+        },
+      },
     },
   });
 
-  const scholarIds = await getProgrammeScholarIds(programmeId);
+  const scholarIds = Array.from(
+    new Set(
+      session.occurrences.flatMap((occurrence) =>
+        occurrence.assignments.map((assignment) => assignment.userId),
+      ),
+    ),
+  );
   clearCachedResponse(`programmes:managed:${req.user.id}`);
   clearCachedResponse("programmes:managed:detail:");
   clearCachedResponse("programmes:mine:");
@@ -622,14 +944,14 @@ const createManagedInteractiveSession = asyncHandler(async (req, res) => {
   await createNotification({
     type: "meeting",
     title: `Interactive session scheduled: ${session.title}`,
-    message: `A live session has been scheduled on ${session.scheduledAt.toLocaleDateString("en-IN")}.`,
+    message: `A live session has been scheduled. Check your programme calendar for your assigned date.`,
     userIds: scholarIds,
     actorId: req.user.id,
     programmeId,
     actionUrl: `/my-programmes/${programmeId}`,
     metadata: {
       interactiveSessionId: session.id,
-      scheduledAt: session.scheduledAt,
+      occurrenceCount: session.occurrences.length,
     },
   });
 
@@ -646,7 +968,12 @@ const createManagedInteractiveSession = asyncHandler(async (req, res) => {
 
 const updateManagedInteractiveSession = asyncHandler(async (req, res) => {
   const { sessionId } = req.params;
-  const { title, description, scheduledAt, durationMinutes, meetingUrl, maxScore } = req.body;
+  const {
+    title,
+    description,
+    maxScore,
+    occurrences,
+  } = req.body;
 
   if (!sessionId) {
     throw new ApiError(400, "Interactive session ID is required");
@@ -665,6 +992,20 @@ const updateManagedInteractiveSession = asyncHandler(async (req, res) => {
       id: true,
       programmeId: true,
       maxScore: true,
+      programme: {
+        select: {
+          enrollments: {
+            where: {
+              status: {
+                in: ["active", "completed", "uncompleted"],
+              },
+            },
+            select: {
+              userId: true,
+            },
+          },
+        },
+      },
     },
   });
 
@@ -676,29 +1017,78 @@ const updateManagedInteractiveSession = asyncHandler(async (req, res) => {
     maxScore !== undefined && maxScore !== null && maxScore !== ""
       ? Number(maxScore)
       : session.maxScore;
+  const normalizedOccurrences = normalizeInteractiveSessionOccurrences(occurrences);
+  const validUserIds = new Set(
+    (session.programme?.enrollments || []).map((enrollment) => enrollment.userId),
+  );
+  validateInteractiveSessionOccurrences(
+    normalizedOccurrences,
+    validUserIds,
+    normalizedMaxScore,
+  );
+  const sortedOccurrences = [...normalizedOccurrences].sort(
+    (left, right) =>
+      new Date(left.scheduledAt).getTime() - new Date(right.scheduledAt).getTime(),
+  );
+  const firstOccurrence = sortedOccurrences[0];
 
-  if (Number.isNaN(normalizedMaxScore) || normalizedMaxScore < 0) {
-    throw new ApiError(400, "Interactive session max score must be 0 or more");
-  }
+  const updatedSession = await db.$transaction(async (tx) => {
+    await tx.interactiveSessionOccurrenceAssignment.deleteMany({
+      where: {
+        occurrence: {
+          interactiveSessionId: sessionId,
+        },
+      },
+    });
+    await tx.interactiveSessionAttendance.deleteMany({
+      where: {
+        interactiveSessionId: sessionId,
+      },
+    });
+    await tx.interactiveSessionOccurrence.deleteMany({
+      where: {
+        interactiveSessionId: sessionId,
+      },
+    });
 
-  const updatedSession = await db.interactiveSession.update({
-    where: {
-      id: sessionId,
-    },
-    data: {
-      ...(title !== undefined ? { title: String(title).trim() } : {}),
-      ...(description !== undefined
-        ? { description: String(description || "").trim() || null }
-        : {}),
-      ...(scheduledAt !== undefined
-        ? { scheduledAt: scheduledAt ? new Date(scheduledAt) : undefined }
-        : {}),
-      ...(durationMinutes !== undefined && durationMinutes !== null && durationMinutes !== ""
-        ? { durationMinutes: Number(durationMinutes) }
-        : {}),
-      ...(maxScore !== undefined ? { maxScore: normalizedMaxScore } : {}),
-      ...(meetingUrl !== undefined ? { meetingUrl: meetingUrl?.trim() || null } : {}),
-    },
+    return tx.interactiveSession.update({
+      where: {
+        id: sessionId,
+      },
+      data: {
+        ...(title !== undefined ? { title: String(title).trim() } : {}),
+        ...(description !== undefined
+          ? { description: String(description || "").trim() || null }
+          : {}),
+        scheduledAt: new Date(firstOccurrence.scheduledAt),
+        durationMinutes: firstOccurrence.durationMinutes,
+        maxScore: normalizedMaxScore,
+        meetingUrl: firstOccurrence.meetingUrl,
+        occurrences: {
+          create: sortedOccurrences.map((occurrence) => ({
+            scheduledAt: new Date(occurrence.scheduledAt),
+            durationMinutes: occurrence.durationMinutes,
+            meetingUrl: occurrence.meetingUrl,
+            assignments: {
+              create: occurrence.assignedUserIds.map((userId) => ({
+                userId,
+              })),
+            },
+          })),
+        },
+      },
+      include: {
+        occurrences: {
+          include: {
+            assignments: {
+              select: {
+                userId: true,
+              },
+            },
+          },
+        },
+      },
+    });
   });
 
   clearCachedResponse(`programmes:managed:${req.user.id}`);
@@ -716,12 +1106,439 @@ const updateManagedInteractiveSession = asyncHandler(async (req, res) => {
   );
 });
 
+const deleteManagedInteractiveSession = asyncHandler(async (req, res) => {
+  const { sessionId } = req.params;
+
+  if (!sessionId) {
+    throw new ApiError(400, "Interactive session ID is required");
+  }
+
+  const session = await db.interactiveSession.findFirst({
+    where: {
+      id: sessionId,
+      programme: {
+        is: {
+          programmeManagerId: req.user.id,
+        },
+      },
+    },
+    select: {
+      id: true,
+      title: true,
+      programmeId: true,
+    },
+  });
+
+  if (!session) {
+    throw new ApiError(404, "Interactive session not found for this manager");
+  }
+
+  await db.interactiveSession.delete({
+    where: {
+      id: sessionId,
+    },
+  });
+
+  clearCachedResponse(`programmes:managed:${req.user.id}`);
+  clearCachedResponse("programmes:managed:detail:");
+  clearCachedResponse("programmes:mine:");
+  clearCachedResponse("programmes:schedule:");
+  clearCachedResponse("programme:detail:");
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      { sessionId },
+      "Interactive session deleted successfully",
+    ),
+  );
+});
+
+const updateManagedProgrammeGrouping = asyncHandler(async (req, res) => {
+  const { programmeId } = req.params;
+  const { groupedDeliveryEnabled, groupTrackGroups } = req.body;
+
+  if (!programmeId) {
+    throw new ApiError(400, "Programme ID is required");
+  }
+
+  const programme = await db.programme.findFirst({
+    where: {
+      id: programmeId,
+      programmeManagerId: req.user.id,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!programme) {
+    throw new ApiError(404, "Programme not found for this manager");
+  }
+
+  const normalizedTrackGroups = Array.from(
+    new Set(normalizeStringArray(groupTrackGroups)),
+  );
+
+  const updatedProgramme = await db.programme.update({
+    where: {
+      id: programmeId,
+    },
+    data: {
+      ...(groupedDeliveryEnabled !== undefined
+        ? { groupedDeliveryEnabled: !!groupedDeliveryEnabled }
+        : {}),
+      ...(groupTrackGroups !== undefined
+        ? { groupTrackGroups: normalizedTrackGroups }
+        : {}),
+    },
+    select: {
+      id: true,
+      groupedDeliveryEnabled: true,
+      groupTrackGroups: true,
+    },
+  });
+
+  clearCachedResponse(`programmes:managed:${req.user.id}`);
+  clearCachedResponse("programmes:managed:detail:");
+  clearCachedResponse("programmes:mine:");
+  clearCachedResponse("programmes:schedule:");
+  clearCachedResponse("programme:detail:");
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      { programme: updatedProgramme },
+      "Programme grouping settings updated successfully",
+    ),
+  );
+});
+
+const updateManagedProgrammeScholarGrouping = asyncHandler(async (req, res) => {
+  const { programmeId, enrollmentId } = req.params;
+  const { trackGroup } = req.body;
+
+  if (!programmeId || !enrollmentId) {
+    throw new ApiError(400, "Programme and enrollment IDs are required");
+  }
+
+  const programme = await db.programme.findFirst({
+    where: {
+      id: programmeId,
+      programmeManagerId: req.user.id,
+    },
+    select: {
+      id: true,
+      groupedDeliveryEnabled: true,
+      groupTrackGroups: true,
+    },
+  });
+
+  if (!programme) {
+    throw new ApiError(404, "Programme not found for this manager");
+  }
+
+  if (!programme.groupedDeliveryEnabled) {
+    throw new ApiError(400, "Enable grouped delivery before assigning scholar groups");
+  }
+
+  const normalizedTrackGroup = String(trackGroup || "").trim();
+
+  const allowedTrackGroups = getProgrammeTrackGroups(programme);
+
+  if (
+    normalizedTrackGroup &&
+    allowedTrackGroups.length > 0 &&
+    !allowedTrackGroups.includes(normalizedTrackGroup)
+  ) {
+    throw new ApiError(400, "Track group is not part of this programme configuration");
+  }
+
+  const enrollment = await db.enrollment.findFirst({
+    where: {
+      id: enrollmentId,
+      programmeId,
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  if (!enrollment) {
+    throw new ApiError(404, "Scholar enrollment not found");
+  }
+
+  const updatedEnrollment = await db.enrollment.update({
+    where: {
+      id: enrollmentId,
+    },
+    data: {
+      trackGroup: normalizedTrackGroup || null,
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          batch: true,
+          gender: true,
+        },
+      },
+    },
+  });
+
+  clearCachedResponse(`programmes:managed:${req.user.id}`);
+  clearCachedResponse("programmes:managed:detail:");
+  clearCachedResponse("programmes:mine:");
+  clearCachedResponse("programmes:schedule:");
+  clearCachedResponse("programme:detail:");
+  clearCachedResponse(`assignments:user:${updatedEnrollment.userId}`);
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      { enrollment: updatedEnrollment },
+      "Scholar grouping updated successfully",
+    ),
+  );
+});
+
+const downloadManagedProgrammeGroupingTemplate = asyncHandler(async (req, res) => {
+  const { programmeId } = req.params;
+
+  if (!programmeId) {
+    throw new ApiError(400, "Programme ID is required");
+  }
+
+  const programme = await db.programme.findFirst({
+    where: {
+      id: programmeId,
+      programmeManagerId: req.user.id,
+    },
+    select: {
+      title: true,
+      groupedDeliveryEnabled: true,
+      groupTrackGroups: true,
+      enrollments: {
+        select: {
+          trackGroup: true,
+          user: {
+            select: {
+              name: true,
+              email: true,
+              batch: true,
+              gender: true,
+            },
+          },
+        },
+        orderBy: {
+          enrolledAt: "asc",
+        },
+      },
+    },
+  });
+
+  if (!programme) {
+    throw new ApiError(404, "Programme not found for this manager");
+  }
+
+  if (!programme.groupedDeliveryEnabled) {
+    throw new ApiError(400, "Enable grouped delivery before downloading the grouping template");
+  }
+
+  const workbook = XLSX.utils.book_new();
+  const worksheetRows = [
+    ["scholarName", "userEmail", "batch", "gender", "trackGroup"],
+    ...programme.enrollments.map((enrollment) => [
+      enrollment.user.name,
+      enrollment.user.email,
+      enrollment.user.batch || "",
+      enrollment.user.gender || "",
+      enrollment.trackGroup || "",
+    ]),
+  ];
+
+  const worksheet = XLSX.utils.aoa_to_sheet(worksheetRows);
+  worksheet["!cols"] = [
+    { wch: 28 },
+    { wch: 34 },
+    { wch: 12 },
+    { wch: 14 },
+    { wch: 16 },
+  ];
+
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Scholar grouping");
+
+  const optionsRows = [["trackGroups", ...getProgrammeTrackGroups(programme)]];
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet(optionsRows),
+    "Allowed options",
+  );
+
+  const fileBuffer = XLSX.write(workbook, {
+    type: "buffer",
+    bookType: "xlsx",
+  });
+
+  const safeTitle = programme.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="${safeTitle || "programme"}-scholar-grouping-template.xlsx"`,
+  );
+
+  return res.status(200).send(fileBuffer);
+});
+
+const bulkAssignManagedProgrammeGrouping = asyncHandler(async (req, res) => {
+  const { programmeId } = req.params;
+
+  if (!programmeId) {
+    throw new ApiError(400, "Programme ID is required");
+  }
+
+  if (!req.file?.buffer) {
+    throw new ApiError(400, "Excel file is required");
+  }
+
+  const programme = await db.programme.findFirst({
+    where: {
+      id: programmeId,
+      programmeManagerId: req.user.id,
+    },
+    select: {
+      id: true,
+      groupedDeliveryEnabled: true,
+      groupTrackGroups: true,
+      enrollments: {
+        select: {
+          id: true,
+          userId: true,
+          user: {
+            select: {
+              email: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!programme) {
+    throw new ApiError(404, "Programme not found for this manager");
+  }
+
+  if (!programme.groupedDeliveryEnabled) {
+    throw new ApiError(400, "Enable grouped delivery before uploading scholar grouping");
+  }
+
+  const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+  const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+  if (!rows.length) {
+    throw new ApiError(400, "Excel file is empty");
+  }
+
+  const enrollmentByEmail = new Map(
+    programme.enrollments.map((enrollment) => [
+      enrollment.user.email.trim().toLowerCase(),
+      enrollment,
+    ]),
+  );
+
+  const allowedTrackGroups = getProgrammeTrackGroups(programme);
+
+  const results = {
+    updated: 0,
+    skipped: 0,
+    failed: [],
+  };
+
+  for (const row of rows) {
+    const userEmail = String(row.userEmail || row.useremail || row.email || "")
+      .trim()
+      .toLowerCase();
+    const trackGroup = String(row.trackGroup || "").trim();
+
+    if (!userEmail) {
+      results.skipped += 1;
+      results.failed.push({
+        userEmail: "(missing email)",
+        reason: "Missing userEmail",
+      });
+      continue;
+    }
+
+    const enrollment = enrollmentByEmail.get(userEmail);
+    if (!enrollment) {
+      results.skipped += 1;
+      results.failed.push({
+        userEmail,
+        reason: "Scholar is not enrolled in this programme",
+      });
+      continue;
+    }
+
+    if (
+      trackGroup &&
+      allowedTrackGroups.length > 0 &&
+      !allowedTrackGroups.includes(trackGroup)
+    ) {
+      results.skipped += 1;
+      results.failed.push({
+        userEmail,
+        reason: "trackGroup is not part of the configured programme groups",
+      });
+      continue;
+    }
+
+    await db.enrollment.update({
+      where: {
+        id: enrollment.id,
+      },
+      data: {
+        trackGroup: trackGroup || null,
+      },
+    });
+
+    results.updated += 1;
+  }
+
+  clearCachedResponse(`programmes:managed:${req.user.id}`);
+  clearCachedResponse("programmes:managed:detail:");
+  clearCachedResponse("programmes:mine:");
+  clearCachedResponse("programmes:schedule:");
+  clearCachedResponse("programme:detail:");
+  clearCachedResponse("assignments:user:");
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      results,
+      "Scholar grouping upload processed successfully",
+    ),
+  );
+});
+
 const markInteractiveSessionAttendance = asyncHandler(async (req, res) => {
   const { sessionId } = req.params;
-  const { attendance = [] } = req.body;
+  const { attendance = [], occurrenceId } = req.body;
 
-  if (!sessionId || !Array.isArray(attendance)) {
-    throw new ApiError(400, "Session and attendance list are required");
+  if (!sessionId || !occurrenceId || !Array.isArray(attendance)) {
+    throw new ApiError(400, "Session, occurrence, and attendance list are required");
   }
 
   const session = await db.interactiveSession.findFirst({
@@ -740,6 +1557,18 @@ const markInteractiveSessionAttendance = asyncHandler(async (req, res) => {
           title: true,
         },
       },
+      occurrences: {
+        where: {
+          id: occurrenceId,
+        },
+        include: {
+          assignments: {
+            select: {
+              userId: true,
+            },
+          },
+        },
+      },
     },
   });
 
@@ -747,7 +1576,13 @@ const markInteractiveSessionAttendance = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Interactive session not found for this manager");
   }
 
-  if (new Date(session.scheduledAt).getTime() > Date.now()) {
+  const occurrence = session.occurrences[0];
+
+  if (!occurrence) {
+    throw new ApiError(404, "Interactive session date not found");
+  }
+
+  if (new Date(occurrence.scheduledAt).getTime() > Date.now()) {
     throw new ApiError(400, "Attendance can only be marked after the session date");
   }
 
@@ -760,16 +1595,17 @@ const markInteractiveSessionAttendance = asyncHandler(async (req, res) => {
     },
     select: {
       userId: true,
+      trackGroup: true,
+      sessionSlot: true,
     },
   });
 
-  const validUserIds = new Set(programmeEnrollments.map((entry) => entry.userId));
-
-  await db.interactiveSessionAttendance.deleteMany({
-    where: {
-      interactiveSessionId: sessionId,
-    },
-  });
+  const validUserIds = new Set(
+    getEligibleEnrollmentsForOccurrence(
+      programmeEnrollments,
+      occurrence,
+    ).map((entry) => entry.userId),
+  );
 
   const normalizedAttendance = attendance
     .filter((entry) => validUserIds.has(entry.userId))
@@ -795,6 +1631,7 @@ const markInteractiveSessionAttendance = asyncHandler(async (req, res) => {
 
       return {
         interactiveSessionId: sessionId,
+        interactiveSessionOccurrenceId: occurrenceId,
         userId: entry.userId,
         status,
         score: numericScore,
@@ -802,11 +1639,22 @@ const markInteractiveSessionAttendance = asyncHandler(async (req, res) => {
       };
     });
 
-  if (normalizedAttendance.length > 0) {
-    await db.interactiveSessionAttendance.createMany({
-      data: normalizedAttendance,
+  await db.$transaction(async (tx) => {
+    await tx.interactiveSessionAttendance.deleteMany({
+      where: {
+        interactiveSessionId: sessionId,
+        userId: {
+          in: Array.from(validUserIds),
+        },
+      },
     });
-  }
+
+    if (normalizedAttendance.length > 0) {
+      await tx.interactiveSessionAttendance.createMany({
+        data: normalizedAttendance,
+      });
+    }
+  });
 
   await Promise.all(
     normalizedAttendance.map((entry) =>
@@ -828,6 +1676,7 @@ const markInteractiveSessionAttendance = asyncHandler(async (req, res) => {
         actionUrl: `/my-programmes/${session.programmeId}`,
         metadata: {
           interactiveSessionId: sessionId,
+          interactiveSessionOccurrenceId: occurrenceId,
           attendanceStatus: entry.status,
           score: entry.score ?? 0,
           maxScore: session.maxScore,
@@ -847,6 +1696,7 @@ const markInteractiveSessionAttendance = asyncHandler(async (req, res) => {
       200,
       {
         sessionId,
+        occurrenceId,
         markedCount: normalizedAttendance.length,
       },
       "Attendance updated successfully",
@@ -856,9 +1706,10 @@ const markInteractiveSessionAttendance = asyncHandler(async (req, res) => {
 
 const downloadInteractiveSessionBulkTemplate = asyncHandler(async (req, res) => {
   const { sessionId } = req.params;
+  const occurrenceId = String(req.query.occurrenceId || "").trim();
 
-  if (!sessionId) {
-    throw new ApiError(400, "Interactive session ID is required");
+  if (!sessionId || !occurrenceId) {
+    throw new ApiError(400, "Interactive session and occurrence IDs are required");
   }
 
   const session = await db.interactiveSession.findFirst({
@@ -876,21 +1727,30 @@ const downloadInteractiveSessionBulkTemplate = asyncHandler(async (req, res) => 
           title: true,
         },
       },
-      attendances: {
+      occurrences: {
         where: {
-          status: "present",
+          id: occurrenceId,
         },
         include: {
-          user: {
-            select: {
-              name: true,
-              email: true,
-              batch: true,
+          assignments: {
+            include: {
+              user: {
+                select: {
+                  name: true,
+                  email: true,
+                  batch: true,
+                  gender: true,
+                },
+              },
             },
           },
-        },
-        orderBy: {
-          markedAt: "asc",
+          attendances: {
+            select: {
+              userId: true,
+              status: true,
+              score: true,
+            },
+          },
         },
       },
     },
@@ -900,24 +1760,40 @@ const downloadInteractiveSessionBulkTemplate = asyncHandler(async (req, res) => 
     throw new ApiError(404, "Interactive session not found for this manager");
   }
 
-  if (!session.attendances.length) {
-    throw new ApiError(
-      400,
-      "Mark attendance first. The bulk marks sheet only includes present scholars.",
-    );
+  const occurrence = session.occurrences[0];
+
+  if (!occurrence) {
+    throw new ApiError(404, "Interactive session date not found");
   }
 
   const workbook = XLSX.utils.book_new();
   const worksheetRows = [
-    ["scholarName", "userEmail", "batch", "attendanceStatus", "currentMarks", "marks"],
-    ...session.attendances.map((attendance) => [
-      attendance.user.name,
-      attendance.user.email,
-      attendance.user.batch || "",
-      attendance.status,
-      attendance.score ?? "",
-      attendance.score ?? "",
-    ]),
+    [
+      "scholarName",
+      "userEmail",
+      "batch",
+      "gender",
+      "attendanceStatus",
+      "currentMarks",
+      "marks",
+    ],
+    ...occurrence.assignments
+      .map((assignment) => {
+        const attendance = occurrence.attendances.find(
+          (entry) => entry.userId === assignment.userId,
+        );
+
+        return [
+          assignment.user.name,
+          assignment.user.email,
+          assignment.user.batch || "",
+          assignment.user.gender || "",
+          attendance?.status || "",
+          attendance?.score ?? "",
+          attendance?.score ?? "",
+        ];
+      })
+      .filter(Boolean),
   ];
 
   const worksheet = XLSX.utils.aoa_to_sheet(worksheetRows);
@@ -926,6 +1802,7 @@ const downloadInteractiveSessionBulkTemplate = asyncHandler(async (req, res) => 
     { wch: 28 },
     { wch: 34 },
     { wch: 12 },
+    { wch: 14 },
     { wch: 18 },
     { wch: 14 },
     { wch: 12 },
@@ -938,7 +1815,9 @@ const downloadInteractiveSessionBulkTemplate = asyncHandler(async (req, res) => 
     bookType: "xlsx",
   });
 
-  const safeTitle = session.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+  const safeTitle = `${session.title}-${new Date(occurrence.scheduledAt).toISOString().slice(0, 10)}`
+    .replace(/[^a-z0-9]+/gi, "-")
+    .toLowerCase();
 
   res.setHeader(
     "Content-Type",
@@ -954,9 +1833,10 @@ const downloadInteractiveSessionBulkTemplate = asyncHandler(async (req, res) => 
 
 const bulkEvaluateInteractiveSession = asyncHandler(async (req, res) => {
   const { sessionId } = req.params;
+  const occurrenceId = String(req.query.occurrenceId || "").trim();
 
-  if (!sessionId) {
-    throw new ApiError(400, "Interactive session ID is required");
+  if (!sessionId || !occurrenceId) {
+    throw new ApiError(400, "Interactive session and occurrence IDs are required");
   }
 
   if (!req.file?.buffer) {
@@ -979,11 +1859,34 @@ const bulkEvaluateInteractiveSession = asyncHandler(async (req, res) => {
           title: true,
         },
       },
+      occurrences: {
+        where: {
+          id: occurrenceId,
+        },
+        include: {
+          assignments: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                },
+              },
+            },
+          },
+        },
+      },
     },
   });
 
   if (!session) {
     throw new ApiError(404, "Interactive session not found for this manager");
+  }
+
+  const occurrence = session.occurrences[0];
+
+  if (!occurrence) {
+    throw new ApiError(404, "Interactive session date not found");
   }
 
   const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
@@ -999,6 +1902,13 @@ const bulkEvaluateInteractiveSession = asyncHandler(async (req, res) => {
     skipped: 0,
     failed: [],
   };
+
+  const occurrenceUserEmailMap = new Map(
+    occurrence.assignments.map((assignment) => [
+      assignment.user.email.trim().toLowerCase(),
+      assignment.userId,
+    ]),
+  );
 
   for (const row of rows) {
     const userEmail = String(row.useremail || row.userEmail || row.email || "")
@@ -1024,38 +1934,36 @@ const bulkEvaluateInteractiveSession = asyncHandler(async (req, res) => {
       continue;
     }
 
-    const attendance = await db.interactiveSessionAttendance.findFirst({
-      where: {
-        interactiveSessionId: sessionId,
-        status: "present",
-        user: {
-          is: {
-            email: userEmail,
-          },
-        },
-      },
-      select: {
-        id: true,
-        userId: true,
-      },
-    });
+    const userId = occurrenceUserEmailMap.get(userEmail);
 
-    if (!attendance) {
+    if (!userId) {
       results.skipped += 1;
       results.failed.push({
         userEmail,
-        reason: "No present attendance record found for this scholar",
+        reason: "Scholar is not assigned to the selected session date",
       });
       continue;
     }
 
-    await db.interactiveSessionAttendance.update({
+    await db.interactiveSessionAttendance.upsert({
       where: {
-        id: attendance.id,
+        interactiveSessionId_userId: {
+          interactiveSessionId: sessionId,
+          userId,
+        },
       },
-      data: {
+      update: {
+        interactiveSessionOccurrenceId: occurrenceId,
+        status: "present",
         score: marks,
         markedAt: new Date(),
+      },
+      create: {
+        interactiveSessionId: sessionId,
+        interactiveSessionOccurrenceId: occurrenceId,
+        userId,
+        status: "present",
+        score: marks,
       },
     });
 
@@ -1066,21 +1974,22 @@ const bulkEvaluateInteractiveSession = asyncHandler(async (req, res) => {
         session.maxScore > 0
           ? `Your marks for ${session.title} are now ${marks}/${session.maxScore}.`
           : `Your attendance for ${session.title} has been updated.`,
-      userIds: [attendance.userId],
+      userIds: [userId],
       actorId: req.user.id,
       programmeId: session.programmeId,
       actionUrl: `/my-programmes/${session.programmeId}`,
       metadata: {
         interactiveSessionId: sessionId,
+        interactiveSessionOccurrenceId: occurrenceId,
         attendanceStatus: "present",
         score: marks,
         maxScore: session.maxScore,
       },
     });
 
-    clearCachedResponse(`programmes:mine:${attendance.userId}`);
-    clearCachedResponse(`programmes:schedule:${attendance.userId}`);
-    clearCachedResponse(`programme:detail:${attendance.userId}:`);
+    clearCachedResponse(`programmes:mine:${userId}`);
+    clearCachedResponse(`programmes:schedule:${userId}`);
+    clearCachedResponse(`programme:detail:${userId}:`);
 
     results.updated += 1;
   }
@@ -1096,6 +2005,7 @@ const bulkEvaluateInteractiveSession = asyncHandler(async (req, res) => {
       200,
       {
         sessionId,
+        occurrenceId,
         programme: session.programme,
         ...results,
       },
@@ -1122,6 +2032,7 @@ const publishProgrammeResults = asyncHandler(async (req, res) => {
           id: true,
           title: true,
           maxScore: true,
+          targetTrackGroups: true,
           submissions: {
             select: {
               userId: true,
@@ -1135,11 +2046,31 @@ const publishProgrammeResults = asyncHandler(async (req, res) => {
           id: true,
           title: true,
           maxScore: true,
+          scheduledAt: true,
+          durationMinutes: true,
+          meetingUrl: true,
+          occurrences: {
+            select: {
+              id: true,
+              scheduledAt: true,
+              durationMinutes: true,
+              meetingUrl: true,
+              assignments: {
+                select: {
+                  userId: true,
+                },
+              },
+            },
+            orderBy: {
+              scheduledAt: "asc",
+            },
+          },
           attendances: {
             select: {
               userId: true,
               status: true,
               score: true,
+              interactiveSessionOccurrenceId: true,
             },
           },
         },
@@ -1168,17 +2099,7 @@ const publishProgrammeResults = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Programme not found for this manager");
   }
 
-  const totalAssignmentMarks = programme.assignments.reduce(
-    (sum, assignment) => sum + (assignment.maxScore || 0),
-    0,
-  );
-  const totalSessionMarks = programme.interactiveSessions.reduce(
-    (sum, session) => sum + (session.maxScore || 0),
-    0,
-  );
-  const totalPossibleMarks = totalAssignmentMarks + totalSessionMarks;
-
-  if (totalPossibleMarks <= 0) {
+  if (programme.assignments.length + programme.interactiveSessions.length <= 0) {
     throw new ApiError(
       400,
       "Add assignment or interactive session marks before publishing results",
@@ -1192,28 +2113,56 @@ const publishProgrammeResults = asyncHandler(async (req, res) => {
     const publishedResults = [];
 
     for (const enrollment of programme.enrollments) {
-      const assignmentScore = programme.assignments.reduce((sum, assignment) => {
+      const applicableAssignments = filterAssignmentsForEnrollment(
+        programme.assignments,
+        enrollment,
+        programme,
+      );
+      const applicableSessions = filterSessionsForEnrollment(
+        programme.interactiveSessions,
+        enrollment,
+        programme,
+      );
+      const totalPossibleMarks =
+        applicableAssignments.reduce(
+          (sum, assignment) => sum + (assignment.maxScore || 0),
+          0,
+        ) +
+        applicableSessions.reduce((sum, session) => sum + (session.maxScore || 0), 0);
+
+      const assignmentScore = applicableAssignments.reduce((sum, assignment) => {
         const submission = assignment.submissions.find(
           (entry) => entry.userId === enrollment.userId,
         );
         return sum + (submission?.score || 0);
       }, 0);
 
-      const interactiveSessionScore = programme.interactiveSessions.reduce(
-        (sum, session) => {
-          const attendance = session.attendances.find(
-            (entry) => entry.userId === enrollment.userId,
-          );
-          return sum + (attendance?.score || 0);
-        },
+      const interactiveSessionScore = applicableSessions.reduce(
+        (sum, session) => sum + (session.attendances?.[0]?.score || 0),
         0,
       );
+      const attendancePercent =
+        applicableSessions.length > 0
+          ? Number(
+              (
+                (applicableSessions.filter(
+                  (session) => session.attendances?.[0]?.status === "present",
+                ).length /
+                  applicableSessions.length) *
+                100
+              ).toFixed(2),
+            )
+          : 0;
 
       const totalObtainedMarks = assignmentScore + interactiveSessionScore;
-      const percentage = Number(
-        ((totalObtainedMarks / totalPossibleMarks) * 100).toFixed(2),
-      );
-      const passed = percentage >= 40;
+      const percentage =
+        totalPossibleMarks > 0
+          ? Number(((totalObtainedMarks / totalPossibleMarks) * 100).toFixed(2))
+          : 0;
+      const passed =
+        totalPossibleMarks > 0 ? percentage >= 40 : attendancePercent >= 70;
+      const effectiveProgressPercent =
+        totalPossibleMarks > 0 ? percentage : attendancePercent;
       const nextStatus = passed ? "completed" : "uncompleted";
       const nextCreditsAwarded = passed ? programmeCredits : 0;
       const creditDelta = nextCreditsAwarded - (enrollment.creditsAwarded || 0);
@@ -1224,7 +2173,10 @@ const publishProgrammeResults = asyncHandler(async (req, res) => {
         },
         data: {
           status: nextStatus,
-          progressPercent: Math.max(0, Math.min(100, Math.round(percentage))),
+          progressPercent: Math.max(
+            0,
+            Math.min(100, Math.round(effectiveProgressPercent)),
+          ),
           creditsAwarded: nextCreditsAwarded,
           completedAt: passed ? publishedAt : null,
           lastActivityAt: publishedAt,
@@ -1247,9 +2199,12 @@ const publishProgrammeResults = asyncHandler(async (req, res) => {
       publishedResults.push({
         userId: enrollment.userId,
         scholarName: enrollment.user.name,
+        trackGroup: enrollment.trackGroup || null,
+        sessionSlot: enrollment.sessionSlot || null,
         score: totalObtainedMarks,
         totalPossibleMarks,
         percentage,
+        attendancePercent,
         status: nextStatus,
         creditsAwarded: nextCreditsAwarded,
       });
@@ -1274,8 +2229,12 @@ const publishProgrammeResults = asyncHandler(async (req, res) => {
         title: `Programme results published for ${programme.title}`,
         message:
           result.status === "completed"
-            ? `You passed with ${result.percentage}%. ${result.creditsAwarded} credits have been added to your profile.`
-            : `You scored ${result.percentage}%. Your programme status is now uncompleted.`,
+            ? result.totalPossibleMarks > 0
+              ? `You passed with ${result.percentage}%. ${result.creditsAwarded} credits have been added to your profile.`
+              : `You completed the programme with ${result.attendancePercent}% attendance. ${result.creditsAwarded} credits have been added to your profile.`
+            : result.totalPossibleMarks > 0
+              ? `You scored ${result.percentage}%. Your programme status is now uncompleted.`
+              : `Your attendance was ${result.attendancePercent}%. Your programme status is now uncompleted.`,
         userIds: [result.userId],
         actorId: req.user.id,
         programmeId,
@@ -1284,6 +2243,7 @@ const publishProgrammeResults = asyncHandler(async (req, res) => {
           totalObtainedMarks: result.score,
           totalPossibleMarks: result.totalPossibleMarks,
           percentage: result.percentage,
+          attendancePercent: result.attendancePercent,
           status: result.status,
           creditsAwarded: result.creditsAwarded,
         },
@@ -1338,6 +2298,7 @@ const getManagedProgrammeReport = asyncHandler(async (req, res) => {
               email: true,
               phoneNumber: true,
               batch: true,
+              gender: true,
               creditsEarned: true,
             },
           },
@@ -1362,11 +2323,24 @@ const getManagedProgrammeReport = asyncHandler(async (req, res) => {
       },
       interactiveSessions: {
         include: {
+          occurrences: {
+            include: {
+              assignments: {
+                select: {
+                  userId: true,
+                },
+              },
+            },
+            orderBy: {
+              scheduledAt: "asc",
+            },
+          },
           attendances: {
             select: {
               userId: true,
               status: true,
               score: true,
+              interactiveSessionOccurrenceId: true,
             },
           },
         },
@@ -1382,30 +2356,32 @@ const getManagedProgrammeReport = asyncHandler(async (req, res) => {
   }
 
   const rows = programme.enrollments.map((enrollment) => {
-    const totalAssignmentMarks = programme.assignments.reduce(
-      (sum, assignment) => sum + (assignment.maxScore || 0),
-      0,
+    const applicableAssignments = filterAssignmentsForEnrollment(
+      programme.assignments,
+      enrollment,
+      programme,
     );
-    const totalSessionMarks = programme.interactiveSessions.reduce(
-      (sum, session) => sum + (session.maxScore || 0),
-      0,
+    const applicableSessions = filterSessionsForEnrollment(
+      programme.interactiveSessions,
+      enrollment,
+      programme,
     );
-    const totalPossibleMarks = totalAssignmentMarks + totalSessionMarks;
+    const totalPossibleMarks =
+      applicableAssignments.reduce(
+        (sum, assignment) => sum + (assignment.maxScore || 0),
+        0,
+      ) +
+      applicableSessions.reduce((sum, session) => sum + (session.maxScore || 0), 0);
 
-    const assignmentScore = programme.assignments.reduce((sum, assignment) => {
+    const assignmentScore = applicableAssignments.reduce((sum, assignment) => {
       const submission = assignment.submissions.find(
         (entry) => entry.userId === enrollment.userId,
       );
       return sum + (submission?.score || 0);
     }, 0);
 
-    const interactiveSessionScore = programme.interactiveSessions.reduce(
-      (sum, session) => {
-        const attendance = session.attendances.find(
-          (entry) => entry.userId === enrollment.userId,
-        );
-        return sum + (attendance?.score || 0);
-      },
+    const interactiveSessionScore = applicableSessions.reduce(
+      (sum, session) => sum + (session.attendances?.[0]?.score || 0),
       0,
     );
 
@@ -1421,6 +2397,8 @@ const getManagedProgrammeReport = asyncHandler(async (req, res) => {
       email: enrollment.user.email,
       phoneNumber: enrollment.user.phoneNumber || "",
       batch: enrollment.user.batch || "",
+      gender: enrollment.user.gender || "",
+      trackGroup: enrollment.trackGroup || "",
       programmeStatus: enrollment.status,
       creditsEarned: enrollment.user.creditsEarned,
       totalMarks: `${totalObtainedMarks}/${totalPossibleMarks}`,
@@ -1428,7 +2406,7 @@ const getManagedProgrammeReport = asyncHandler(async (req, res) => {
     };
 
     const assignmentColumns = Object.fromEntries(
-      programme.assignments.map((assignment) => {
+      applicableAssignments.map((assignment) => {
         const submission = assignment.submissions.find(
           (entry) => entry.userId === enrollment.userId,
         );
@@ -1443,16 +2421,17 @@ const getManagedProgrammeReport = asyncHandler(async (req, res) => {
     );
 
     const sessionColumns = Object.fromEntries(
-      programme.interactiveSessions.map((session) => {
-        const attendance = session.attendances.find(
-          (entry) => entry.userId === enrollment.userId,
-        );
+      applicableSessions.map((session) => {
+        const attendance = session.attendances?.[0] || null;
+        const assignedDate = session.assignedOccurrence?.scheduledAt
+          ? new Date(session.assignedOccurrence.scheduledAt).toLocaleDateString("en-IN")
+          : "";
         const value = !attendance
           ? new Date(session.scheduledAt).getTime() > Date.now()
             ? "Upcoming"
             : "Not marked"
-          : `${attendance.status === "absent" ? "Absent" : "Present"} - ${attendance.score ?? 0}/${session.maxScore ?? 0}`;
-        return [`Session: ${session.title}`, value];
+          : `${attendance.status === "absent" ? "Absent" : "Present"}${session.maxScore > 0 ? ` - ${attendance.score ?? 0}/${session.maxScore ?? 0}` : ""}`;
+        return [`Session: ${session.title}${assignedDate ? ` (${assignedDate})` : ""}`, value];
       }),
     );
 
@@ -1926,8 +2905,11 @@ const addManagedProgrammeMeetingLink = asyncHandler(async (req, res) => {
 export {
   addManagedProgrammeMeetingLink,
   addManagedProgrammeResource,
+  bulkAssignManagedProgrammeGrouping,
   bulkEvaluateInteractiveSession,
   createManagedInteractiveSession,
+  deleteManagedInteractiveSession,
+  downloadManagedProgrammeGroupingTemplate,
   downloadInteractiveSessionBulkTemplate,
   getDiscoverableProgrammes,
   getManagedProgrammeDetail,
@@ -1940,5 +2922,7 @@ export {
   markInteractiveSessionAttendance,
   publishProgrammeResults,
   selfEnrollInProgramme,
+  updateManagedProgrammeGrouping,
+  updateManagedProgrammeScholarGrouping,
   updateManagedInteractiveSession,
 };

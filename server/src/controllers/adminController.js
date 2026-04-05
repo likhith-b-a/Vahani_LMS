@@ -21,6 +21,10 @@ import {
   setCachedResponse,
 } from "../utils/responseCache.js";
 import { sendLoginCredentialsMail } from "../utils/sendMail.js";
+import {
+  filterAssignmentsForEnrollment,
+  filterSessionsForEnrollment,
+} from "../utils/programmeGrouping.js";
 
 const adminUserTemplateHeaders = [
   "name",
@@ -79,7 +83,18 @@ const normalizeAdminUserDetail = (user) => {
 
   if (user.role === "scholar") {
     detail.programmeHistory = (user.enrollments || []).map((enrollment) => {
-      const assignmentRows = (enrollment.programme.assignments || []).map((assignment) => {
+      const applicableAssignments = filterAssignmentsForEnrollment(
+        enrollment.programme.assignments || [],
+        enrollment,
+        enrollment.programme,
+      );
+      const applicableSessions = filterSessionsForEnrollment(
+        enrollment.programme.interactiveSessions || [],
+        enrollment,
+        enrollment.programme,
+      );
+
+      const assignmentRows = applicableAssignments.map((assignment) => {
         const submission = assignment.submissions?.[0] || null;
         return {
           id: assignment.id,
@@ -97,7 +112,7 @@ const normalizeAdminUserDetail = (user) => {
         };
       });
 
-      const interactiveSessions = (enrollment.programme.interactiveSessions || []).map((session) => {
+      const interactiveSessions = applicableSessions.map((session) => {
         const attendance = session.attendances?.[0] || null;
         return {
           id: session.id,
@@ -117,6 +132,8 @@ const normalizeAdminUserDetail = (user) => {
       return {
         enrollmentId: enrollment.id,
         status: enrollment.status,
+        trackGroup: enrollment.trackGroup || null,
+        sessionSlot: enrollment.sessionSlot || null,
         progressPercent: enrollment.progressPercent,
         creditsAwarded: enrollment.creditsAwarded,
         enrolledAt: enrollment.enrolledAt,
@@ -203,6 +220,9 @@ const normalizeProgramme = (programme) => {
     credits: programme.credits,
     createdAt: programme.createdAt,
     selfEnrollmentEnabled: !!programme.selfEnrollmentEnabled,
+    groupedDeliveryEnabled: !!programme.groupedDeliveryEnabled,
+    groupTrackGroups: programme.groupTrackGroups || [],
+    groupSessionSlots: programme.groupSessionSlots || [],
     selfEnrollmentSeatLimit: programme.selfEnrollmentSeatLimit,
     selfEnrollmentOpensAt: programme.selfEnrollmentOpensAt,
     selfEnrollmentClosesAt: programme.selfEnrollmentClosesAt,
@@ -226,6 +246,8 @@ const normalizeProgramme = (programme) => {
     enrollments: programme.enrollments.map((enrollment) => ({
       id: enrollment.id,
       status: enrollment.status,
+      trackGroup: enrollment.trackGroup || null,
+      sessionSlot: enrollment.sessionSlot || null,
       enrolledAt: enrollment.enrolledAt,
       user: enrollment.user,
     })),
@@ -247,16 +269,6 @@ const normalizeProgramme = (programme) => {
 };
 
 const normalizeAdminProgrammeDetail = (programme) => {
-  const totalPossibleAssignmentScore = (programme.assignments || []).reduce(
-    (sum, assignment) => sum + (assignment.maxScore || 0),
-    0,
-  );
-  const totalPossibleSessionScore = (programme.interactiveSessions || []).reduce(
-    (sum, session) => sum + (session.maxScore || 0),
-    0,
-  );
-  const totalPossibleScore = totalPossibleAssignmentScore + totalPossibleSessionScore;
-
   return {
     ...normalizeProgramme(programme),
     resultsPublishedAt: programme.resultsPublishedAt,
@@ -264,10 +276,17 @@ const normalizeAdminProgrammeDetail = (programme) => {
       id: session.id,
       title: session.title,
       description: session.description,
-      scheduledAt: session.scheduledAt,
-      durationMinutes: session.durationMinutes,
       maxScore: session.maxScore,
-      meetingUrl: session.meetingUrl,
+      occurrences: (session.occurrences || []).map((occurrence) => ({
+        id: occurrence.id,
+        scheduledAt: occurrence.scheduledAt,
+        durationMinutes: occurrence.durationMinutes,
+        meetingUrl: occurrence.meetingUrl,
+        attendanceCount: (occurrence.attendances || []).length,
+        absentCount: (occurrence.attendances || []).filter(
+          (attendance) => attendance.status === "absent",
+        ).length,
+      })),
       attendanceCount: session.attendances.length,
       absentCount: session.attendances.filter((attendance) => attendance.status === "absent").length,
     })),
@@ -280,25 +299,49 @@ const normalizeAdminProgrammeDetail = (programme) => {
       user: request.user,
     })),
     enrolledScholars: programme.enrollments.map((enrollment) => {
-      const assignmentScore = (programme.assignments || []).reduce((sum, assignment) => {
+      const applicableAssignments = filterAssignmentsForEnrollment(
+        programme.assignments || [],
+        enrollment,
+        programme,
+      );
+      const applicableSessions = filterSessionsForEnrollment(
+        programme.interactiveSessions || [],
+        enrollment,
+        programme,
+      );
+      const totalPossibleScore =
+        applicableAssignments.reduce(
+          (sum, assignment) => sum + (assignment.maxScore || 0),
+          0,
+        ) +
+        applicableSessions.reduce((sum, session) => sum + (session.maxScore || 0), 0);
+
+      const assignmentScore = applicableAssignments.reduce((sum, assignment) => {
         const submission = assignment.submissions.find(
           (item) => item.userId === enrollment.user.id,
         );
         return sum + (submission?.score || 0);
       }, 0);
 
-      const sessionScore = (programme.interactiveSessions || []).reduce((sum, session) => {
-        const attendance = session.attendances.find(
-          (item) => item.userId === enrollment.user.id,
-        );
-        return sum + (attendance?.score || 0);
-      }, 0);
+      const sessionScore = applicableSessions.reduce(
+        (sum, session) => sum + (session.attendances?.[0]?.score || 0),
+        0,
+      );
 
       const totalScore = assignmentScore + sessionScore;
+      const presentSessions = applicableSessions.filter(
+        (session) => session.attendances?.[0]?.status === "present",
+      ).length;
+      const attendancePercent =
+        applicableSessions.length > 0
+          ? Math.round((presentSessions / applicableSessions.length) * 100)
+          : null;
 
       return {
         id: enrollment.id,
         status: enrollment.status,
+        trackGroup: enrollment.trackGroup || null,
+        sessionSlot: enrollment.sessionSlot || null,
         enrolledAt: enrollment.enrolledAt,
         completedAt: enrollment.completedAt,
         creditsAwarded: enrollment.creditsAwarded,
@@ -306,6 +349,7 @@ const normalizeAdminProgrammeDetail = (programme) => {
         user: enrollment.user,
         assignmentScore,
         sessionScore,
+        attendancePercent,
         totalScore,
         totalPossibleScore,
         overallPercent:
@@ -339,6 +383,9 @@ const adminProgrammeSelect = {
   credits: true,
   createdAt: true,
   selfEnrollmentEnabled: true,
+  groupedDeliveryEnabled: true,
+  groupTrackGroups: true,
+  groupSessionSlots: true,
   selfEnrollmentSeatLimit: true,
   selfEnrollmentOpensAt: true,
   selfEnrollmentClosesAt: true,
@@ -358,12 +405,16 @@ const adminProgrammeSelect = {
     select: {
       id: true,
       status: true,
+      trackGroup: true,
+      sessionSlot: true,
       enrolledAt: true,
       user: {
         select: {
           id: true,
           name: true,
           email: true,
+          batch: true,
+          gender: true,
         },
       },
     },
@@ -377,6 +428,7 @@ const adminProgrammeSelect = {
       maxScore: true,
       type: true,
       acceptedFileTypes: true,
+      targetTrackGroups: true,
       submissions: {
         select: {
           id: true,
@@ -682,12 +734,22 @@ const getAdminUserDetail = asyncHandler(async (req, res) => {
     },
     include: {
       enrollments: {
-        include: {
+        select: {
+          id: true,
+          status: true,
+          progressPercent: true,
+          creditsAwarded: true,
+          enrolledAt: true,
+          completedAt: true,
+          trackGroup: true,
+          sessionSlot: true,
+          programmeId: true,
           programme: {
             select: {
               id: true,
               title: true,
               credits: true,
+              groupedDeliveryEnabled: true,
               programmeManager: {
                 select: {
                   id: true,
@@ -702,6 +764,7 @@ const getAdminUserDetail = asyncHandler(async (req, res) => {
                   type: true,
                   dueDate: true,
                   maxScore: true,
+                  targetTrackGroups: true,
                   submissions: {
                     where: {
                       userId,
@@ -723,6 +786,7 @@ const getAdminUserDetail = asyncHandler(async (req, res) => {
                   title: true,
                   scheduledAt: true,
                   maxScore: true,
+                  targetSessionSlots: true,
                   attendances: {
                     where: {
                       userId,
@@ -821,8 +885,16 @@ const createAdminUser = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Name, email, password and role are required");
   }
 
+  if (!gender || !String(gender).trim()) {
+    throw new ApiError(400, "Gender is required");
+  }
+
   if (!["scholar", "programme_manager", "admin"].includes(role)) {
     throw new ApiError(400, "Invalid role");
+  }
+
+  if (role === "scholar" && !String(batch || "").trim()) {
+    throw new ApiError(400, "Batch is required for scholars");
   }
 
   const existingUser = await db.user.findUnique({
@@ -843,8 +915,8 @@ const createAdminUser = asyncHandler(async (req, res) => {
       email,
       password: hashedPassword,
       role,
-      batch: batch || null,
-      gender: gender || null,
+      batch: role === "scholar" ? batch || null : null,
+      gender: String(gender).trim(),
       phoneNumber: phoneNumber || null,
       creditsEarned:
         creditsEarned !== undefined && creditsEarned !== null
@@ -941,11 +1013,11 @@ const bulkCreateAdminUsers = asyncHandler(async (req, res) => {
     const creditsEarned =
       creditsEarnedValue === "" ? 0 : Number(creditsEarnedValue);
 
-    if (!name || !email || !password || !role) {
+    if (!name || !email || !password || !role || !gender) {
       skipped.push({
         row: excelRowNumber,
         email: email || "",
-        reason: "Missing one or more required values: name, email, password, role",
+        reason: "Missing one or more required values: name, email, password, role, gender",
       });
       continue;
     }
@@ -977,6 +1049,15 @@ const bulkCreateAdminUsers = asyncHandler(async (req, res) => {
       continue;
     }
 
+    if (role === "scholar" && !batch) {
+      skipped.push({
+        row: excelRowNumber,
+        email,
+        reason: "Scholar rows must include a batch",
+      });
+      continue;
+    }
+
     seenEmails.add(email);
 
     const existingUser = await db.user.findUnique({
@@ -1003,8 +1084,8 @@ const bulkCreateAdminUsers = asyncHandler(async (req, res) => {
         email,
         password: await bcrypt.hash(password, 10),
         role,
-        batch: batch || null,
-        gender: gender || null,
+        batch: role === "scholar" ? batch || null : null,
+        gender,
         phoneNumber: phoneNumber || null,
         creditsEarned,
       },
@@ -1017,7 +1098,6 @@ const bulkCreateAdminUsers = asyncHandler(async (req, res) => {
     });
 
     created.push(user);
-
     try {
       await sendLoginCredentialsMail({
         email,
@@ -1075,6 +1155,20 @@ const updateAdminUser = asyncHandler(async (req, res) => {
     throw new ApiError(404, "User not found");
   }
 
+  const effectiveRole = role || existingUser.role;
+  const effectiveBatch =
+    batch !== undefined ? String(batch).trim() : String(existingUser.batch || "").trim();
+  const effectiveGender =
+    gender !== undefined ? String(gender).trim() : String(existingUser.gender || "").trim();
+
+  if (!effectiveGender) {
+    throw new ApiError(400, "Gender is required");
+  }
+
+  if (effectiveRole === "scholar" && !effectiveBatch) {
+    throw new ApiError(400, "Batch is required for scholars");
+  }
+
   if (email && email !== existingUser.email) {
     const emailInUse = await db.user.findUnique({
       where: {
@@ -1102,12 +1196,14 @@ const updateAdminUser = asyncHandler(async (req, res) => {
     data: {
       ...(name ? { name } : {}),
       ...(email ? { email } : {}),
-      ...(password
-        ? { password: await bcrypt.hash(password, 10) }
-        : {}),
-      ...(role ? { role } : {}),
-      ...(batch !== undefined ? { batch: batch || null } : {}),
-      ...(gender !== undefined ? { gender: gender || null } : {}),
+        ...(password
+          ? { password: await bcrypt.hash(password, 10) }
+          : {}),
+        ...(role ? { role } : {}),
+        ...(batch !== undefined
+          ? { batch: effectiveRole === "scholar" ? batch || null : null }
+          : {}),
+        ...(gender !== undefined ? { gender: String(gender).trim() || null } : {}),
       ...(phoneNumber !== undefined ? { phoneNumber: phoneNumber || null } : {}),
       ...(creditsEarned !== undefined && creditsEarned !== null
         ? { creditsEarned: Number(creditsEarned) }
@@ -1914,6 +2010,7 @@ const getAdminReports = asyncHandler(async (req, res) => {
                 assignments: {
                   select: {
                     maxScore: true,
+                    targetTrackGroups: true,
                     submissions: {
                       select: {
                         userId: true,
@@ -1925,6 +2022,7 @@ const getAdminReports = asyncHandler(async (req, res) => {
                 interactiveSessions: {
                   select: {
                     maxScore: true,
+                    targetSessionSlots: true,
                     attendances: {
                       select: {
                         userId: true,
@@ -1960,24 +2058,33 @@ const getAdminReports = asyncHandler(async (req, res) => {
           continue;
         }
 
-        const assignmentTotal = enrollment.programme.assignments.reduce(
+        const applicableAssignments = filterAssignmentsForEnrollment(
+          enrollment.programme.assignments,
+          enrollment,
+          enrollment.programme,
+        );
+        const applicableSessions = filterSessionsForEnrollment(
+          enrollment.programme.interactiveSessions,
+          enrollment,
+          enrollment.programme,
+        );
+
+        const assignmentTotal = applicableAssignments.reduce(
           (sum, assignment) => sum + (assignment.maxScore || 0),
           0,
         );
-        const assignmentScored = enrollment.programme.assignments.reduce(
+        const assignmentScored = applicableAssignments.reduce(
           (sum, assignment) =>
             sum +
             (assignment.submissions.find((entry) => entry.userId === scholar.id)?.score || 0),
           0,
         );
-        const sessionTotal = enrollment.programme.interactiveSessions.reduce(
+        const sessionTotal = applicableSessions.reduce(
           (sum, session) => sum + (session.maxScore || 0),
           0,
         );
-        const sessionScored = enrollment.programme.interactiveSessions.reduce(
-          (sum, session) =>
-            sum +
-            (session.attendances.find((entry) => entry.userId === scholar.id)?.score || 0),
+        const sessionScored = applicableSessions.reduce(
+          (sum, session) => sum + (session.attendances?.[0]?.score || 0),
           0,
         );
         const totalPossible = assignmentTotal + sessionTotal;

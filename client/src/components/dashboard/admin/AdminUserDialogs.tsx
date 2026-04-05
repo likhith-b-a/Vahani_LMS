@@ -108,8 +108,9 @@ export function BulkUserImportDialog({
               }
             />
             <p className="text-xs text-muted-foreground">
-              Required columns are name, email, password, and role. Allowed roles are
-              scholar, programme_manager, and admin.
+              Required columns are name, email, password, role, and gender. Scholar
+              rows should also include batch. Allowed roles are scholar,
+              programme_manager, and admin.
             </p>
             {bulkUserFile && (
               <p className="text-sm text-foreground">Selected file: {bulkUserFile.name}</p>
@@ -155,7 +156,7 @@ export function AdminUserDialog({
         </DialogHeader>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label>Name</Label>
+            <Label>Name *</Label>
             <Input
               value={userForm.name}
               onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -164,7 +165,7 @@ export function AdminUserDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Email</Label>
+            <Label>Email *</Label>
             <Input
               value={userForm.email}
               onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -173,7 +174,7 @@ export function AdminUserDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Role</Label>
+            <Label>Role *</Label>
             <Select
               value={userForm.role}
               onValueChange={(value: AdminUserRole) =>
@@ -205,7 +206,7 @@ export function AdminUserDialog({
           <>
             {userForm.role === "scholar" && (
               <div className="space-y-1.5">
-                <Label>Batch</Label>
+                <Label>Batch *</Label>
                 <Input
                   value={userForm.batch}
                   onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -215,14 +216,22 @@ export function AdminUserDialog({
               </div>
             )}
             <div className="space-y-1.5">
-              <Label>Gender</Label>
-              <Input
-                value={userForm.gender}
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  onUserFormChange((current) => ({ ...current, gender: event.target.value }))
+              <Label>Gender *</Label>
+              <Select
+                value={userForm.gender || "RatherNoTSay"}
+                onValueChange={(value: string) =>
+                  onUserFormChange((current) => ({ ...current, gender: value }))
                 }
-                placeholder="Female, male, non-binary..."
-              />
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select gender" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Male">Male</SelectItem>
+                  <SelectItem value="Female">Female</SelectItem>
+                  <SelectItem value="RatherNoTSay">RatherNoTSay</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             {userForm.role === "scholar" && (
               <div className="space-y-1.5">
@@ -242,7 +251,7 @@ export function AdminUserDialog({
             )}
           </>
           <div className="space-y-1.5 sm:col-span-2">
-            <Label>Password {editingUserId ? "(optional)" : ""}</Label>
+            <Label>Password {editingUserId ? "(optional)" : "*"}</Label>
             <Input
               type="password"
               value={userForm.password}
@@ -250,6 +259,11 @@ export function AdminUserDialog({
                 onUserFormChange((current) => ({ ...current, password: event.target.value }))
               }
             />
+            {!editingUserId ? (
+              <p className="text-xs text-muted-foreground">
+                Default password is <span className="font-medium">vahani123</span>.
+              </p>
+            ) : null}
           </div>
         </div>
         <DialogFooter>

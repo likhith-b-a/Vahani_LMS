@@ -41,6 +41,8 @@ export interface AdminUserDetail {
   programmeHistory: Array<{
     enrollmentId: string;
     status: string;
+    trackGroup?: string | null;
+    sessionSlot?: string | null;
     progressPercent: number;
     creditsAwarded: number;
     enrolledAt: string;
@@ -140,6 +142,9 @@ export interface AdminProgramme {
   credits?: number | null;
   createdAt: string;
   selfEnrollmentEnabled: boolean;
+  groupedDeliveryEnabled?: boolean;
+  groupTrackGroups?: string[];
+  groupSessionSlots?: string[];
   selfEnrollmentSeatLimit?: number | null;
   selfEnrollmentOpensAt?: string | null;
   selfEnrollmentClosesAt?: string | null;
@@ -164,11 +169,15 @@ export interface AdminProgramme {
   enrollments: Array<{
     id: string;
     status: string;
+    trackGroup?: string | null;
+    sessionSlot?: string | null;
     enrolledAt: string;
     user: {
       id: string;
       name: string;
       email: string;
+      batch?: string | null;
+      gender?: string | null;
     };
   }>;
   assignments: AdminProgrammeAssignment[];
@@ -194,22 +203,33 @@ export interface AdminProgrammeDetail extends AdminProgramme {
     id: string;
     title: string;
     description?: string | null;
-    scheduledAt: string;
+    scheduledAt?: string;
     durationMinutes?: number | null;
     maxScore: number;
     meetingUrl?: string | null;
+    occurrences?: Array<{
+      id: string;
+      scheduledAt: string;
+      durationMinutes?: number | null;
+      meetingUrl?: string | null;
+      attendanceCount: number;
+      absentCount: number;
+    }>;
     attendanceCount: number;
     absentCount: number;
   }>;
   enrolledScholars: Array<{
     id: string;
     status: string;
+    trackGroup?: string | null;
+    sessionSlot?: string | null;
     enrolledAt: string;
     completedAt?: string | null;
     creditsAwarded: number;
     progressPercent: number;
     assignmentScore: number;
     sessionScore: number;
+    attendancePercent?: number | null;
     totalScore: number;
     totalPossibleScore: number;
     overallPercent: number | null;
@@ -329,6 +349,9 @@ export interface AdminProgrammePayload {
   credits?: number | null;
   programmeManagerId: string;
   selfEnrollmentEnabled?: boolean;
+  groupedDeliveryEnabled?: boolean;
+  groupTrackGroups?: string[];
+  groupSessionSlots?: string[];
   selfEnrollmentSeatLimit?: number | null;
   selfEnrollmentOpensAt?: string | null;
   selfEnrollmentClosesAt?: string | null;

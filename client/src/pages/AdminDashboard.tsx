@@ -117,13 +117,15 @@ import { matchesSelfEnrollmentScholarRules } from "@/lib/selfEnrollmentEligibili
 const emptyUserForm = {
   name: "",
   email: "",
-  password: "",
+  password: "vahani123",
   role: "scholar" as AdminUserRole,
   batch: "",
-  gender: "",
+  gender: "RatherNoTSay",
   phoneNumber: "",
   creditsEarned: "0",
 };
+
+const genderOptions = ["Male", "Female", "RatherNoTSay"] as const;
 
 const emptyProgrammeForm = {
   title: "",
@@ -270,6 +272,7 @@ export default function AdminDashboard() {
   const [userSearch, setUserSearch] = useState("");
   const [userRoleFilter, setUserRoleFilter] = useState<AdminUserRole>("scholar");
   const [userBatchFilter, setUserBatchFilter] = useState("all");
+  const [userGenderFilter, setUserGenderFilter] = useState("all");
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [userForm, setUserForm] = useState(emptyUserForm);
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
@@ -511,15 +514,8 @@ export default function AdminDashboard() {
   );
 
   const scholarGenders = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          scholars
-            .map((entry) => entry.gender?.trim())
-            .filter((entry): entry is string => Boolean(entry)),
-        ),
-      ).sort(),
-    [scholars],
+    () => [...genderOptions],
+    [],
   );
 
   const filteredUsers = useMemo(
@@ -533,9 +529,11 @@ export default function AdminDashboard() {
           userRoleFilter !== "scholar" ||
           userBatchFilter === "all" ||
           entry.batch === userBatchFilter;
-        return matchesSearch && matchesRole && matchesBatch;
+        const matchesGender =
+          userGenderFilter === "all" || (entry.gender || "RatherNoTSay") === userGenderFilter;
+        return matchesSearch && matchesRole && matchesBatch && matchesGender;
       }),
-    [userBatchFilter, userRoleFilter, userSearch, users],
+    [userBatchFilter, userGenderFilter, userRoleFilter, userSearch, users],
   );
 
   const selectedEmailRecipients = useMemo<EmailRecipient[]>(
@@ -731,7 +729,7 @@ export default function AdminDashboard() {
       password: "",
       role: member.role,
       batch: member.batch || "",
-      gender: member.gender || "",
+      gender: member.gender || "RatherNoTSay",
       phoneNumber: member.phoneNumber || "",
       creditsEarned: String(member.creditsEarned ?? 0),
     });
@@ -826,10 +824,44 @@ export default function AdminDashboard() {
   };
 
   const handleUserSubmit = async () => {
-    if (!userForm.name || !userForm.email || (!editingUserId && !userForm.password)) {
+    const trimmedName = userForm.name.trim();
+    const trimmedEmail = userForm.email.trim().toLowerCase();
+    const trimmedBatch = userForm.batch.trim();
+    const trimmedGender = userForm.gender.trim();
+    const trimmedPhone = userForm.phoneNumber.trim();
+    const trimmedPassword = userForm.password.trim();
+
+    if (!trimmedName || !trimmedEmail || !userForm.role || (!editingUserId && !trimmedPassword)) {
       toast({
         title: "Missing user details",
-        description: "Name, email, role and password are required for new users.",
+        description: "Name, email, role, gender, and password are required for new users.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!trimmedGender) {
+      toast({
+        title: "Gender required",
+        description: "Add the user's gender before saving this profile.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (userForm.role === "scholar" && !trimmedBatch) {
+      toast({
+        title: "Batch required",
+        description: "Every scholar should have a batch before the user is created.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      toast({
+        title: "Invalid email",
+        description: "Enter a valid email address before saving the user.",
         variant: "destructive",
       });
       return;
@@ -839,25 +871,25 @@ export default function AdminDashboard() {
       let responseMessage = "The user record has been saved.";
       if (editingUserId) {
         const response = await updateAdminUser(editingUserId, {
-          name: userForm.name,
-          email: userForm.email,
+          name: trimmedName,
+          email: trimmedEmail,
           role: userForm.role,
-          batch: userForm.role === "scholar" ? userForm.batch : "",
-          gender: userForm.gender,
-          phoneNumber: userForm.phoneNumber,
+          batch: userForm.role === "scholar" ? trimmedBatch : "",
+          gender: trimmedGender,
+          phoneNumber: trimmedPhone,
           creditsEarned: Number(userForm.creditsEarned || 0),
-          ...(userForm.password ? { password: userForm.password } : {}),
+          ...(trimmedPassword ? { password: trimmedPassword } : {}),
         });
         responseMessage = response?.message || responseMessage;
       } else {
         const response = await createAdminUser({
-          name: userForm.name,
-          email: userForm.email,
-          password: userForm.password,
+          name: trimmedName,
+          email: trimmedEmail,
+          password: trimmedPassword,
           role: userForm.role,
-          batch: userForm.role === "scholar" ? userForm.batch : "",
-          gender: userForm.gender,
-          phoneNumber: userForm.phoneNumber,
+          batch: userForm.role === "scholar" ? trimmedBatch : "",
+          gender: trimmedGender,
+          phoneNumber: trimmedPhone,
           creditsEarned: Number(userForm.creditsEarned || 0),
         });
         responseMessage = response?.message || responseMessage;
@@ -1329,7 +1361,10 @@ export default function AdminDashboard() {
                 }}
                 userBatchFilter={userBatchFilter}
                 onUserBatchFilterChange={setUserBatchFilter}
+                userGenderFilter={userGenderFilter}
+                onUserGenderFilterChange={setUserGenderFilter}
                 scholarBatches={scholarBatches}
+                scholarGenders={scholarGenders}
                 filteredUsers={filteredUsers}
                 selectedEmailUserIds={selectedEmailUserIds}
                 onToggleEmailUser={toggleEmailUser}
@@ -1357,8 +1392,6 @@ export default function AdminDashboard() {
                 summary={summary}
                 users={users}
                 programmes={programmes}
-                announcements={announcements}
-                queries={queries}
               />
             </TabsContent>
 
@@ -1394,7 +1427,7 @@ export default function AdminDashboard() {
                           className="pl-9"
                         />
                       </div>
-                      <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="grid gap-3 sm:grid-cols-4">
                         <Input type="date" value={programmeDateFrom} onChange={(event: ChangeEvent<HTMLInputElement>) => setProgrammeDateFrom(event.target.value)} />
                         <Input type="date" value={programmeDateTo} onChange={(event: ChangeEvent<HTMLInputElement>) => setProgrammeDateTo(event.target.value)} />
                         <Select value={programmeStatusFilter} onValueChange={(value) => setProgrammeStatusFilter(value as ProgrammeStatusFilter)}>
@@ -1408,6 +1441,18 @@ export default function AdminDashboard() {
                             <SelectItem value="completed">Completed</SelectItem>
                           </SelectContent>
                         </Select>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            setProgrammeSearch("");
+                            setProgrammeDateFrom("");
+                            setProgrammeDateTo("");
+                            setProgrammeStatusFilter("all");
+                          }}
+                        >
+                          Clear filters
+                        </Button>
                       </div>
                     </div>
 

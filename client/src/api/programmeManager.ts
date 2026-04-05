@@ -5,6 +5,8 @@ export interface ManagedStudent {
   name: string;
   email: string;
   batch?: string | null;
+  gender?: string | null;
+  trackGroup?: string | null;
 }
 
 export interface ManagedSubmission {
@@ -37,6 +39,7 @@ export interface ManagedProgrammeAssignment {
   maxScore: number | null;
   assignmentType: string;
   acceptedFileTypes: string[];
+  targetTrackGroups: string[];
   programmeId: string;
   submissions: Array<{
     id: string;
@@ -52,6 +55,19 @@ export interface ManagedInteractiveSessionAttendance {
   status: "present" | "absent";
   score: number | null;
   userId: string;
+  interactiveSessionOccurrenceId?: string | null;
+}
+
+export interface ManagedInteractiveSessionOccurrence {
+  id: string;
+  scheduledAt: string;
+  durationMinutes: number | null;
+  meetingUrl: string | null;
+  assignments: Array<{
+    userId: string;
+    user?: ManagedStudent;
+  }>;
+  attendances: ManagedInteractiveSessionAttendance[];
 }
 
 export interface ManagedInteractiveSession {
@@ -62,6 +78,8 @@ export interface ManagedInteractiveSession {
   durationMinutes: number | null;
   maxScore: number;
   meetingUrl: string | null;
+  assignedOccurrence?: ManagedInteractiveSessionOccurrence | null;
+  occurrences: ManagedInteractiveSessionOccurrence[];
   attendances: ManagedInteractiveSessionAttendance[];
 }
 
@@ -85,6 +103,8 @@ export interface ManagedProgramme {
   createdAt: string;
   resultsPublishedAt?: string | null;
   selfEnrollmentEnabled?: boolean;
+  groupedDeliveryEnabled?: boolean;
+  groupTrackGroups?: string[];
   spotlightTitle?: string;
   spotlightMessage?: string;
   resources?: Array<{
@@ -104,6 +124,8 @@ export interface ManagedProgramme {
   enrollments: Array<{
     id: string;
     status: string;
+    trackGroup?: string | null;
+    sessionSlot?: string | null;
     enrolledAt: string;
     user: ManagedStudent;
   }>;
@@ -131,6 +153,7 @@ export interface CreateAssignmentPayload {
   dueDate: string;
   maxScore: number;
   assignmentType: string;
+  targetTrackGroups?: string[];
   isGraded?: boolean;
   allowLateSubmission?: boolean;
   allowResubmission?: boolean;
@@ -139,10 +162,14 @@ export interface CreateAssignmentPayload {
 export interface CreateInteractiveSessionPayload {
   title: string;
   description?: string;
-  scheduledAt: string;
-  durationMinutes?: number;
   maxScore?: number;
-  meetingUrl?: string;
+  occurrences: Array<{
+    id?: string;
+    scheduledAt: string;
+    durationMinutes?: number;
+    meetingUrl?: string;
+    assignedUserIds: string[];
+  }>;
 }
 
 export const getManagedProgrammes = async () => {
@@ -202,6 +229,12 @@ export const updateProgrammeAssignment = async (
   });
 };
 
+export const deleteProgrammeAssignment = async (assignmentId: string) => {
+  return fetchWithAuth(`/assignments/managed/assignments/${assignmentId}`, {
+    method: "DELETE",
+  });
+};
+
 export const addProgrammeResource = async (
   programmeId: string,
   payload: { title: string; url?: string; description?: string; file?: File | null },
@@ -244,6 +277,68 @@ export const createInteractiveSession = async (
   });
 };
 
+export const updateManagedProgrammeGrouping = async (
+  programmeId: string,
+  payload: {
+    groupedDeliveryEnabled?: boolean;
+    groupTrackGroups?: string[];
+  },
+) => {
+  return fetchWithAuth(`/programmes/managed/${programmeId}/grouping`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+};
+
+export const updateManagedProgrammeScholarGrouping = async (
+  programmeId: string,
+  enrollmentId: string,
+  payload: {
+    trackGroup?: string | null;
+  },
+) => {
+  return fetchWithAuth(
+    `/programmes/managed/${programmeId}/enrollments/${enrollmentId}/grouping`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
+};
+
+export const downloadManagedProgrammeGroupingTemplate = async (programmeId: string) => {
+  const response = await fetch(`${BASE_URL}/programmes/managed/${encodeURIComponent(programmeId)}/grouping-template`, {
+    method: "GET",
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    let message = "Unable to download grouping template";
+    try {
+      const data = await response.json();
+      message = data?.message || message;
+    } catch {
+      // Ignore JSON parsing failure.
+    }
+    throw new Error(message);
+  }
+
+  return response.blob();
+};
+
+export const bulkAssignManagedProgrammeGrouping = async (
+  programmeId: string,
+  file: File,
+) => {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  return fetchWithAuth(`/programmes/managed/${programmeId}/grouping-upload`, {
+    method: "POST",
+    body: formData,
+  });
+};
+
 export const updateInteractiveSession = async (
   sessionId: string,
   payload: Partial<CreateInteractiveSessionPayload>,
@@ -254,13 +349,20 @@ export const updateInteractiveSession = async (
   });
 };
 
+export const deleteInteractiveSession = async (sessionId: string) => {
+  return fetchWithAuth(`/programmes/managed/interactive-sessions/${sessionId}`, {
+    method: "DELETE",
+  });
+};
+
 export const markInteractiveSessionAttendance = async (
   sessionId: string,
+  occurrenceId: string,
   attendance: Array<{ userId: string; status: "present" | "absent"; score: number }>,
 ) => {
   return fetchWithAuth(`/programmes/managed/interactive-sessions/${sessionId}/attendance`, {
     method: "PUT",
-    body: JSON.stringify({ attendance }),
+    body: JSON.stringify({ occurrenceId, attendance }),
   });
 };
 
@@ -379,21 +481,25 @@ export const downloadProgrammeAssignmentBulkTemplate = async (
     "Unable to download assignment marks sheet",
   );
 
-export const downloadInteractiveSessionBulkTemplate = async (sessionId: string) =>
+export const downloadInteractiveSessionBulkTemplate = async (
+  sessionId: string,
+  occurrenceId: string,
+) =>
   downloadManagerFile(
-    `/programmes/managed/interactive-sessions/${sessionId}/bulk-template`,
+    `/programmes/managed/interactive-sessions/${sessionId}/bulk-template?occurrenceId=${encodeURIComponent(occurrenceId)}`,
     "Unable to download session marks sheet",
   );
 
 export const bulkEvaluateInteractiveSession = async (
   sessionId: string,
+  occurrenceId: string,
   file: File,
 ) => {
   const formData = new FormData();
   formData.append("file", file);
 
   return fetchWithAuth(
-    `/programmes/managed/interactive-sessions/${sessionId}/bulk-evaluate`,
+    `/programmes/managed/interactive-sessions/${sessionId}/bulk-evaluate?occurrenceId=${encodeURIComponent(occurrenceId)}`,
     {
       method: "POST",
       body: formData,

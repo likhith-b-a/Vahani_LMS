@@ -225,6 +225,8 @@ export default function AdminUserDetailPage() {
                                   <span>Completed: {formatDate(entry.completedAt)}</span>
                                   <span>Credits awarded: {entry.creditsAwarded}</span>
                                   <span>Attendance: {entry.attendanceSummary.attendancePercent ?? "--"}%</span>
+                                  {entry.trackGroup ? <span>Track group: {entry.trackGroup}</span> : null}
+                                  {entry.sessionSlot ? <span>Session slot: {entry.sessionSlot}</span> : null}
                                 </div>
                               </div>
                               {entry.certificate && (

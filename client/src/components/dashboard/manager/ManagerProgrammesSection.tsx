@@ -4,6 +4,7 @@ import { type ManagedProgrammeSummary } from "@/api/programmeManager";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 export type ManagerProgrammeStatusFilter = "all" | "setup" | "active" | "completed";
 
@@ -54,6 +55,7 @@ interface ManagerProgrammesSectionProps {
   onProgrammeDateToChange: (value: string) => void;
   programmeStatusFilter: ManagerProgrammeStatusFilter;
   onProgrammeStatusFilterChange: (value: ManagerProgrammeStatusFilter) => void;
+  onClearProgrammeFilters: () => void;
   filteredProgrammes: ManagedProgrammeSummary[];
   onOpenProgramme: (programmeId: string) => void;
   formatDate: (value?: string | null) => string;
@@ -68,6 +70,7 @@ export function ManagerProgrammesSection({
   onProgrammeDateToChange,
   programmeStatusFilter,
   onProgrammeStatusFilterChange,
+  onClearProgrammeFilters,
   filteredProgrammes,
   onOpenProgramme,
   formatDate,
@@ -78,7 +81,7 @@ export function ManagerProgrammesSection({
         <CardTitle>Programmes</CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="grid gap-3 lg:grid-cols-[1fr_180px_180px_180px]">
+        <div className="grid gap-3 lg:grid-cols-[1fr_180px_180px_180px_auto]">
           <Input
             value={programmeSearch}
             onChange={(event: ChangeEvent<HTMLInputElement>) =>
@@ -112,6 +115,9 @@ export function ManagerProgrammesSection({
             <option value="active">Active</option>
             <option value="completed">Completed</option>
           </select>
+          <Button type="button" variant="outline" onClick={onClearProgrammeFilters}>
+            Clear filters
+          </Button>
         </div>
 
         <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-3">

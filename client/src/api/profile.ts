@@ -21,6 +21,7 @@ export interface MyProfileResponse {
   email: string;
   role: string;
   batch?: string | null;
+  gender?: string | null;
   phoneNumber?: string | null;
   creditsEarned?: number;
   enrollments: MyProfileProgramme[];
@@ -37,6 +38,7 @@ export const getMyProfile = async () => {
 export const updateMyProfile = async (payload: {
   name: string;
   batch?: string;
+  gender?: string;
   phoneNumber?: string;
 }) => {
   return fetchWithAuth("/me", {

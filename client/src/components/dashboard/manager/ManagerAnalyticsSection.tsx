@@ -1,8 +1,6 @@
 import { useMemo } from "react";
 import { BarChart3, BookOpen, Presentation, Users } from "lucide-react";
-import type { Announcement } from "@/api/announcements";
-import type { ManagedProgrammeSummary } from "@/api/programmeManager";
-import type { SupportQuery } from "@/api/queries";
+import type { ManagedProgramme, ManagedProgrammeSummary } from "@/api/programmeManager";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -30,18 +28,16 @@ const managerChartConfig = {
   scholars: { label: "Scholars", color: "#0c6acc" },
   assignments: { label: "Assignments", color: "#f59e0b" },
   sessions: { label: "Sessions", color: "#14b8a6" },
+  occurrences: { label: "Session dates", color: "#0c6acc" },
   resources: { label: "Resources", color: "#7c3aed" },
   setup: { label: "Setup", color: "#f59e0b" },
   active: { label: "Active", color: "#0c6acc" },
   completed: { label: "Completed", color: "#22c55e" },
-  open: { label: "Open", color: "#ef4444" },
-  in_progress: { label: "In progress", color: "#f59e0b" },
-  resolved: { label: "Resolved", color: "#22c55e" },
-  closed: { label: "Closed", color: "#7c3aed" },
+  selfEnroll: { label: "Self-enroll", color: "#7c3aed" },
+  compulsory: { label: "Compulsory", color: "#14b8a6" },
+  graded: { label: "Graded sessions", color: "#f59e0b" },
+  attendanceOnly: { label: "Attendance only", color: "#0c6acc" },
 } satisfies ChartConfig;
-
-const formatMonth = (value: string) =>
-  new Date(value).toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
 
 const getProgrammeStatus = (programme: ManagedProgrammeSummary) => {
   if (programme.resultsPublishedAt) return "completed";
@@ -66,12 +62,10 @@ function EmptyChartState({ message }: { message: string }) {
 
 export function ManagerAnalyticsSection({
   programmes,
-  announcements,
-  queries,
+  programmeDetails,
 }: {
   programmes: ManagedProgrammeSummary[];
-  announcements: Announcement[];
-  queries: SupportQuery[];
+  programmeDetails: ManagedProgramme[];
 }) {
   const statusDistribution = useMemo(() => {
     const counts = { setup: 0, active: 0, completed: 0 };
@@ -114,41 +108,69 @@ export function ManagerAnalyticsSection({
     [programmes],
   );
 
-  const queryStatusData = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const query of queries) {
-      counts.set(query.status, (counts.get(query.status) ?? 0) + 1);
-    }
-    return Array.from(counts.entries()).map(([name, value]) => ({
-      name,
-      label: name.replace(/_/g, " "),
-      value,
-    }));
-  }, [queries]);
+  const deliveryModeData = useMemo(() => {
+    const selfEnroll = programmeDetails.filter((programme) => programme.selfEnrollmentEnabled).length;
+    return [
+      { name: "selfEnroll", label: "Self-enroll", value: selfEnroll },
+      {
+        name: "compulsory",
+        label: "Compulsory",
+        value: Math.max(programmeDetails.length - selfEnroll, 0),
+      },
+    ];
+  }, [programmeDetails]);
 
-  const announcementTrend = useMemo(() => {
-    const counts = new Map<string, { period: string; total: number }>();
-    for (const announcement of announcements) {
-      const date = new Date(announcement.createdAt);
-      if (Number.isNaN(date.getTime())) continue;
-      const periodKey = `${date.getFullYear()}-${date.getMonth()}`;
-      const current = counts.get(periodKey) ?? {
-        period: formatMonth(announcement.createdAt),
-        total: 0,
-      };
-      current.total += 1;
-      counts.set(periodKey, current);
+  const sessionDeliveryLoad = useMemo(
+    () =>
+      programmeDetails
+        .map((programme) => ({
+          title: programme.title.length > 16 ? `${programme.title.slice(0, 16)}...` : programme.title,
+          sessions: programme.interactiveSessions.length,
+          occurrences: programme.interactiveSessions.reduce(
+            (sum, session) => sum + (session.occurrences?.length || 0),
+            0,
+          ),
+        }))
+        .filter((programme) => programme.sessions > 0 || programme.occurrences > 0)
+        .sort((a, b) => b.occurrences - a.occurrences)
+        .slice(0, 6),
+    [programmeDetails],
+  );
+
+  const sessionEvaluationMode = useMemo(() => {
+    let graded = 0;
+    let attendanceOnly = 0;
+    for (const programme of programmeDetails) {
+      for (const session of programme.interactiveSessions) {
+        if ((session.maxScore || 0) > 0) {
+          graded += 1;
+        } else {
+          attendanceOnly += 1;
+        }
+      }
     }
-    return Array.from(counts.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .slice(-6)
-      .map(([, value]) => value);
-  }, [announcements]);
+    return [
+      { name: "graded", label: "Graded sessions", value: graded },
+      { name: "attendanceOnly", label: "Attendance only", value: attendanceOnly },
+    ];
+  }, [programmeDetails]);
 
   const totalScholars = programmes.reduce((sum, item) => sum + item.scholarsCount, 0);
   const totalAssignments = programmes.reduce((sum, item) => sum + item.assignmentsCount, 0);
   const totalSessions = programmes.reduce((sum, item) => sum + item.interactiveSessionsCount, 0);
   const completedProgrammes = statusDistribution.find((item) => item.name === "completed")?.value ?? 0;
+  const totalOccurrences = programmeDetails.reduce(
+    (sum, programme) =>
+      sum +
+      programme.interactiveSessions.reduce(
+        (sessionSum, session) => sessionSum + (session.occurrences?.length || 0),
+        0,
+      ),
+    0,
+  );
+  const groupedProgrammesCount = programmeDetails.filter(
+    (programme) => programme.groupedDeliveryEnabled,
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -159,14 +181,14 @@ export function ManagerAnalyticsSection({
           </Badge>
           <CardTitle className="text-2xl tracking-tight">Programme quality and delivery view</CardTitle>
           <CardDescription className="max-w-3xl text-sm leading-6">
-            Use this space to understand learner load, programme progress, communication patterns,
+            Use this space to understand learner load, programme progress, enrollment mode,
             and the overall content mix across the courses you handle.
           </CardDescription>
         </CardHeader>
       </Card>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card>
+        <Card className="xl:col-span-2">
           <CardContent className="flex items-center justify-between p-6">
             <div>
               <p className="text-sm text-muted-foreground">Managed programmes</p>
@@ -187,8 +209,8 @@ export function ManagerAnalyticsSection({
         <Card>
           <CardContent className="flex items-center justify-between p-6">
             <div>
-              <p className="text-sm text-muted-foreground">Assignments + sessions</p>
-              <p className="mt-2 text-3xl font-semibold">{totalAssignments + totalSessions}</p>
+              <p className="text-sm text-muted-foreground">Session delivery dates</p>
+              <p className="mt-2 text-3xl font-semibold">{totalOccurrences}</p>
             </div>
             <Presentation className="h-10 w-10 text-amber-500" />
           </CardContent>
@@ -196,8 +218,8 @@ export function ManagerAnalyticsSection({
         <Card>
           <CardContent className="flex items-center justify-between p-6">
             <div>
-              <p className="text-sm text-muted-foreground">Completed programmes</p>
-              <p className="mt-2 text-3xl font-semibold">{completedProgrammes}</p>
+              <p className="text-sm text-muted-foreground">Grouped programmes</p>
+              <p className="mt-2 text-3xl font-semibold">{groupedProgrammesCount}</p>
             </div>
             <BarChart3 className="h-10 w-10 text-violet-500" />
           </CardContent>
@@ -256,6 +278,81 @@ export function ManagerAnalyticsSection({
 
         <Card>
           <CardHeader>
+            <CardTitle>Session delivery load</CardTitle>
+            <CardDescription>Compare logical sessions against actual scheduled dates per programme.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {sessionDeliveryLoad.length ? (
+              <ChartContainer className="h-[300px] w-full" config={managerChartConfig}>
+                <BarChart data={sessionDeliveryLoad}>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                  <XAxis dataKey="title" tickLine={false} axisLine={false} />
+                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <ChartLegend content={<ChartLegendContent />} />
+                  <Bar dataKey="sessions" stackId="content" fill="var(--color-sessions)" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="occurrences" stackId="content" fill="var(--color-occurrences)" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ChartContainer>
+            ) : (
+              <EmptyChartState message="Session delivery analytics will appear once interactive sessions are scheduled." />
+            )}
+          </CardContent>
+        </Card>
+
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Enrollment model mix</CardTitle>
+            <CardDescription>See how many of your programmes are compulsory versus self-enroll.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {deliveryModeData.some((item) => item.value > 0) ? (
+              <ChartContainer className="h-[280px] w-full" config={managerChartConfig}>
+                <PieChart>
+                  <ChartTooltip content={<ChartTooltipContent hideLabel />} />
+                  <Pie data={deliveryModeData} dataKey="value" nameKey="name" innerRadius={70} outerRadius={102}>
+                    {deliveryModeData.map((entry) => (
+                      <Cell key={entry.name} fill={managerChartConfig[entry.name]?.color} />
+                    ))}
+                  </Pie>
+                  <ChartLegend content={<ChartLegendContent nameKey="name" />} />
+                </PieChart>
+              </ChartContainer>
+            ) : (
+              <EmptyChartState message="Enrollment model analytics will appear once programme details are loaded." />
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Session evaluation mode</CardTitle>
+            <CardDescription>Understand how many sessions are graded versus attendance-only.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {sessionEvaluationMode.some((item) => item.value > 0) ? (
+              <ChartContainer className="h-[280px] w-full" config={managerChartConfig}>
+                <PieChart>
+                  <ChartTooltip content={<ChartTooltipContent hideLabel />} />
+                  <Pie data={sessionEvaluationMode} dataKey="value" nameKey="name" innerRadius={70} outerRadius={102}>
+                    {sessionEvaluationMode.map((entry) => (
+                      <Cell key={entry.name} fill={managerChartConfig[entry.name]?.color} />
+                    ))}
+                  </Pie>
+                  <ChartLegend content={<ChartLegendContent nameKey="name" />} />
+                </PieChart>
+              </ChartContainer>
+            ) : (
+              <EmptyChartState message="Session evaluation mode will appear once interactive sessions are created." />
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>Programme content mix</CardTitle>
             <CardDescription>Compare assignments, interactive sessions, and resources per programme.</CardDescription>
           </CardHeader>
@@ -278,64 +375,7 @@ export function ManagerAnalyticsSection({
             )}
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Support query status</CardTitle>
-            <CardDescription>Follow how scholar issues are moving through your queue.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {queryStatusData.length ? (
-              <ChartContainer className="h-[300px] w-full" config={managerChartConfig}>
-                <BarChart data={queryStatusData}>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} />
-                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="value" radius={[10, 10, 0, 0]}>
-                    {queryStatusData.map((entry, index) => (
-                      <Cell
-                        key={entry.name}
-                        fill={
-                          managerChartConfig[entry.name as keyof typeof managerChartConfig]?.color ||
-                          palette[index % palette.length]
-                        }
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ChartContainer>
-            ) : (
-              <EmptyChartState message="Query analytics will appear once conversations are available." />
-            )}
-          </CardContent>
-        </Card>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Announcement cadence</CardTitle>
-          <CardDescription>Volume of announcements sent across recent periods.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {announcementTrend.length ? (
-            <ChartContainer
-              className="h-[280px] w-full"
-              config={{ announcements: { label: "Announcements", color: "#14b8a6" } }}
-            >
-              <BarChart data={announcementTrend}>
-                <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                <XAxis dataKey="period" tickLine={false} axisLine={false} />
-                <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="total" fill="var(--color-announcements)" radius={[10, 10, 0, 0]} />
-              </BarChart>
-            </ChartContainer>
-          ) : (
-            <EmptyChartState message="Announcement activity will appear here once posts are available." />
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

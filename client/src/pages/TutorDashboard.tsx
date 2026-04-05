@@ -1,8 +1,21 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
 import {
+  addDays,
+  addMonths,
+  endOfMonth,
+  endOfWeek,
+  format,
+  isSameDay,
+  isSameMonth,
+  startOfMonth,
+  startOfWeek,
+} from "date-fns";
+import {
   Download,
   BellRing,
   BookOpen,
+  ChevronLeft,
+  ChevronRight,
   CircleHelp,
   Mail,
   MessageSquareText,
@@ -112,6 +125,13 @@ const queryStatusLabels: Record<QueryStatus, string> = {
   resolved: "Resolved",
   closed: "Closed",
 };
+
+const calendarWeekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+const managerCalendarEventStyles = {
+  assignment: "bg-[#f97316]",
+  interactive_session: "bg-[#2563eb]",
+} as const;
 
 type QueryTimeRangeFilter = "all" | "7d" | "30d" | "90d";
 
@@ -265,6 +285,11 @@ export default function TutorDashboard() {
   const [emailRecipientLabel, setEmailRecipientLabel] = useState("selected scholars");
   const [sendingEmail, setSendingEmail] = useState(false);
   const [bulkEvaluationProcessing, setBulkEvaluationProcessing] = useState(false);
+  const [overviewProgrammeId, setOverviewProgrammeId] = useState("all");
+  const [overviewProgrammeDetails, setOverviewProgrammeDetails] = useState<ManagedProgramme[]>([]);
+  const [overviewVisibleMonth, setOverviewVisibleMonth] = useState(() =>
+    startOfMonth(new Date()),
+  );
 
   useEffect(() => {
     try {
@@ -318,6 +343,15 @@ export default function TutorDashboard() {
         setProgrammes(nextProgrammes);
         setSelectedProgrammeId(nextProgrammeId);
         setReportProgrammeId((current) => current || nextProgrammeId);
+        const detailResponses = await Promise.all(
+          nextProgrammes.map(async (programme) => {
+            const detailResponse = await getManagedProgrammeDetail(programme.id);
+            return (detailResponse?.data?.programme as ManagedProgramme) || null;
+          }),
+        );
+        setOverviewProgrammeDetails(
+          detailResponses.filter((programme): programme is ManagedProgramme => Boolean(programme)),
+        );
         await loadSelectedProgramme(nextProgrammeId);
       } catch (error) {
         toast({
@@ -484,6 +518,32 @@ export default function TutorDashboard() {
   );
   const selectedEvaluationSession =
     selectedInteractiveSessions.find((session) => session.id === selectedSessionKey) || null;
+  const [selectedEvaluationOccurrenceId, setSelectedEvaluationOccurrenceId] = useState("");
+  const selectedEvaluationOccurrence = useMemo(
+    () =>
+      selectedEvaluationSession?.occurrences.find(
+        (occurrence) => occurrence.id === selectedEvaluationOccurrenceId,
+      ) || null,
+    [selectedEvaluationOccurrenceId, selectedEvaluationSession],
+  );
+  const isSelectedEvaluationOccurrenceOpen = useMemo(() => {
+    if (!selectedEvaluationOccurrence) {
+      return false;
+    }
+
+    return new Date(selectedEvaluationOccurrence.scheduledAt).getTime() <= Date.now();
+  }, [selectedEvaluationOccurrence]);
+  const selectedEvaluationAudience = useMemo(() => {
+    if (!selectedProgramme || !selectedEvaluationOccurrence) {
+      return [];
+    }
+    const assignedUserIds = new Set(
+      selectedEvaluationOccurrence.assignments.map((assignment) => assignment.userId),
+    );
+    return selectedProgramme.enrollments.filter(
+      (enrollment) => assignedUserIds.has(enrollment.user.id),
+    );
+  }, [selectedEvaluationOccurrence, selectedProgramme]);
 
   const totalStudents = useMemo(
     () => programmes.reduce((sum, programme) => sum + programme.scholarsCount, 0),
@@ -499,6 +559,142 @@ export default function TutorDashboard() {
       ),
     [programmes],
   );
+
+  const overviewCalendarEvents = useMemo(() => {
+    if (!selectedProgramme) {
+      return [];
+    }
+
+    const assignmentItems = (selectedProgramme.assignments || [])
+      .filter((assignment) => assignment.dueDate)
+      .map((assignment) => ({
+        id: `assignment:${assignment.id}`,
+        type: "assignment" as const,
+        title: assignment.title,
+        date: assignment.dueDate as string,
+        meta: assignment.maxScore !== null && assignment.maxScore !== undefined
+          ? `Due • ${assignment.maxScore} marks`
+          : "Due",
+      }));
+
+    const sessionItems = (selectedProgramme.interactiveSessions || []).flatMap((session) =>
+      (session.occurrences || []).map((occurrence) => ({
+        id: `session:${session.id}:${occurrence.id}`,
+        type: "interactive_session" as const,
+        title: session.title,
+        date: occurrence.scheduledAt,
+        meta: session.maxScore > 0
+          ? `${session.maxScore} marks`
+          : "Attendance only",
+      })),
+    );
+
+    return [...assignmentItems, ...sessionItems]
+      .sort((left, right) => new Date(left.date).getTime() - new Date(right.date).getTime());
+  }, [selectedProgramme]);
+
+  const overviewProgrammeOptions = useMemo(
+    () =>
+      overviewProgrammeDetails.map((programme) => ({
+        id: programme.id,
+        title: programme.title,
+      })),
+    [overviewProgrammeDetails],
+  );
+
+  const displayOverviewCalendarEvents = useMemo(() => {
+    if (!overviewProgrammeDetails.length) {
+      return overviewCalendarEvents;
+    }
+
+    const programmesToUse =
+      overviewProgrammeId === "all"
+        ? overviewProgrammeDetails
+        : overviewProgrammeDetails.filter((programme) => programme.id === overviewProgrammeId);
+
+    return programmesToUse
+      .flatMap((programme) => {
+        const assignmentItems = (programme.assignments || [])
+          .filter((assignment) => assignment.dueDate)
+          .map((assignment) => ({
+            id: `assignment:${programme.id}:${assignment.id}`,
+            programmeId: programme.id,
+            programmeTitle: programme.title,
+            type: "assignment" as const,
+            title: assignment.title,
+            date: assignment.dueDate as string,
+            meta:
+              assignment.maxScore !== null && assignment.maxScore !== undefined
+                ? `${assignment.maxScore} marks`
+                : "Due",
+          }));
+
+        const sessionItems = (programme.interactiveSessions || []).flatMap((session) =>
+          (session.occurrences || []).map((occurrence) => ({
+            id: `session:${programme.id}:${session.id}:${occurrence.id}`,
+            programmeId: programme.id,
+            programmeTitle: programme.title,
+            type: "interactive_session" as const,
+            title: session.title,
+            date: occurrence.scheduledAt,
+            meta: session.maxScore > 0 ? `${session.maxScore} marks` : "Attendance only",
+          })),
+        );
+
+        return [...assignmentItems, ...sessionItems];
+      })
+      .sort(
+        (left, right) => new Date(left.date).getTime() - new Date(right.date).getTime(),
+      );
+  }, [overviewCalendarEvents, overviewProgrammeDetails, overviewProgrammeId]);
+
+  const overviewMonthEvents = useMemo(
+    () =>
+      displayOverviewCalendarEvents.filter((event) =>
+        isSameMonth(new Date(event.date), overviewVisibleMonth),
+      ),
+    [displayOverviewCalendarEvents, overviewVisibleMonth],
+  );
+
+  const overviewEventsByDay = useMemo(
+    () =>
+      displayOverviewCalendarEvents.reduce<Record<string, typeof displayOverviewCalendarEvents>>(
+        (acc, event) => {
+          const key = format(new Date(event.date), "yyyy-MM-dd");
+          if (!acc[key]) {
+            acc[key] = [];
+          }
+          acc[key].push(event);
+          acc[key].sort(
+            (first, second) =>
+              new Date(first.date).getTime() - new Date(second.date).getTime(),
+          );
+          return acc;
+        },
+        {},
+      ),
+    [displayOverviewCalendarEvents],
+  );
+
+  const overviewCalendarWeeks = useMemo(() => {
+    const start = startOfWeek(startOfMonth(overviewVisibleMonth), {
+      weekStartsOn: 1,
+    });
+    const end = endOfWeek(endOfMonth(overviewVisibleMonth), { weekStartsOn: 1 });
+    const weeks: Date[][] = [];
+    let cursor = start;
+
+    while (cursor <= end) {
+      const week: Date[] = [];
+      for (let index = 0; index < 7; index += 1) {
+        week.push(cursor);
+        cursor = addDays(cursor, 1);
+      }
+      weeks.push(week);
+    }
+
+    return weeks;
+  }, [overviewVisibleMonth]);
 
   const filteredProgrammes = useMemo(
     () =>
@@ -587,7 +783,7 @@ export default function TutorDashboard() {
 
   const visibleStudents = selectedProgramme
     ? selectedProgramme.enrollments.filter((enrollment) =>
-        `${enrollment.user.name} ${enrollment.user.email} ${enrollment.user.batch || ""}`
+        `${enrollment.user.name} ${enrollment.user.email} ${enrollment.user.batch || ""} ${enrollment.trackGroup || ""}`
           .toLowerCase()
           .includes(studentSearch.toLowerCase()),
       )
@@ -611,7 +807,8 @@ export default function TutorDashboard() {
     ) || null;
 
   const filteredSubmissions = useMemo(() => {
-    return submissions.filter((submission) => {
+    return submissions
+      .filter((submission) => {
       const matchesSearch =
         !evaluationSearch.trim() ||
         `${submission.student.name} ${submission.student.email}`
@@ -624,24 +821,40 @@ export default function TutorDashboard() {
         (evaluationFilter === "under_evaluation" &&
           submission.status === "SUBMITTED");
 
-      return matchesSearch && matchesFilter;
-    });
+        return matchesSearch && matchesFilter;
+      })
+      .map((submission) => {
+        const matchingEnrollment = selectedProgramme?.enrollments.find(
+          (enrollment) => enrollment.user.id === submission.student.id,
+        );
+
+        return {
+          ...submission,
+          student: {
+            ...submission.student,
+            batch: matchingEnrollment?.user.batch || submission.student.batch || null,
+            trackGroup: matchingEnrollment?.trackGroup || null,
+          },
+        };
+      });
   }, [evaluationFilter, evaluationSearch, submissions]);
   const filteredSessionStudents = useMemo(() => {
-    if (!selectedProgramme || !selectedEvaluationSession) {
+    if (!selectedProgramme || !selectedEvaluationSession || !selectedEvaluationOccurrence) {
       return [];
     }
 
-    return selectedProgramme.enrollments
+    return selectedEvaluationAudience
       .filter((enrollment) => {
         const matchesSearch =
           !evaluationSearch.trim() ||
-          `${enrollment.user.name} ${enrollment.user.email} ${enrollment.user.batch || ""}`
+          `${enrollment.user.name} ${enrollment.user.email} ${enrollment.user.batch || ""} ${enrollment.trackGroup || ""}`
             .toLowerCase()
             .includes(evaluationSearch.toLowerCase());
 
         const attendance = selectedEvaluationSession.attendances.find(
-          (entry) => entry.userId === enrollment.user.id,
+          (entry) =>
+            entry.userId === enrollment.user.id &&
+            entry.interactiveSessionOccurrenceId === selectedEvaluationOccurrence.id,
         );
         const status = attendanceDrafts[enrollment.user.id] || attendance?.status || "present";
         const matchesFilter =
@@ -653,11 +866,16 @@ export default function TutorDashboard() {
       })
       .map((enrollment) => {
         const attendance = selectedEvaluationSession.attendances.find(
-          (entry) => entry.userId === enrollment.user.id,
+          (entry) =>
+            entry.userId === enrollment.user.id &&
+            entry.interactiveSessionOccurrenceId === selectedEvaluationOccurrence.id,
         );
 
         return {
-          user: enrollment.user,
+          user: {
+            ...enrollment.user,
+            trackGroup: enrollment.trackGroup || null,
+          },
           status: attendanceDrafts[enrollment.user.id] || attendance?.status || "present",
           score:
             attendanceDrafts[enrollment.user.id] === "absent"
@@ -673,8 +891,9 @@ export default function TutorDashboard() {
     attendanceScoreDrafts,
     evaluationFilter,
     evaluationSearch,
+    selectedEvaluationAudience,
+    selectedEvaluationOccurrence,
     selectedEvaluationSession,
-    selectedProgramme,
   ]);
 
   const pendingAssignmentRecipients = useMemo<EmailRecipient[]>(() => {
@@ -683,8 +902,20 @@ export default function TutorDashboard() {
     }
 
     const submittedStudentIds = new Set(submissions.map((submission) => submission.student.id));
+    const selectedAssignment = selectedAssignments.find(
+      (assignment) => assignment.id === selectedAssignmentKey,
+    );
+    const eligibleEnrollments =
+      selectedProgramme.groupedDeliveryEnabled &&
+      selectedAssignment?.targetTrackGroups?.length
+        ? selectedProgramme.enrollments.filter(
+            (enrollment) =>
+              enrollment.trackGroup &&
+              selectedAssignment.targetTrackGroups.includes(enrollment.trackGroup),
+          )
+        : selectedProgramme.enrollments;
 
-    return selectedProgramme.enrollments
+    return eligibleEnrollments
       .filter((enrollment) => !submittedStudentIds.has(enrollment.user.id))
       .map((enrollment) => ({
         id: enrollment.user.id,
@@ -692,6 +923,7 @@ export default function TutorDashboard() {
         email: enrollment.user.email,
       }));
   }, [
+    selectedAssignments,
     selectedAssignmentKey,
     selectedAssignmentType,
     selectedProgramme,
@@ -721,6 +953,21 @@ export default function TutorDashboard() {
   }, [selectedAssignments, selectedInteractiveSessions]);
 
   useEffect(() => {
+    setSelectedEvaluationOccurrenceId((current) => {
+      if (
+        current &&
+        selectedEvaluationSession?.occurrences.some(
+          (occurrence) => occurrence.id === current,
+        )
+      ) {
+        return current;
+      }
+
+      return selectedEvaluationSession?.occurrences[0]?.id || "";
+    });
+  }, [selectedEvaluationSession]);
+
+  useEffect(() => {
     if (selectedQuery) {
       setQueryStatusDraft(selectedQuery.status);
     }
@@ -743,16 +990,18 @@ export default function TutorDashboard() {
   ]);
 
   useEffect(() => {
-    if (!selectedProgramme || !selectedEvaluationSession) {
+    if (!selectedProgramme || !selectedEvaluationSession || !selectedEvaluationOccurrence) {
       return;
     }
 
     setAttendanceSessionId(selectedEvaluationSession.id);
     setAttendanceDrafts(
       Object.fromEntries(
-        selectedProgramme.enrollments.map((enrollment) => {
+        selectedEvaluationAudience.map((enrollment) => {
           const attendance = selectedEvaluationSession.attendances.find(
-            (entry) => entry.userId === enrollment.user.id,
+            (entry) =>
+              entry.userId === enrollment.user.id &&
+              entry.interactiveSessionOccurrenceId === selectedEvaluationOccurrence.id,
           );
           return [enrollment.user.id, attendance?.status || "present"];
         }),
@@ -760,9 +1009,11 @@ export default function TutorDashboard() {
     );
     setAttendanceScoreDrafts(
       Object.fromEntries(
-        selectedProgramme.enrollments.map((enrollment) => {
+        selectedEvaluationAudience.map((enrollment) => {
           const attendance = selectedEvaluationSession.attendances.find(
-            (entry) => entry.userId === enrollment.user.id,
+            (entry) =>
+              entry.userId === enrollment.user.id &&
+              entry.interactiveSessionOccurrenceId === selectedEvaluationOccurrence.id,
           );
           return [
             enrollment.user.id,
@@ -773,7 +1024,12 @@ export default function TutorDashboard() {
         }),
       ) as Record<string, string>,
     );
-  }, [selectedEvaluationSession, selectedProgramme]);
+  }, [
+    selectedEvaluationAudience,
+    selectedEvaluationOccurrence,
+    selectedEvaluationSession,
+    selectedProgramme,
+  ]);
 
   const toggleEmailStudent = (userId: string) => {
     setSelectedEmailStudentIds((current) =>
@@ -919,10 +1175,16 @@ export default function TutorDashboard() {
       await createInteractiveSession(selectedProgrammeId, {
         title: sessionForm.title.trim(),
         description: sessionForm.description.trim(),
-        scheduledAt: sessionForm.scheduledAt,
-        durationMinutes: Number(sessionForm.durationMinutes || 60),
         maxScore: Number(sessionForm.maxScore || 0),
-        meetingUrl: sessionForm.meetingUrl.trim() || undefined,
+        occurrences: [
+          {
+            scheduledAt: sessionForm.scheduledAt,
+            durationMinutes: Number(sessionForm.durationMinutes || 60),
+            meetingUrl: sessionForm.meetingUrl.trim() || undefined,
+            assignedUserIds:
+              selectedProgramme?.enrollments.map((enrollment) => enrollment.user.id) || [],
+          },
+        ],
       });
       setSessionForm(emptySessionForm);
       setShowSessionDialog(false);
@@ -1034,14 +1296,26 @@ export default function TutorDashboard() {
   };
 
   const handleSaveAttendance = async () => {
-    if (!attendanceSessionId || !selectedProgramme) {
+    if (!attendanceSessionId || !selectedProgramme || !selectedEvaluationOccurrence) {
+      return;
+    }
+
+    if (!isSelectedEvaluationOccurrenceOpen) {
+      toast({
+        title: "Evaluation not open yet",
+        description: `You can evaluate this session after ${formatDateTime(
+          selectedEvaluationOccurrence.scheduledAt,
+        )}.`,
+        variant: "destructive",
+      });
       return;
     }
 
     try {
       await markInteractiveSessionAttendance(
         attendanceSessionId,
-        selectedProgramme.enrollments.map((enrollment) => ({
+        selectedEvaluationOccurrence.id,
+        selectedEvaluationAudience.map((enrollment) => ({
           userId: enrollment.user.id,
           status: attendanceDrafts[enrollment.user.id] || "present",
           score: Number(
@@ -1129,10 +1403,33 @@ export default function TutorDashboard() {
       return;
     }
 
+    if (selectedAssignmentType === "session" && !selectedEvaluationOccurrence) {
+      toast({
+        title: "Select a session date first",
+        description: "Choose which scheduled date you want to evaluate before downloading the sheet.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (selectedAssignmentType === "session" && !isSelectedEvaluationOccurrenceOpen) {
+      toast({
+        title: "Evaluation not open yet",
+        description: `This session can be evaluated after ${formatDateTime(
+          selectedEvaluationOccurrence?.scheduledAt,
+        )}.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       const blob =
         selectedAssignmentType === "session"
-          ? await downloadInteractiveSessionBulkTemplate(selectedSessionKey)
+          ? await downloadInteractiveSessionBulkTemplate(
+              selectedSessionKey,
+              selectedEvaluationOccurrence?.id || "",
+            )
           : await downloadProgrammeAssignmentBulkTemplate(selectedAssignmentKey);
 
       const url = URL.createObjectURL(blob);
@@ -1165,11 +1462,35 @@ export default function TutorDashboard() {
       return;
     }
 
+    if (selectedAssignmentType === "session" && !selectedEvaluationOccurrence) {
+      toast({
+        title: "Select a session date first",
+        description: "Choose which scheduled date you want to evaluate before uploading marks.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (selectedAssignmentType === "session" && !isSelectedEvaluationOccurrenceOpen) {
+      toast({
+        title: "Evaluation not open yet",
+        description: `This session can be evaluated after ${formatDateTime(
+          selectedEvaluationOccurrence?.scheduledAt,
+        )}.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       setBulkEvaluationProcessing(true);
 
       if (selectedAssignmentType === "session") {
-        await bulkEvaluateInteractiveSession(selectedSessionKey, file);
+        await bulkEvaluateInteractiveSession(
+          selectedSessionKey,
+          selectedEvaluationOccurrence?.id || "",
+          file,
+        );
         await loadProgrammes(selectedProgramme.id);
         toast({
           title: "Session marks updated",
@@ -1379,6 +1700,203 @@ export default function TutorDashboard() {
                     </Card>
                   ))}
                 </div>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between gap-3">
+                    <div>
+                      <CardTitle>Programme calendar</CardTitle>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Assignment deadlines and interactive-session dates across your managed programmes.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={overviewProgrammeId}
+                        onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                          setOverviewProgrammeId(event.target.value)
+                        }
+                        className="h-10 min-w-[180px] rounded-md border border-input bg-background px-3 text-sm"
+                      >
+                        <option value="all">All programmes</option>
+                        {overviewProgrammeOptions.map((programme) => (
+                          <option key={programme.id} value={programme.id}>
+                            {programme.title}
+                          </option>
+                        ))}
+                      </select>
+                      {overviewProgrammeId === "all" ? (
+                        <Badge variant="outline">All programmes</Badge>
+                      ) : (
+                        <Badge variant="outline">
+                          {overviewProgrammeOptions.find(
+                            (programme) => programme.id === overviewProgrammeId,
+                          )?.title || "Selected programme"}
+                        </Badge>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {overviewProgrammeOptions.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No managed programmes are available yet.
+                      </p>
+                    ) : (
+                      <div className="space-y-6">
+                        <div className="flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setOverviewVisibleMonth((current) =>
+                                  addMonths(current, -1),
+                                )
+                              }
+                            >
+                              <ChevronLeft className="mr-1 h-4 w-4" />
+                              {format(addMonths(overviewVisibleMonth, -1), "MMMM")}
+                            </Button>
+                            <div className="min-w-[140px] text-center text-lg font-semibold text-foreground">
+                              {format(overviewVisibleMonth, "MMMM yyyy")}
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setOverviewVisibleMonth((current) =>
+                                  addMonths(current, 1),
+                                )
+                              }
+                            >
+                              {format(addMonths(overviewVisibleMonth, 1), "MMMM")}
+                              <ChevronRight className="ml-1 h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="overflow-hidden rounded-2xl border border-border">
+                          <div className="grid grid-cols-7 border-b border-border bg-muted/40">
+                            {calendarWeekdays.map((day) => (
+                              <div
+                                key={day}
+                                className="px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground"
+                              >
+                                {day}
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="divide-y divide-border">
+                            {overviewCalendarWeeks.map((week, weekIndex) => (
+                              <div
+                                key={weekIndex}
+                                className="grid grid-cols-7 divide-x divide-border"
+                              >
+                                {week.map((day) => {
+                                  const dayKey = format(day, "yyyy-MM-dd");
+                                  const dayEvents = overviewEventsByDay[dayKey] || [];
+                                  const isToday = isSameDay(day, new Date());
+
+                                  return (
+                                    <div
+                                      key={dayKey}
+                                      className={`min-h-[50px] p-2 sm:min-h-[100px] sm:p-3 ${
+                                        isSameMonth(day, overviewVisibleMonth)
+                                          ? "bg-background"
+                                          : "bg-muted/20"
+                                      }`}
+                                    >
+                                      <div className="mb-2 flex justify-end">
+                                        <span
+                                          className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${
+                                            isToday
+                                              ? "bg-vahani-blue text-white"
+                                              : isSameMonth(day, overviewVisibleMonth)
+                                                ? "text-foreground"
+                                                : "text-muted-foreground"
+                                          }`}
+                                        >
+                                          {format(day, "d")}
+                                        </span>
+                                      </div>
+
+                                      <div className="space-y-1.5">
+                                        {dayEvents.slice(0, 3).map((event) => (
+                                          <div
+                                            key={event.id}
+                                            className="flex items-start gap-1.5 text-[11px] leading-4 text-foreground"
+                                          >
+                                            <span
+                                              className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${managerCalendarEventStyles[event.type]}`}
+                                            />
+                                            <span className="line-clamp-2">
+                                              {event.title}
+                                            </span>
+                                          </div>
+                                        ))}
+                                        {dayEvents.length > 3 && (
+                                          <div className="pl-4 text-[11px] text-muted-foreground">
+                                            +{dayEvents.length - 3} more
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                          <div className="flex items-center gap-2">
+                            <span className="h-2.5 w-2.5 rounded-full bg-[#f97316]" />
+                            Assignment deadline
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="h-2.5 w-2.5 rounded-full bg-[#2563eb]" />
+                            Interactive session
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <p className="text-sm font-semibold text-foreground">
+                            This month at a glance
+                          </p>
+                          {overviewMonthEvents.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">
+                              No calendar events for this month.
+                            </p>
+                          ) : (
+                            overviewMonthEvents.slice(0, 8).map((event) => (
+                              <div
+                                key={event.id}
+                                className="rounded-2xl border border-border p-3"
+                              >
+                                <div className="flex items-start gap-2">
+                                  <span
+                                    className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${managerCalendarEventStyles[event.type]}`}
+                                  />
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm font-medium text-foreground">
+                                      {event.title}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {event.meta}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {format(new Date(event.date), "dd MMM yyyy")}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </>
             )}
 
@@ -1392,6 +1910,12 @@ export default function TutorDashboard() {
                 onProgrammeDateToChange={setProgrammeDateTo}
                 programmeStatusFilter={programmeStatusFilter}
                 onProgrammeStatusFilterChange={setProgrammeStatusFilter}
+                onClearProgrammeFilters={() => {
+                  setProgrammeSearch("");
+                  setProgrammeDateFrom("");
+                  setProgrammeDateTo("");
+                  setProgrammeStatusFilter("all");
+                }}
                 filteredProgrammes={filteredProgrammes}
                 onOpenProgramme={(programmeId) =>
                   navigate(`${dashboardBasePath}/programmes/${programmeId}`)
@@ -1403,8 +1927,7 @@ export default function TutorDashboard() {
             {activeSection === "analytics" && (
               <ManagerAnalyticsSection
                 programmes={programmes}
-                announcements={announcements}
-                queries={queries}
+                programmeDetails={overviewProgrammeDetails}
               />
             )}
 
@@ -1507,6 +2030,9 @@ export default function TutorDashboard() {
                 filteredSubmissions={filteredSubmissions}
                 filteredSessionStudents={filteredSessionStudents}
                 selectedEvaluationSession={selectedEvaluationSession}
+                selectedEvaluationOccurrence={selectedEvaluationOccurrence}
+                isSelectedEvaluationOccurrenceOpen={isSelectedEvaluationOccurrenceOpen}
+                onSelectedEvaluationOccurrenceChange={setSelectedEvaluationOccurrenceId}
                 scoreDrafts={scoreDrafts}
                 onScoreDraftChange={(submissionId, value) =>
                   setScoreDrafts((current) => ({
@@ -2084,6 +2610,9 @@ export default function TutorDashboard() {
                           </div>
                           <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
                             <span>{enrollment.user.batch || "No batch"}</span>
+                            {selectedProgramme?.groupedDeliveryEnabled ? (
+                              <span>Track: {enrollment.trackGroup || "Unassigned"}</span>
+                            ) : null}
                             <span>
                               Enrolled {formatDate(enrollment.enrolledAt)}
                             </span>
@@ -2668,6 +3197,14 @@ export default function TutorDashboard() {
                     {selectedStudentDetail.status}
                   </p>
                 </div>
+                {selectedProgramme?.groupedDeliveryEnabled ? (
+                  <div className="rounded-xl border border-border p-4">
+                    <p className="text-xs text-muted-foreground">Track group</p>
+                    <p className="mt-1 font-medium text-foreground">
+                      {selectedStudentDetail.trackGroup || "Unassigned"}
+                    </p>
+                  </div>
+                ) : null}
               </div>
               <div className="rounded-xl border border-border p-4">
                 <p className="text-xs text-muted-foreground">Enrolled on</p>
