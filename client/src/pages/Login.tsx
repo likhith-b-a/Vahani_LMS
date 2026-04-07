@@ -15,12 +15,6 @@ import {
   verifyPasswordResetOtp,
 } from "../api/auth";
 
-const roleHints = [
-  { emoji: "🎓", label: "Scholar" },
-  { emoji: "🧑‍🏫", label: "Programme manager" },
-  { emoji: "🛡️", label: "Admin" },
-];
-
 export default function Login() {
   const { setAuthData } = useAuth();
   const navigate = useNavigate();
@@ -317,21 +311,8 @@ export default function Login() {
           </p>
           <h1 className="mb-2 text-2xl font-bold text-foreground">Sign In</h1>
           <p className="text-muted-foreground">
-            Use your registered email and password. We&apos;ll detect your role and open
-            the correct workspace automatically.
+            Use your registered email and password to continue to your account.
           </p>
-
-          <div className="mt-6 flex flex-wrap gap-2">
-            {roleHints.map((item) => (
-              <div
-                key={item.label}
-                className="rounded-full border border-border bg-card/80 px-3 py-2 text-sm text-muted-foreground"
-              >
-                <span className="mr-2">{item.emoji}</span>
-                {item.label}
-              </div>
-            ))}
-          </div>
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-5">
             {error && (
@@ -358,7 +339,7 @@ export default function Login() {
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
+                  placeholder="********"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"

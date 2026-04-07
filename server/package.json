@@ -13,6 +13,7 @@
     "backfill:excel-programme-sessions": "node scripts/backfill-excel-programme-sessions.js",
     "db:clear-non-admin:preview": "node scripts/clear-non-admin-data.js",
     "db:clear-non-admin": "node scripts/clear-non-admin-data.js --execute",
+    "db:seed:wishlist": "node scripts/seed-wishlist.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:reset": "prisma migrate reset --force",

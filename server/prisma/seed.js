@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import db from "../src/db.js";
 import { defaultSettings } from "../src/utils/adminSettingsStore.js";
 import { getAcceptedFileTypesForAssignmentType } from "../src/utils/assignmentMetadata.js";
+import { wishlistSeedEntries } from "./wishlistSeedData.js";
 
 const now = new Date();
 const addDays = (days) => new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
@@ -334,21 +335,37 @@ const seed = async () => {
     ],
   });
 
+  const scholarsByEmail = new Map(
+    (
+      await db.user.findMany({
+        where: {
+          email: {
+            in: [...new Set(wishlistSeedEntries.map((entry) => entry.userEmail))],
+          },
+        },
+        select: {
+          id: true,
+          email: true,
+        },
+      })
+    ).map((user) => [user.email.toLowerCase(), user]),
+  );
+
   await db.programmeWishlist.createMany({
-    data: [
-      {
-        id: "w1",
-        programmeId: "p3",
-        userId: "u5",
-        note: "Need help improving spoken English.",
-      },
-      {
-        id: "w2",
-        programmeId: "p2",
-        userId: "u6",
-        note: "Interested in problem solving practice.",
-      },
-    ],
+    data: wishlistSeedEntries.map((entry, index) => {
+      const scholar = scholarsByEmail.get(entry.userEmail.toLowerCase());
+
+      if (!scholar) {
+        throw new Error(`Wishlist seed user not found for ${entry.userEmail}`);
+      }
+
+      return {
+        id: `w${index + 1}`,
+        requestedTitle: entry.requestedTitle,
+        note: entry.note ?? null,
+        userId: scholar.id,
+      };
+    }),
   });
 
   await db.certificate.createMany({
