@@ -75,6 +75,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -2520,6 +2521,20 @@ export default function TutorDashboard() {
                         size="sm"
                         onClick={() =>
                           setSelectedEmailStudentIds(
+                            (selectedProgramme?.enrollments || []).map(
+                              (enrollment) => enrollment.user.id,
+                            ),
+                          )
+                        }
+                        disabled={!selectedProgrammeId || (selectedProgramme?.enrollments || []).length === 0}
+                      >
+                        Select all
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setSelectedEmailStudentIds(
                             visibleStudents.map((enrollment) => enrollment.user.id),
                           )
                         }
@@ -2583,46 +2598,100 @@ export default function TutorDashboard() {
                   )}
 
                   {selectedProgrammeId && (
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {visibleStudents.map((enrollment) => (
-                        <button
-                          key={enrollment.id}
-                          type="button"
-                          onClick={() => {
-                            setStudentDetailId(enrollment.user.id);
-                            setShowStudentDialog(true);
-                          }}
-                          className="rounded-2xl border border-border p-4 text-left transition hover:border-vahani-blue/40 hover:bg-muted/30"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <Checkbox
-                                  checked={selectedEmailStudentIds.includes(enrollment.user.id)}
-                                  onCheckedChange={() => toggleEmailStudent(enrollment.user.id)}
-                                  onClick={(event) => event.stopPropagation()}
-                                />
-                                <p className="font-semibold text-foreground">
-                                  {enrollment.user.name}
-                                </p>
-                              </div>
-                              <p className="mt-1 text-sm text-muted-foreground">
-                                {enrollment.user.email}
-                              </p>
-                            </div>
-                            <Badge variant="outline">{enrollment.status}</Badge>
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
-                            <span>{enrollment.user.batch || "No batch"}</span>
+                    <div className="overflow-hidden rounded-[1.75rem] border border-border bg-card">
+                      <Table className="text-[15px]">
+                        <TableHeader className="bg-muted/20">
+                          <TableRow className="border-border hover:bg-transparent">
+                            <TableHead className="h-14 w-[56px] px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                              Select
+                            </TableHead>
+                            <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                              Scholar
+                            </TableHead>
+                            <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                              Batch
+                            </TableHead>
                             {selectedProgramme?.groupedDeliveryEnabled ? (
-                              <span>Track: {enrollment.trackGroup || "Unassigned"}</span>
+                              <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                                Track group
+                              </TableHead>
                             ) : null}
-                            <span>
-                              Enrolled {formatDate(enrollment.enrolledAt)}
-                            </span>
-                          </div>
-                        </button>
-                      ))}
+                            <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                              Status
+                            </TableHead>
+                            <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                              Enrolled on
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody className="bg-card">
+                          {visibleStudents.length === 0 ? (
+                            <TableRow className="border-border/80 hover:bg-transparent">
+                              <TableCell
+                                colSpan={selectedProgramme?.groupedDeliveryEnabled ? 6 : 5}
+                                className="px-6 py-6 text-sm text-muted-foreground"
+                              >
+                                No scholars match the current filter.
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            visibleStudents.map((enrollment) => (
+                              <TableRow
+                                key={enrollment.id}
+                                className="cursor-pointer border-border/80 hover:bg-muted/20"
+                                onClick={() => {
+                                  setStudentDetailId(enrollment.user.id);
+                                  setShowStudentDialog(true);
+                                }}
+                              >
+                                <TableCell
+                                  className="px-6 py-5"
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  <Checkbox
+                                    checked={selectedEmailStudentIds.includes(enrollment.user.id)}
+                                    onCheckedChange={() => toggleEmailStudent(enrollment.user.id)}
+                                  />
+                                </TableCell>
+                                <TableCell className="px-6 py-5">
+                                  <div>
+                                    <p className="text-[15px] font-semibold text-foreground">
+                                      {enrollment.user.name}
+                                    </p>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                      {enrollment.user.email}
+                                    </p>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="px-6 py-5 text-[15px] text-muted-foreground">
+                                  {enrollment.user.batch || "No batch"}
+                                </TableCell>
+                                {selectedProgramme?.groupedDeliveryEnabled ? (
+                                  <TableCell className="px-6 py-5">
+                                    <Badge
+                                      variant="secondary"
+                                      className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-foreground"
+                                    >
+                                      {enrollment.trackGroup || "Unassigned"}
+                                    </Badge>
+                                  </TableCell>
+                                ) : null}
+                                <TableCell className="px-6 py-5">
+                                  <Badge
+                                    variant="outline"
+                                    className="rounded-full px-3 py-1 text-xs font-semibold capitalize"
+                                  >
+                                    {enrollment.status}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="px-6 py-5 text-[15px] text-muted-foreground">
+                                  {formatDate(enrollment.enrolledAt)}
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
                     </div>
                   )}
                 </CardContent>

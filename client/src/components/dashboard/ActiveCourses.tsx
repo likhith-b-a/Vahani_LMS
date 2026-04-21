@@ -1,7 +1,9 @@
-import { BookOpen, Calendar, ClipboardList } from "lucide-react";
+import { BookOpen, Calendar, ClipboardList, Users } from "lucide-react";
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
+import { getMyProfile, type MyProfileProgramme } from "@/api/profile";
 
 function getPendingAssignmentsCount(
   assignments:
@@ -20,9 +22,26 @@ function getPendingAssignmentsCount(
 export function ActiveCourses() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [enrollments, setEnrollments] = useState<MyProfileProgramme[]>([]);
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const response = await getMyProfile();
+        const profile = response.data as { enrollments?: MyProfileProgramme[] };
+        setEnrollments(Array.isArray(profile?.enrollments) ? profile.enrollments : []);
+      } catch {
+        setEnrollments([]);
+      }
+    };
+
+    void loadProfile();
+  }, []);
 
   const activeEnrollments =
-    user?.enrollments?.filter((enrollment) => enrollment.status === "active") || [];
+    (enrollments.length ? enrollments : user?.enrollments || []).filter(
+      (enrollment) => enrollment.status === "active",
+    );
 
   return (
     <section>
@@ -76,6 +95,10 @@ export function ActiveCourses() {
               <div className="flex items-center gap-1.5">
                 <Calendar size={12} />
                 <span>{enrollment.createdAt?.slice(0, 10) || "Recently enrolled"}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Users size={12} />
+                <span>{enrollment.assignedTutor?.name || "Tutor not assigned yet"}</span>
               </div>
             </div>
 

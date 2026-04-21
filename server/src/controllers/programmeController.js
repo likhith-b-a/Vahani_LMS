@@ -70,6 +70,13 @@ const getMyProgrammes = asyncHandler(async (req, res) => {
       userId,
     },
     include: {
+      assignedTutor: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
       programme: {
         include: {
           programmeManager: {
@@ -157,6 +164,7 @@ const getMyProgrammes = asyncHandler(async (req, res) => {
   const programmes = enrollments.map((enrollment) => ({
     ...withProgrammeMetadataSync(enrollment.programme),
     ...buildEnrollmentGroupingSnapshot(enrollment),
+    assignedTutor: enrollment.assignedTutor,
     assignments: getApplicableProgrammeContent(
       enrollment.programme,
       enrollment,
@@ -420,6 +428,13 @@ const getProgrammeDetail = asyncHandler(async (req, res) => {
       programmeId: true,
       trackGroup: true,
       sessionSlot: true,
+      assignedTutor: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
     },
   });
 
@@ -511,6 +526,7 @@ const getProgrammeDetail = asyncHandler(async (req, res) => {
   const programmeWithMetadata = withProgrammeMetadataSync({
     ...programmeData,
     ...buildEnrollmentGroupingSnapshot(enrollment),
+    assignedTutor: enrollment?.assignedTutor || null,
     assignments: filterAssignmentsForEnrollment(
       programmeData.assignments,
       enrollment,
@@ -630,6 +646,14 @@ const getManagedProgrammeDetail = asyncHandler(async (req, res) => {
           trackGroup: true,
           sessionSlot: true,
           enrolledAt: true,
+          assignedTutorId: true,
+          assignedTutor: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
           user: {
             select: {
               id: true,
@@ -743,6 +767,20 @@ const getManagedProgrammeDetail = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Programme not found for this manager");
   }
 
+  const assignableTutors = await db.user.findMany({
+    where: {
+      role: "programme_manager",
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+    orderBy: {
+      name: "asc",
+    },
+  });
+
   const response = new ApiResponse(
     200,
     {
@@ -751,6 +789,7 @@ const getManagedProgrammeDetail = asyncHandler(async (req, res) => {
         assignments: programme.assignments.map((assignment) =>
           serializeAssignment(assignment),
         ),
+        assignableTutors,
       }),
     },
     "Managed programme detail fetched successfully",
@@ -1531,6 +1570,253 @@ const bulkAssignManagedProgrammeGrouping = asyncHandler(async (req, res) => {
       200,
       results,
       "Scholar grouping upload processed successfully",
+    ),
+  );
+});
+
+const downloadManagedProgrammeTutorTemplate = asyncHandler(async (req, res) => {
+  const { programmeId } = req.params;
+
+  if (!programmeId) {
+    throw new ApiError(400, "Programme ID is required");
+  }
+
+  const [programme, tutors] = await Promise.all([
+    db.programme.findFirst({
+      where: {
+        id: programmeId,
+        programmeManagerId: req.user.id,
+      },
+      select: {
+        title: true,
+        enrollments: {
+          select: {
+            assignedTutor: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
+            user: {
+              select: {
+                name: true,
+                email: true,
+                batch: true,
+                gender: true,
+              },
+            },
+          },
+          orderBy: {
+            enrolledAt: "asc",
+          },
+        },
+      },
+    }),
+    db.user.findMany({
+      where: {
+        role: "programme_manager",
+      },
+      select: {
+        name: true,
+        email: true,
+      },
+      orderBy: {
+        name: "asc",
+      },
+    }),
+  ]);
+
+  if (!programme) {
+    throw new ApiError(404, "Programme not found for this manager");
+  }
+
+  const workbook = XLSX.utils.book_new();
+  const worksheetRows = [
+    ["scholarName", "userEmail", "batch", "gender", "assignedTutorEmail"],
+    ...programme.enrollments.map((enrollment) => [
+      enrollment.user.name,
+      enrollment.user.email,
+      enrollment.user.batch || "",
+      enrollment.user.gender || "",
+      enrollment.assignedTutor?.email || "",
+    ]),
+  ];
+
+  const worksheet = XLSX.utils.aoa_to_sheet(worksheetRows);
+  worksheet["!cols"] = [
+    { wch: 28 },
+    { wch: 34 },
+    { wch: 12 },
+    { wch: 14 },
+    { wch: 34 },
+  ];
+
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Tutor assignment");
+
+  const availableTutorRows = [
+    ["tutorName", "tutorEmail"],
+    ...tutors.map((tutor) => [tutor.name, tutor.email]),
+  ];
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet(availableTutorRows),
+    "Available tutors",
+  );
+
+  const fileBuffer = XLSX.write(workbook, {
+    type: "buffer",
+    bookType: "xlsx",
+  });
+
+  const safeTitle = programme.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="${safeTitle || "programme"}-tutor-assignment-template.xlsx"`,
+  );
+
+  return res.status(200).send(fileBuffer);
+});
+
+const bulkAssignManagedProgrammeTutors = asyncHandler(async (req, res) => {
+  const { programmeId } = req.params;
+
+  if (!programmeId) {
+    throw new ApiError(400, "Programme ID is required");
+  }
+
+  if (!req.file?.buffer) {
+    throw new ApiError(400, "Excel file is required");
+  }
+
+  const [programme, tutors] = await Promise.all([
+    db.programme.findFirst({
+      where: {
+        id: programmeId,
+        programmeManagerId: req.user.id,
+      },
+      select: {
+        id: true,
+        enrollments: {
+          select: {
+            id: true,
+            userId: true,
+            user: {
+              select: {
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+    db.user.findMany({
+      where: {
+        role: "programme_manager",
+      },
+      select: {
+        id: true,
+        email: true,
+      },
+    }),
+  ]);
+
+  if (!programme) {
+    throw new ApiError(404, "Programme not found for this manager");
+  }
+
+  const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+  const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+  if (!rows.length) {
+    throw new ApiError(400, "Excel file is empty");
+  }
+
+  const enrollmentByEmail = new Map(
+    programme.enrollments.map((enrollment) => [
+      enrollment.user.email.trim().toLowerCase(),
+      enrollment,
+    ]),
+  );
+  const tutorByEmail = new Map(
+    tutors.map((tutor) => [tutor.email.trim().toLowerCase(), tutor]),
+  );
+
+  const results = {
+    updated: 0,
+    skipped: 0,
+    failed: [],
+  };
+
+  for (const row of rows) {
+    const userEmail = String(row.userEmail || row.useremail || row.email || "")
+      .trim()
+      .toLowerCase();
+    const assignedTutorEmail = String(
+      row.assignedTutorEmail || row.assignedtutoremail || row.tutorEmail || "",
+    )
+      .trim()
+      .toLowerCase();
+
+    if (!userEmail) {
+      results.skipped += 1;
+      results.failed.push({
+        userEmail: "(missing email)",
+        reason: "Missing userEmail",
+      });
+      continue;
+    }
+
+    const enrollment = enrollmentByEmail.get(userEmail);
+    if (!enrollment) {
+      results.skipped += 1;
+      results.failed.push({
+        userEmail,
+        reason: "Scholar is not enrolled in this programme",
+      });
+      continue;
+    }
+
+    if (assignedTutorEmail && !tutorByEmail.has(assignedTutorEmail)) {
+      results.skipped += 1;
+      results.failed.push({
+        userEmail,
+        reason: `Tutor email not found: ${assignedTutorEmail}`,
+      });
+      continue;
+    }
+
+    await db.enrollment.update({
+      where: {
+        id: enrollment.id,
+      },
+      data: {
+        assignedTutorId: assignedTutorEmail
+          ? tutorByEmail.get(assignedTutorEmail)?.id || null
+          : null,
+      },
+    });
+
+    results.updated += 1;
+  }
+
+  clearCachedResponse(`programmes:managed:${req.user.id}`);
+  clearCachedResponse("programmes:managed:detail:");
+  clearCachedResponse("programmes:mine:");
+  clearCachedResponse("programmes:schedule:");
+  clearCachedResponse("programme:detail:");
+  clearCachedResponse("profile:");
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      results,
+      "Tutor assignment upload processed successfully",
     ),
   );
 });
@@ -2596,6 +2882,108 @@ const getDiscoverableProgrammes = asyncHandler(async (req, res) => {
   return res.status(200).json(response);
 });
 
+const updateManagedProgrammeScholarTutor = asyncHandler(async (req, res) => {
+  const { programmeId, enrollmentId } = req.params;
+  const assignedTutorId =
+    typeof req.body?.assignedTutorId === "string" && req.body.assignedTutorId.trim()
+      ? req.body.assignedTutorId.trim()
+      : null;
+
+  const programme = await db.programme.findFirst({
+    where: {
+      id: programmeId,
+      programmeManagerId: req.user.id,
+    },
+    select: {
+      id: true,
+      title: true,
+    },
+  });
+
+  if (!programme) {
+    throw new ApiError(404, "Programme not found for this manager");
+  }
+
+  const enrollment = await db.enrollment.findFirst({
+    where: {
+      id: enrollmentId,
+      programmeId,
+    },
+    select: {
+      id: true,
+      userId: true,
+      user: {
+        select: {
+          name: true,
+        },
+      },
+    },
+  });
+
+  if (!enrollment) {
+    throw new ApiError(404, "Enrollment not found for this programme");
+  }
+
+  let tutor = null;
+
+  if (assignedTutorId) {
+    tutor = await db.user.findFirst({
+      where: {
+        id: assignedTutorId,
+        role: "programme_manager",
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+    });
+
+    if (!tutor) {
+      throw new ApiError(400, "Selected tutor could not be found");
+    }
+  }
+
+  const updatedEnrollment = await db.enrollment.update({
+    where: {
+      id: enrollmentId,
+    },
+    data: {
+      assignedTutorId: tutor?.id || null,
+    },
+    select: {
+      id: true,
+      assignedTutorId: true,
+      assignedTutor: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  clearCachedResponse(`programmes:managed:${req.user.id}`);
+  clearCachedResponse("programmes:managed:detail:");
+  clearCachedResponse(`programmes:mine:${enrollment.userId}`);
+  clearCachedResponse(`profile:${enrollment.userId}`);
+  clearCachedResponse(`programmes:schedule:${enrollment.userId}`);
+  clearCachedResponse(`programme:detail:${enrollment.userId}:${programmeId}`);
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        enrollment: updatedEnrollment,
+      },
+      tutor
+        ? `${tutor.name} assigned to ${enrollment.user.name}`
+        : `Tutor assignment cleared for ${enrollment.user.name}`,
+    ),
+  );
+});
+
 const getWishlistProgrammeCatalog = asyncHandler(async (req, res) => {
   const [programmes, wishlist, enrollments] = await Promise.all([
     db.programme.findMany({
@@ -2905,10 +3293,12 @@ export {
   addManagedProgrammeMeetingLink,
   addManagedProgrammeResource,
   bulkAssignManagedProgrammeGrouping,
+  bulkAssignManagedProgrammeTutors,
   bulkEvaluateInteractiveSession,
   createManagedInteractiveSession,
   deleteManagedInteractiveSession,
   downloadManagedProgrammeGroupingTemplate,
+  downloadManagedProgrammeTutorTemplate,
   downloadInteractiveSessionBulkTemplate,
   getDiscoverableProgrammes,
   getManagedProgrammeDetail,
@@ -2923,5 +3313,6 @@ export {
   selfEnrollInProgramme,
   updateManagedProgrammeGrouping,
   updateManagedProgrammeScholarGrouping,
+  updateManagedProgrammeScholarTutor,
   updateManagedInteractiveSession,
 };

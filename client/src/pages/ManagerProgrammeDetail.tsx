@@ -60,6 +60,7 @@ import {
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Switch } from "../components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Textarea } from "../components/ui/textarea";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../hooks/use-toast";
@@ -964,6 +965,13 @@ export default function ManagerProgrammeDetail() {
                   <Users className="mr-2 h-4 w-4" />
                   Grouped delivery
                 </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => navigate(`${dashboardBasePath}/programmes/${programme.id}/tutors`)}
+                >
+                  <Users className="mr-2 h-4 w-4" />
+                  Assign tutors
+                </Button>
                 <Button variant="secondary" onClick={() => void handlePublishResults()}>
                   Publish results
                 </Button>
@@ -1343,58 +1351,76 @@ export default function ManagerProgrammeDetail() {
                               Track groups are managed from the grouped delivery dialog. Session dates are assigned directly inside each interactive session.
                             </div>
                           ) : null}
-                          <div className="overflow-hidden rounded-2xl border border-border">
-                            <div className="overflow-x-auto">
-                              <table className="min-w-full divide-y divide-border text-sm">
-                                <thead className="bg-muted/30">
-                                  <tr className="text-left text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                                    <th className="px-4 py-3 font-medium">Scholar</th>
-                                    <th className="px-4 py-3 font-medium">Batch</th>
-                                    <th className="px-4 py-3 font-medium">Gender</th>
+                          <div className="overflow-hidden rounded-[1.75rem] border border-border bg-card">
+                            <Table className="text-[15px]">
+                              <TableHeader className="bg-muted/20">
+                                <TableRow className="border-border hover:bg-transparent">
+                                  <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                                    Scholar
+                                  </TableHead>
+                                  <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                                    Batch
+                                  </TableHead>
+                                  <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                                    Gender
+                                  </TableHead>
+                                  {programme.groupedDeliveryEnabled ? (
+                                    <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                                      Track group
+                                    </TableHead>
+                                  ) : null}
+                                  <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                                    Status
+                                  </TableHead>
+                                  <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                                    Enrolled on
+                                  </TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody className="bg-card">
+                                {programme.enrollments.map((enrollment) => (
+                                  <TableRow key={enrollment.id} className="border-border/80 hover:bg-transparent">
+                                    <TableCell className="px-6 py-5">
+                                      <div>
+                                        <p className="text-[15px] font-semibold text-foreground">
+                                          {enrollment.user.name}
+                                        </p>
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                          {enrollment.user.email}
+                                        </p>
+                                      </div>
+                                    </TableCell>
+                                    <TableCell className="px-6 py-5 text-[15px] text-muted-foreground">
+                                      {enrollment.user.batch || "No batch"}
+                                    </TableCell>
+                                    <TableCell className="px-6 py-5 text-[15px] text-muted-foreground">
+                                      {enrollment.user.gender || "No gender"}
+                                    </TableCell>
                                     {programme.groupedDeliveryEnabled ? (
-                                      <th className="px-4 py-3 font-medium">Track group</th>
+                                      <TableCell className="px-6 py-5">
+                                        <Badge
+                                          variant="secondary"
+                                          className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-foreground"
+                                        >
+                                          {enrollment.trackGroup || "Unassigned"}
+                                        </Badge>
+                                      </TableCell>
                                     ) : null}
-                                    <th className="px-4 py-3 font-medium">Status</th>
-                                    <th className="px-4 py-3 font-medium">Enrolled on</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-border bg-card">
-                                  {programme.enrollments.map((enrollment) => (
-                                    <tr key={enrollment.id} className="align-top">
-                                      <td className="px-4 py-4">
-                                        <div>
-                                          <p className="font-semibold text-foreground">
-                                            {enrollment.user.name}
-                                          </p>
-                                          <p className="mt-1 text-xs text-muted-foreground">
-                                            {enrollment.user.email}
-                                          </p>
-                                        </div>
-                                      </td>
-                                      <td className="px-4 py-4 text-muted-foreground">
-                                        {enrollment.user.batch || "No batch"}
-                                      </td>
-                                      <td className="px-4 py-4 text-muted-foreground">
-                                        {enrollment.user.gender || "No gender"}
-                                      </td>
-                                      {programme.groupedDeliveryEnabled ? (
-                                        <td className="px-4 py-4">
-                                          <Badge variant="secondary">
-                                            {enrollment.trackGroup || "Unassigned"}
-                                          </Badge>
-                                        </td>
-                                      ) : null}
-                                      <td className="px-4 py-4">
-                                        <Badge variant="outline">{enrollment.status}</Badge>
-                                      </td>
-                                      <td className="px-4 py-4 text-muted-foreground">
-                                        {formatDate(enrollment.enrolledAt)}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
+                                    <TableCell className="px-6 py-5">
+                                      <Badge
+                                        variant="outline"
+                                        className="rounded-full px-3 py-1 text-xs font-semibold capitalize"
+                                      >
+                                        {enrollment.status}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell className="px-6 py-5 text-[15px] text-muted-foreground">
+                                      {formatDate(enrollment.enrolledAt)}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
                           </div>
                         </div>
                       ))}

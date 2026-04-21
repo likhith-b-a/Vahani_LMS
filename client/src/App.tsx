@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
-import { Analytics } from "@vercel/analytics/react";
+// import { Analytics } from "@vercel/analytics/react";
 import { Toaster as Sonner } from "./components/ui/sonner";
 import { Toaster } from "./components/ui/toaster";
 import { TooltipProvider } from "./components/ui/tooltip";
@@ -17,6 +17,7 @@ import AdminProgrammeDetailPage from "./pages/AdminProgrammeDetail";
 import TutorDashboard from "./pages/TutorDashboard";
 import ManagerProgrammeDetail from "./pages/ManagerProgrammeDetail";
 import ManagerProgrammeGrouping from "./pages/ManagerProgrammeGrouping";
+import ManagerProgrammeTutors from "./pages/ManagerProgrammeTutors";
 import ManagerInteractiveSessionEditor from "./pages/ManagerInteractiveSessionEditor";
 import CourseRegistration from "./pages/CourseRegistration";
 import Certificates from "./pages/Certificates";
@@ -40,7 +41,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <Analytics />
+      {/* <Analytics /> */}
       <BrowserRouter>
         <AuthProvider>
           <AssignmentsProvider>
@@ -210,6 +211,14 @@ const App = () => (
                 }
               />
               <Route
+                path="/programme-manager/programmes/:id/tutors"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <ManagerProgrammeTutors />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/programme-manager/programmes/:id/sessions/new"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
@@ -246,6 +255,14 @@ const App = () => (
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
                     <ManagerProgrammeGrouping />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tutor/programmes/:id/tutors"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <ManagerProgrammeTutors />
                   </ProtectedRoute>
                 }
               />

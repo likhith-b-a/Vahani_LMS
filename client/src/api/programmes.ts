@@ -6,6 +6,12 @@ export interface ProgrammeManager {
   email: string;
 }
 
+export interface AssignedTutor {
+  id: string;
+  name: string;
+  email: string;
+}
+
 export interface ProgrammeSubmission {
   id: string;
   fileUrl: string;
@@ -67,6 +73,7 @@ export interface Programme {
   }>;
   programmeManagerId: string | null;
   programmeManager: ProgrammeManager | null;
+  assignedTutor?: AssignedTutor | null;
   assignments: ProgrammeAssignment[];
   status: string;
   enrolledAt?: string;

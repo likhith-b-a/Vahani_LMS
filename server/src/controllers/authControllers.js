@@ -397,6 +397,13 @@ const warmScholarCaches = async (userId) => {
             id: true,
             status: true,
             enrolledAt: true,
+            assignedTutor: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
             programme: {
               select: {
                 id: true,
@@ -428,6 +435,7 @@ const warmScholarCaches = async (userId) => {
               enrollmentId: enrollment.id,
               status: enrollment.status,
               enrolledAt: enrollment.enrolledAt,
+              assignedTutor: enrollment.assignedTutor,
             })),
           },
           "Profile fetched successfully",
@@ -1103,6 +1111,13 @@ const getCurrentUserProfile = asyncHandler(async (req, res) => {
           id: true,
           status: true,
           enrolledAt: true,
+          assignedTutor: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
           programme: {
             select: {
               id: true,
@@ -1130,12 +1145,13 @@ const getCurrentUserProfile = asyncHandler(async (req, res) => {
     200,
     {
       ...user,
-      enrollments: user.enrollments.map((enrollment) => ({
-        ...enrollment.programme,
-        enrollmentId: enrollment.id,
-        status: enrollment.status,
-        enrolledAt: enrollment.enrolledAt,
-      })),
+        enrollments: user.enrollments.map((enrollment) => ({
+          ...enrollment.programme,
+          enrollmentId: enrollment.id,
+          status: enrollment.status,
+          enrolledAt: enrollment.enrolledAt,
+          assignedTutor: enrollment.assignedTutor,
+        })),
     },
     "Profile fetched successfully",
   );
@@ -1164,6 +1180,13 @@ const updateCurrentUserProfile = asyncHandler(async (req, res) => {
     include: {
       enrollments: {
         include: {
+          assignedTutor: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
           programme: {
             include: {
               programmeManager: {
@@ -1193,6 +1216,7 @@ const updateCurrentUserProfile = asyncHandler(async (req, res) => {
           enrollmentId: enrollment.id,
           status: enrollment.status,
           enrolledAt: enrollment.enrolledAt,
+          assignedTutor: enrollment.assignedTutor,
         })),
       },
       "Profile updated successfully",
@@ -1274,6 +1298,13 @@ const loginUser = asyncHandler(async (req, res) => {
           select: {
             id: true,
             status: true,
+            assignedTutor: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
             programme: {
               select: {
                 id: true,
@@ -1304,6 +1335,7 @@ const loginUser = asyncHandler(async (req, res) => {
             id: e.programme.id,
             ...e.programme,
             status: e.status,
+            assignedTutor: e.assignedTutor,
           }))
         : [],
     accessToken,

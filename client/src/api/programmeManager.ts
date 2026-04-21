@@ -121,12 +121,23 @@ export interface ManagedProgramme {
   }>;
   programmeManagerId: string | null;
   programmeManager: ManagedStudent | null;
+  assignableTutors?: Array<{
+    id: string;
+    name: string;
+    email: string;
+  }>;
   enrollments: Array<{
     id: string;
     status: string;
     trackGroup?: string | null;
     sessionSlot?: string | null;
     enrolledAt: string;
+    assignedTutorId?: string | null;
+    assignedTutor?: {
+      id: string;
+      name: string;
+      email: string;
+    } | null;
     user: ManagedStudent;
   }>;
   assignments: ManagedProgrammeAssignment[];
@@ -306,6 +317,22 @@ export const updateManagedProgrammeScholarGrouping = async (
   );
 };
 
+export const updateManagedProgrammeScholarTutor = async (
+  programmeId: string,
+  enrollmentId: string,
+  payload: {
+    assignedTutorId?: string | null;
+  },
+) => {
+  return fetchWithAuth(
+    `/programmes/managed/${programmeId}/enrollments/${enrollmentId}/tutor`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
+};
+
 export const downloadManagedProgrammeGroupingTemplate = async (programmeId: string) => {
   const response = await fetch(`${BASE_URL}/programmes/managed/${encodeURIComponent(programmeId)}/grouping-template`, {
     method: "GET",
@@ -334,6 +361,42 @@ export const bulkAssignManagedProgrammeGrouping = async (
   formData.append("file", file);
 
   return fetchWithAuth(`/programmes/managed/${programmeId}/grouping-upload`, {
+    method: "POST",
+    body: formData,
+  });
+};
+
+export const downloadManagedProgrammeTutorTemplate = async (programmeId: string) => {
+  const response = await fetch(
+    `${BASE_URL}/programmes/managed/${encodeURIComponent(programmeId)}/tutor-template`,
+    {
+      method: "GET",
+      credentials: "include",
+    },
+  );
+
+  if (!response.ok) {
+    let message = "Unable to download tutor assignment sheet";
+    try {
+      const data = await response.json();
+      message = data?.message || message;
+    } catch {
+      // Ignore JSON parsing failure.
+    }
+    throw new Error(message);
+  }
+
+  return response.blob();
+};
+
+export const bulkAssignManagedProgrammeTutors = async (
+  programmeId: string,
+  file: File,
+) => {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  return fetchWithAuth(`/programmes/managed/${programmeId}/tutor-upload`, {
     method: "POST",
     body: formData,
   });

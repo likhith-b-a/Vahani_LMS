@@ -194,6 +194,11 @@ export default function ProgrammeDetail() {
                               Manager: {programme.programmeManager.name}
                             </Badge>
                           )}
+                          {programme.assignedTutor && (
+                            <Badge variant="outline">
+                              Assigned tutor: {programme.assignedTutor.name}
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-sm text-muted-foreground">
                           {programme.description ||
@@ -221,6 +226,26 @@ export default function ProgrammeDetail() {
                     </Card>
                   ))}
                 </div>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Assigned Tutor</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {programme.assignedTutor ? (
+                      <div className="rounded-lg border border-border p-4">
+                        <p className="font-medium text-foreground">{programme.assignedTutor.name}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {programme.assignedTutor.email}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        No tutor has been assigned to you for this programme yet.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
 
                 {(programme.spotlightTitle || programme.spotlightMessage) && (
                   <Card className="border-vahani-blue/20 bg-vahani-blue/5">

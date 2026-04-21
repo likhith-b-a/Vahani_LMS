@@ -15,6 +15,11 @@ export interface Enrollment {
     name: string;
     email: string;
   };
+  assignedTutor?: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
 }
 
 export interface User {

@@ -465,6 +465,7 @@ export default function Profile() {
                           <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
                             <span>Joined {formatDate(programme.enrolledAt)}</span>
                             <span>Manager: {programme.programmeManager?.name || "Unassigned"}</span>
+                            <span>Tutor: {programme.assignedTutor?.name || "Not assigned"}</span>
                             {attendanceRate !== null ? (
                               <span>Attendance {attendanceRate}%</span>
                             ) : (
@@ -506,6 +507,14 @@ export default function Profile() {
                         <p className="text-xs text-muted-foreground">
                           {programme.programmeManager?.email || "No contact email"}
                         </p>
+                        <div className="mt-3 border-t border-border pt-3">
+                          <p className="text-sm">
+                            {programme.assignedTutor?.name || "No tutor assigned"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {programme.assignedTutor?.email || "Tutor details will appear here after assignment."}
+                          </p>
+                        </div>
                       </div>
                     ))
                   ) : (

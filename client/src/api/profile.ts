@@ -13,6 +13,11 @@ export interface MyProfileProgramme {
     name: string;
     email: string;
   } | null;
+  assignedTutor?: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
 }
 
 export interface MyProfileResponse {

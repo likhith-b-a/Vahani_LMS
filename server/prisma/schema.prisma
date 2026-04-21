@@ -96,6 +96,7 @@ model User {
 
   managedProgrammes         Programme[]             @relation("ProgrammeManager")
   enrollments               Enrollment[]
+  tutorAssignments          Enrollment[]            @relation("EnrollmentAssignedTutor")
   submissions               Submission[]            @relation("SubmissionAuthor")
   evaluatedSubmissions      Submission[]            @relation("SubmissionEvaluator")
   createdAssignments        Assignment[]            @relation("AssignmentCreator")
@@ -165,13 +166,16 @@ model Enrollment {
 
   userId                    String
   programmeId               String
+  assignedTutorId           String?
 
   user                      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   programme                 Programme               @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  assignedTutor             User?                   @relation("EnrollmentAssignedTutor", fields: [assignedTutorId], references: [id], onDelete: SetNull)
 
   @@unique([userId, programmeId])
   @@index([programmeId])
   @@index([status, programmeId])
+  @@index([assignedTutorId])
 }
 
 model Assignment {

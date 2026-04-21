@@ -6,10 +6,12 @@ import {
   addManagedProgrammeMeetingLink,
   addManagedProgrammeResource,
   bulkAssignManagedProgrammeGrouping,
+  bulkAssignManagedProgrammeTutors,
   bulkEvaluateInteractiveSession,
   createManagedInteractiveSession,
   deleteManagedInteractiveSession,
   downloadManagedProgrammeGroupingTemplate,
+  downloadManagedProgrammeTutorTemplate,
   downloadInteractiveSessionBulkTemplate,
   getDiscoverableProgrammes,
   getManagedProgrammeDetail,
@@ -24,6 +26,7 @@ import {
   selfEnrollInProgramme,
   updateManagedProgrammeGrouping,
   updateManagedProgrammeScholarGrouping,
+  updateManagedProgrammeScholarTutor,
   updateManagedInteractiveSession,
 } from "../controllers/programmeController.js";
 
@@ -64,6 +67,12 @@ router.patch(
   isAuthorized("programme_manager"),
   updateManagedProgrammeScholarGrouping,
 );
+router.patch(
+  "/managed/:programmeId/enrollments/:enrollmentId/tutor",
+  isAuthenticated,
+  isAuthorized("programme_manager"),
+  updateManagedProgrammeScholarTutor,
+);
 router.get(
   "/managed/:programmeId/grouping-template",
   isAuthenticated,
@@ -76,6 +85,19 @@ router.post(
   isAuthorized("programme_manager"),
   uploadMemory.single("file"),
   bulkAssignManagedProgrammeGrouping,
+);
+router.get(
+  "/managed/:programmeId/tutor-template",
+  isAuthenticated,
+  isAuthorized("programme_manager"),
+  downloadManagedProgrammeTutorTemplate,
+);
+router.post(
+  "/managed/:programmeId/tutor-upload",
+  isAuthenticated,
+  isAuthorized("programme_manager"),
+  uploadMemory.single("file"),
+  bulkAssignManagedProgrammeTutors,
 );
 router.patch(
   "/managed/interactive-sessions/:sessionId",
