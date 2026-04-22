@@ -173,6 +173,45 @@ const formatDateTime = (value?: string | null) =>
       })
     : "No date";
 
+const getSubmissionPreviewConfig = (fileUrl?: string | null) => {
+  if (!fileUrl) {
+    return null;
+  }
+
+  const normalizedUrl = fileUrl.split("?")[0].toLowerCase();
+
+  if (
+    normalizedUrl.endsWith(".pdf") ||
+    normalizedUrl.endsWith(".png") ||
+    normalizedUrl.endsWith(".jpg") ||
+    normalizedUrl.endsWith(".jpeg") ||
+    normalizedUrl.endsWith(".gif") ||
+    normalizedUrl.endsWith(".webp") ||
+    normalizedUrl.endsWith(".txt")
+  ) {
+    return {
+      viewerUrl: fileUrl,
+      openUrl: fileUrl,
+    };
+  }
+
+  if (
+    normalizedUrl.endsWith(".doc") ||
+    normalizedUrl.endsWith(".docx") ||
+    normalizedUrl.endsWith(".ppt") ||
+    normalizedUrl.endsWith(".pptx") ||
+    normalizedUrl.endsWith(".xls") ||
+    normalizedUrl.endsWith(".xlsx")
+  ) {
+    return {
+      viewerUrl: `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`,
+      openUrl: fileUrl,
+    };
+  }
+
+  return null;
+};
+
 const matchesDateRange = (
   value: string | null | undefined,
   from: string,
@@ -268,7 +307,8 @@ export default function TutorDashboard() {
   const [showAttendanceDialog, setShowAttendanceDialog] = useState(false);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [previewFile, setPreviewFile] = useState<{
-    url: string;
+    viewerUrl: string;
+    openUrl: string;
     title: string;
   } | null>(null);
 
@@ -2047,12 +2087,20 @@ export default function TutorDashboard() {
                 }
                 onSaveMarks={(submissionId) => void handleSaveMarks(submissionId)}
                 onOpenSubmissionFile={(submission) => {
-                  if (submission.assignment.assignmentType === "document") {
-                    setPreviewFile({
-                      url: submission.fileUrl as string,
-                      title: `${submission.student.name} | ${submission.assignment.title}`,
-                    });
-                    return;
+                  if (
+                    submission.assignment.assignmentType === "document" &&
+                    submission.fileUrl
+                  ) {
+                    const previewConfig = getSubmissionPreviewConfig(submission.fileUrl);
+
+                    if (previewConfig) {
+                      setPreviewFile({
+                        viewerUrl: previewConfig.viewerUrl,
+                        openUrl: previewConfig.openUrl,
+                        title: `${submission.student.name} | ${submission.assignment.title}`,
+                      });
+                      return;
+                    }
                   }
 
                   if (submission.fileUrl) {

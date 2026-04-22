@@ -33,7 +33,8 @@ interface EvaluationStudentRow {
 }
 
 interface PreviewFileState {
-  url: string;
+  viewerUrl: string;
+  openUrl: string;
   title: string;
 }
 
@@ -141,9 +142,9 @@ export function ManagerEvaluationSection({
             <CardTitle>Evaluation</CardTitle>
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
               Choose a programme first, then select the assignment or interactive
-              session you want to review. Document submissions open in a built-in
-              preview here, while audio and video submissions download directly for
-              review.
+              session you want to review. Preview-friendly document submissions
+              open here, while unsupported files, audio, and video submissions
+              open directly in a new tab for review.
             </p>
           </div>
 
@@ -526,13 +527,13 @@ export function ManagerEvaluationSection({
           {previewFile ? (
             <div className="space-y-4">
               <iframe
-                src={previewFile.url}
+                src={previewFile.viewerUrl}
                 title={previewFile.title}
                 className="h-[70vh] w-full rounded-xl border border-border bg-background"
               />
               <div className="flex justify-end">
                 <Button asChild variant="outline">
-                  <a href={previewFile.url} target="_blank" rel="noreferrer">
+                  <a href={previewFile.openUrl} target="_blank" rel="noreferrer">
                     Open in new tab
                   </a>
                 </Button>
