@@ -58,5 +58,47 @@ export const verifyCertificate = async (credentialId: string) => {
   return data;
 };
 
-export const getCertificateDownloadUrl = (certificateId: string) =>
-  `${BASE_URL}/certificates/${encodeURIComponent(certificateId)}/download`;
+const downloadCertificateBlob = async (certificateId: string) => {
+  const accessToken =
+    typeof window !== "undefined" ? localStorage.getItem("accessToken") || "" : "";
+  const response = await fetch(
+    `${BASE_URL}/certificates/${encodeURIComponent(certificateId)}/download`,
+    {
+      method: "GET",
+      credentials: "include",
+      headers: accessToken.trim()
+        ? {
+            Authorization: `Bearer ${accessToken.trim()}`,
+          }
+        : undefined,
+    },
+  );
+
+  if (!response.ok) {
+    let message = "Unable to download certificate";
+
+    try {
+      const data = await response.json();
+      message = data?.message || message;
+    } catch {
+      // Ignore JSON parsing failure.
+    }
+
+    throw new Error(message);
+  }
+
+  return response.blob();
+};
+
+export const downloadCertificateFile = async (
+  certificateId: string,
+  filePrefix = "certificate",
+) => {
+  const blob = await downloadCertificateBlob(certificateId);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${filePrefix}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  link.click();
+  URL.revokeObjectURL(url);
+};

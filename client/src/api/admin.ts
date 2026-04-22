@@ -404,9 +404,16 @@ export const getAdminUserDetail = async (userId: string) => {
 };
 
 export const downloadAdminUserTemplate = async () => {
+  const accessToken =
+    typeof window !== "undefined" ? localStorage.getItem("accessToken") || "" : "";
   const response = await fetch(`${BASE_URL}/admin/users/template`, {
     method: "GET",
     credentials: "include",
+    headers: accessToken.trim()
+      ? {
+          Authorization: `Bearer ${accessToken.trim()}`,
+        }
+      : undefined,
   });
 
   if (!response.ok) {

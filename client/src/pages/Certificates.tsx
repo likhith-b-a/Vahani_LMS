@@ -7,7 +7,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { useToast } from "../hooks/use-toast";
 import {
-  getCertificateDownloadUrl,
+  downloadCertificateFile,
   getMyCertificates,
   type CertificateRecord,
 } from "../api/certificates";
@@ -17,6 +17,7 @@ export default function Certificates() {
   const [certificates, setCertificates] = useState<CertificateRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCertificateId, setActiveCertificateId] = useState<string | null>(null);
+  const [downloadingCertificateId, setDownloadingCertificateId] = useState<string | null>(null);
 
   useEffect(() => {
     const loadCertificates = async () => {
@@ -53,6 +54,24 @@ export default function Certificates() {
 
   const activeCertificate =
     certificates.find((certificate) => certificate.id === activeCertificateId) || null;
+
+  const handleDownloadCertificate = async (certificate: CertificateRecord) => {
+    try {
+      setDownloadingCertificateId(certificate.id);
+      await downloadCertificateFile(
+        certificate.id,
+        `${certificate.programmeTitle.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-certificate`,
+      );
+    } catch (error) {
+      toast({
+        title: "Unable to download certificate",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setDownloadingCertificateId(null);
+    }
+  };
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -171,15 +190,13 @@ export default function Certificates() {
                               Open certificate
                             </a>
                           </Button>
-                          <Button asChild variant="outline">
-                            <a
-                              href={getCertificateDownloadUrl(activeCertificate.id)}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              <Download className="mr-2 h-4 w-4" />
-                              Download
-                            </a>
+                          <Button
+                            variant="outline"
+                            onClick={() => void handleDownloadCertificate(activeCertificate)}
+                            disabled={downloadingCertificateId === activeCertificate.id}
+                          >
+                            <Download className="mr-2 h-4 w-4" />
+                            Download
                           </Button>
                           <Button asChild variant="outline">
                             <a href={activeCertificate.verificationUrl} target="_blank" rel="noreferrer">

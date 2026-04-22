@@ -23,10 +23,10 @@ import {
   createProgrammeAssignment,
   deleteInteractiveSession,
   deleteProgrammeAssignment,
+  downloadManagedCertificateFile,
   downloadManagedProgrammeGroupingTemplate,
   generateProgrammeCertificates,
   getManagedProgrammeDetail,
-  getManagedCertificateDownloadUrl,
   getProgrammeCertificates,
   markInteractiveSessionAttendance,
   publishProgrammeResults,
@@ -180,6 +180,7 @@ export default function ManagerProgrammeDetail() {
   const [attendanceScoreDrafts, setAttendanceScoreDrafts] = useState<Record<string, string>>({});
   const [certificates, setCertificates] = useState<ManagedCertificate[]>([]);
   const [certificatesLoading, setCertificatesLoading] = useState(false);
+  const [downloadingCertificateId, setDownloadingCertificateId] = useState<string | null>(null);
   const [certificateEditForm, setCertificateEditForm] = useState({
     id: "",
     scholarName: "",
@@ -781,6 +782,24 @@ export default function ManagerProgrammeDetail() {
       });
     } finally {
       setCertificatesLoading(false);
+    }
+  };
+
+  const handleDownloadCertificate = async (certificate: ManagedCertificate) => {
+    try {
+      setDownloadingCertificateId(certificate.id);
+      await downloadManagedCertificateFile(
+        certificate.id,
+        `${certificate.programmeTitle.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-${certificate.scholarName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`,
+      );
+    } catch (error) {
+      toast({
+        title: "Unable to download certificate",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setDownloadingCertificateId(null);
     }
   };
 
@@ -2256,15 +2275,14 @@ export default function ManagerProgrammeDetail() {
                             Open
                           </a>
                         </Button>
-                        <Button asChild variant="outline" size="sm">
-                          <a
-                            href={getManagedCertificateDownloadUrl(certificate.id)}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            <Download className="mr-2 h-4 w-4" />
-                            Download
-                          </a>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void handleDownloadCertificate(certificate)}
+                          disabled={downloadingCertificateId === certificate.id}
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          Download
                         </Button>
                         <Button asChild variant="outline" size="sm">
                           <a href={certificate.verificationUrl} target="_blank" rel="noreferrer">

@@ -334,23 +334,10 @@ export const updateManagedProgrammeScholarTutor = async (
 };
 
 export const downloadManagedProgrammeGroupingTemplate = async (programmeId: string) => {
-  const response = await fetch(`${BASE_URL}/programmes/managed/${encodeURIComponent(programmeId)}/grouping-template`, {
-    method: "GET",
-    credentials: "include",
-  });
-
-  if (!response.ok) {
-    let message = "Unable to download grouping template";
-    try {
-      const data = await response.json();
-      message = data?.message || message;
-    } catch {
-      // Ignore JSON parsing failure.
-    }
-    throw new Error(message);
-  }
-
-  return response.blob();
+  return downloadManagerFile(
+    `/programmes/managed/${encodeURIComponent(programmeId)}/grouping-template`,
+    "Unable to download grouping template",
+  );
 };
 
 export const bulkAssignManagedProgrammeGrouping = async (
@@ -367,26 +354,10 @@ export const bulkAssignManagedProgrammeGrouping = async (
 };
 
 export const downloadManagedProgrammeTutorTemplate = async (programmeId: string) => {
-  const response = await fetch(
-    `${BASE_URL}/programmes/managed/${encodeURIComponent(programmeId)}/tutor-template`,
-    {
-      method: "GET",
-      credentials: "include",
-    },
+  return downloadManagerFile(
+    `/programmes/managed/${encodeURIComponent(programmeId)}/tutor-template`,
+    "Unable to download tutor assignment sheet",
   );
-
-  if (!response.ok) {
-    let message = "Unable to download tutor assignment sheet";
-    try {
-      const data = await response.json();
-      message = data?.message || message;
-    } catch {
-      // Ignore JSON parsing failure.
-    }
-    throw new Error(message);
-  }
-
-  return response.blob();
 };
 
 export const bulkAssignManagedProgrammeTutors = async (
@@ -461,8 +432,21 @@ export const updateProgrammeCertificate = async (
   });
 };
 
-export const getManagedCertificateDownloadUrl = (certificateId: string) =>
-  `${BASE_URL}/certificates/${encodeURIComponent(certificateId)}/download`;
+export const downloadManagedCertificateFile = async (
+  certificateId: string,
+  filePrefix = "certificate",
+) => {
+  const blob = await downloadManagerFile(
+    `/certificates/${encodeURIComponent(certificateId)}/download`,
+    "Unable to download certificate",
+  );
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${filePrefix}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  link.click();
+  URL.revokeObjectURL(url);
+};
 
 export interface ProgrammeManagerReportResponse {
   type: "programme_manager";
