@@ -9,7 +9,7 @@ import {
   updateManagedProgrammeGrouping,
   updateManagedProgrammeScholarGrouping,
 } from "../api/programmeManager";
-import { ManagerSidebar } from "../components/dashboard/ManagerSidebar";
+import { getManagerSectionRoute, ManagerSidebar } from "../components/dashboard/ManagerSidebar";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader } from "../components/ui/card";
@@ -223,7 +223,7 @@ export default function ManagerProgrammeGrouping() {
     <div className="flex min-h-screen bg-background">
       <ManagerSidebar
         activeSection="programmes"
-        onSelectSection={(section) => navigate(`${dashboardBasePath}?section=${section}`)}
+        onSelectSection={(section) => navigate(getManagerSectionRoute(dashboardBasePath, section))}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">

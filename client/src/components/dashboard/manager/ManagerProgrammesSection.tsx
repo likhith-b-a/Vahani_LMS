@@ -1,12 +1,22 @@
 import { type ChangeEvent } from "react";
-import { CalendarDays, ClipboardCheck, FolderKanban, Sparkles, Users } from "lucide-react";
+import {
+  CalendarDays,
+  ClipboardCheck,
+  FolderKanban,
+  Sparkles,
+  Users,
+} from "lucide-react";
 import { type ManagedProgrammeSummary } from "@/api/programmeManager";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
-export type ManagerProgrammeStatusFilter = "all" | "setup" | "active" | "completed";
+export type ManagerProgrammeStatusFilter =
+  | "all"
+  | "setup"
+  | "active"
+  | "completed";
 
 function getProgrammeStatus(programme: ManagedProgrammeSummary) {
   if (programme.resultsPublishedAt) {
@@ -77,8 +87,16 @@ export function ManagerProgrammesSection({
 }: ManagerProgrammesSectionProps) {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Programmes</CardTitle>
+      <CardHeader className="gap-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <CardTitle>Programmes</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Search, filter by timeline, and open a programme to manage
+              scholars and assignments.
+            </p>
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="grid gap-3 lg:grid-cols-[1fr_180px_180px_180px_auto]">
@@ -107,7 +125,9 @@ export function ManagerProgrammesSection({
             className="h-10 rounded-md border border-input bg-background px-3 text-sm"
             value={programmeStatusFilter}
             onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-              onProgrammeStatusFilterChange(event.target.value as ManagerProgrammeStatusFilter)
+              onProgrammeStatusFilterChange(
+                event.target.value as ManagerProgrammeStatusFilter,
+              )
             }
           >
             <option value="all">All statuses</option>
@@ -115,13 +135,75 @@ export function ManagerProgrammesSection({
             <option value="active">Active</option>
             <option value="completed">Completed</option>
           </select>
-          <Button type="button" variant="outline" onClick={onClearProgrammeFilters}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClearProgrammeFilters}
+          >
             Clear filters
           </Button>
         </div>
 
+        {/* <div className="grid gap-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={programmeSearch}
+              onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                setProgrammeSearch(event.target.value)
+              }
+              placeholder="Search programmes by title, description, or manager"
+              className="pl-9"
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-4">
+            <Input
+              type="date"
+              value={programmeDateFrom}
+              onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                setProgrammeDateFrom(event.target.value)
+              }
+            />
+            <Input
+              type="date"
+              value={programmeDateTo}
+              onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                setProgrammeDateTo(event.target.value)
+              }
+            />
+            <Select
+              value={programmeStatusFilter}
+              onValueChange={(value) =>
+                setProgrammeStatusFilter(value as ProgrammeStatusFilter)
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="setup">Setup</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="completed">Completed</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setProgrammeSearch("");
+                setProgrammeDateFrom("");
+                setProgrammeDateTo("");
+                setProgrammeStatusFilter("all");
+              }}
+            >
+              Clear filters
+            </Button>
+          </div>
+        </div> */}
+
         <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-3">
-          {filteredProgrammes.map((programme) => (
+          {filteredProgrammes.map((programme) =>
             (() => {
               const status = getProgrammeStatus(programme);
               const statusMeta = getStatusMeta(status);
@@ -144,7 +226,9 @@ export function ManagerProgrammesSection({
                           {programme.description || "No description added yet."}
                         </p>
                       </div>
-                      <Badge className={statusMeta.className}>{statusMeta.label}</Badge>
+                      <Badge className={statusMeta.className}>
+                        {statusMeta.label}
+                      </Badge>
                     </div>
 
                     <div className="grid gap-3 text-sm text-muted-foreground sm:grid-cols-2">
@@ -158,11 +242,17 @@ export function ManagerProgrammesSection({
                       </div>
                       <div className="inline-flex items-center gap-2">
                         <Sparkles className="h-4 w-4 text-vahani-blue" />
-                        <span>{programme.interactiveSessionsCount} live sessions</span>
+                        <span>
+                          {programme.interactiveSessionsCount} live sessions
+                        </span>
                       </div>
                       <div className="inline-flex items-center gap-2">
                         <FolderKanban className="h-4 w-4 text-vahani-blue" />
-                        <span>{(programme.resourcesCount || 0) + (programme.meetingsCount || 0)} resources + meetings</span>
+                        <span>
+                          {(programme.resourcesCount || 0) +
+                            (programme.meetingsCount || 0)}{" "}
+                          resources + meetings
+                        </span>
                       </div>
                     </div>
 
@@ -173,7 +263,8 @@ export function ManagerProgrammesSection({
                       </span>
                       {programme.resultsPublishedAt ? (
                         <span className="inline-flex items-center gap-1.5">
-                          Results published {formatDate(programme.resultsPublishedAt)}
+                          Results published{" "}
+                          {formatDate(programme.resultsPublishedAt)}
                         </span>
                       ) : null}
                     </div>
@@ -193,8 +284,8 @@ export function ManagerProgrammesSection({
                   </div>
                 </button>
               );
-            })()
-          ))}
+            })(),
+          )}
           {filteredProgrammes.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border p-8 text-sm text-muted-foreground">
               No programmes match the current search, date range, or status.

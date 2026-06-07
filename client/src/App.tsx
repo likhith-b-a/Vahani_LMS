@@ -195,6 +195,70 @@ const App = () => (
                 }
               />
               <Route
+                path="/programme-manager/overview"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <TutorDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/programme-manager/programmes"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <TutorDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/programme-manager/analytics"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <TutorDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/programme-manager/announcements"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <TutorDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/programme-manager/evaluation"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <TutorDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/programme-manager/reports"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <TutorDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/programme-manager/queries"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <TutorDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/programme-manager/students"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <TutorDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/programme-manager/programmes/:id"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
@@ -236,6 +300,70 @@ const App = () => (
               />
               <Route
                 path="/tutor"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <TutorDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tutor/overview"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <TutorDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tutor/programmes"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <TutorDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tutor/analytics"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <TutorDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tutor/announcements"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <TutorDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tutor/evaluation"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <TutorDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tutor/reports"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <TutorDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tutor/queries"
+                element={
+                  <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
+                    <TutorDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/tutor/students"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
                     <TutorDashboard />

@@ -16,7 +16,7 @@ import { useNavigate } from "react-router-dom";
 import vahaniLogo from "@/assets/vahani-logo.png";
 import { useAuth } from "@/contexts/AuthContext";
 
-const primaryNav = [
+export const primaryNav = [
   { icon: LayoutDashboard, label: "Overview", value: "overview" },
   { icon: BookOpen, label: "Programmes", value: "programmes" },
   { icon: BarChart3, label: "Analytics", value: "analytics" },
@@ -25,14 +25,35 @@ const primaryNav = [
   { icon: BarChart3, label: "Reports", value: "reports" },
   { icon: CircleHelp, label: "Queries", value: "queries" },
   { icon: Users, label: "Students", value: "students" },
-];
+ ] as const;
+
+export type ManagerSection = (typeof primaryNav)[number]["value"];
+
+const managerSections = new Set<ManagerSection>(primaryNav.map((item) => item.value));
+
+export const getManagerSectionRoute = (basePath: string, section: ManagerSection) =>
+  section === "overview" ? basePath : `${basePath}/${section}`;
+
+export const getManagerSectionFromPath = (
+  pathname: string,
+  basePath: string,
+): ManagerSection => {
+  if (pathname === basePath || pathname === `${basePath}/`) {
+    return "overview";
+  }
+
+  const segment = pathname.slice(basePath.length + 1).split("/")[0];
+  return managerSections.has(segment as ManagerSection)
+    ? (segment as ManagerSection)
+    : "overview";
+};
 
 export function ManagerSidebar({
   activeSection,
   onSelectSection,
 }: {
-  activeSection: string;
-  onSelectSection: (section: string) => void;
+  activeSection: ManagerSection | "settings";
+  onSelectSection: (section: ManagerSection) => void;
 }) {
   const navigate = useNavigate();
   const { logout } = useAuth();

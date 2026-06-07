@@ -39,7 +39,7 @@ import {
   updateProgrammeAssignment,
   updateProgrammeCertificate,
 } from "../api/programmeManager";
-import { ManagerSidebar } from "../components/dashboard/ManagerSidebar";
+import { getManagerSectionRoute, ManagerSidebar } from "../components/dashboard/ManagerSidebar";
 import {
   Accordion,
   AccordionContent,
@@ -928,7 +928,7 @@ export default function ManagerProgrammeDetail() {
     <div className="flex min-h-screen bg-background">
       <ManagerSidebar
         activeSection="programmes"
-        onSelectSection={(section) => navigate(`${dashboardBasePath}?section=${section}`)}
+        onSelectSection={(section) => navigate(getManagerSectionRoute(dashboardBasePath, section))}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -950,7 +950,7 @@ export default function ManagerProgrammeDetail() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <Button
                 variant="outline"
-                onClick={() => navigate(`${dashboardBasePath}?section=programmes`)}
+                onClick={() => navigate(getManagerSectionRoute(dashboardBasePath, "programmes"))}
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to programmes

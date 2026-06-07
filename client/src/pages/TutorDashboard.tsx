@@ -55,7 +55,11 @@ import {
   type QueryStatus,
   type SupportQuery,
 } from "@/api/queries";
-import { ManagerSidebar } from "@/components/dashboard/ManagerSidebar";
+import {
+  getManagerSectionFromPath,
+  getManagerSectionRoute,
+  ManagerSidebar,
+} from "@/components/dashboard/ManagerSidebar";
 import { EmailComposerDialog } from "@/components/dashboard/EmailComposerDialog";
 import { ManagerEvaluationSection } from "@/components/dashboard/manager/ManagerEvaluationSection";
 import { ManagerAnalyticsSection } from "@/components/dashboard/manager/ManagerAnalyticsSection";
@@ -259,8 +263,10 @@ export default function TutorDashboard() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
-
-  const [activeSection, setActiveSection] = useState("overview");
+  const dashboardBasePath = location.pathname.startsWith("/tutor")
+    ? "/tutor"
+    : "/programme-manager";
+  const activeSection = getManagerSectionFromPath(location.pathname, dashboardBasePath);
   const [loading, setLoading] = useState(true);
   const [programmes, setProgrammes] = useState<ManagedProgrammeSummary[]>([]);
   const [selectedProgramme, setSelectedProgramme] = useState<ManagedProgramme | null>(null);
@@ -1607,26 +1613,11 @@ export default function TutorDashboard() {
     }
   };
 
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const section = params.get("section");
-    if (section) {
-      setActiveSection(section);
-    }
-  }, [location.search]);
-
-  const dashboardBasePath = location.pathname.startsWith("/tutor")
-    ? "/tutor"
-    : "/programme-manager";
-
   return (
     <div className="flex min-h-screen bg-background">
       <ManagerSidebar
         activeSection={activeSection}
-        onSelectSection={(section) => {
-          setActiveSection(section);
-          navigate(`${dashboardBasePath}?section=${section}`);
-        }}
+        onSelectSection={(section) => navigate(getManagerSectionRoute(dashboardBasePath, section))}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">

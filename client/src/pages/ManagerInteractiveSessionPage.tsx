@@ -8,7 +8,7 @@ import {
   type ManagedProgramme,
   updateInteractiveSession,
 } from "../api/programmeManager";
-import { ManagerSidebar } from "../components/dashboard/ManagerSidebar";
+import { getManagerSectionRoute, ManagerSidebar } from "../components/dashboard/ManagerSidebar";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -166,7 +166,7 @@ export default function ManagerInteractiveSessionPage() {
     <div className="flex min-h-screen bg-background">
       <ManagerSidebar
         activeSection="programmes"
-        onSelectSection={(section) => navigate(`${dashboardBasePath}?section=${section}`)}
+        onSelectSection={(section) => navigate(getManagerSectionRoute(dashboardBasePath, section))}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-border bg-card/80 px-4 pl-14 backdrop-blur-md lg:px-8 lg:pl-8">

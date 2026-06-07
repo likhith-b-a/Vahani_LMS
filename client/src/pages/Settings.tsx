@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppSidebar } from "../components/dashboard/AppSidebar";
 import { TopNavbar } from "../components/dashboard/TopNavbar";
-import { ManagerSidebar } from "../components/dashboard/ManagerSidebar";
+import { getManagerSectionRoute, ManagerSidebar } from "../components/dashboard/ManagerSidebar";
 import { AdminSidebar } from "../components/dashboard/AdminSidebar";
 import { useAuth } from "../contexts/AuthContext";
 import { Moon, Sun, Type, Zap, Lock } from "lucide-react";
@@ -67,7 +67,7 @@ export default function Settings() {
       {isManager ? (
         <ManagerSidebar
           activeSection="settings"
-          onSelectSection={(section) => navigate(`/programme-manager?section=${section}`)}
+          onSelectSection={(section) => navigate(getManagerSectionRoute("/programme-manager", section))}
         />
       ) : isAdmin ? (
         <AdminSidebar activeSection="settings" onSelectSection={() => navigate("/admin")} />
