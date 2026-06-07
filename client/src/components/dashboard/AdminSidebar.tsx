@@ -13,7 +13,7 @@ import { useNavigate } from "react-router-dom";
 import vahaniLogo from "@/assets/vahani-logo.png";
 import { useAuth } from "@/contexts/AuthContext";
 
-const primaryNav = [
+export const primaryNav = [
   { icon: BarChart3, label: "Overview", value: "overview" },
   { icon: Users, label: "Users", value: "users" },
   { icon: BookOpen, label: "Programmes", value: "programmes" },
@@ -22,14 +22,35 @@ const primaryNav = [
   { icon: Users, label: "Queries", value: "queries" },
   { icon: BarChart3, label: "Reports", value: "reports" },
   { icon: Settings2, label: "Settings", value: "settings" },
-];
+] as const;
+
+export type AdminSection = (typeof primaryNav)[number]["value"];
+
+const adminSections = new Set<AdminSection>(primaryNav.map((item) => item.value));
+
+export const getAdminSectionRoute = (basePath: string, section: AdminSection) =>
+  section === "overview" ? basePath : `${basePath}/${section}`;
+
+export const getAdminSectionFromPath = (
+  pathname: string,
+  basePath: string,
+): AdminSection => {
+  if (pathname === basePath || pathname === `${basePath}/`) {
+    return "overview";
+  }
+
+  const segment = pathname.slice(basePath.length + 1).split("/")[0];
+  return adminSections.has(segment as AdminSection)
+    ? (segment as AdminSection)
+    : "overview";
+};
 
 export function AdminSidebar({
   activeSection,
   onSelectSection,
 }: {
-  activeSection: string;
-  onSelectSection: (section: string) => void;
+  activeSection: AdminSection | "settings";
+  onSelectSection: (section: AdminSection) => void;
 }) {
   const navigate = useNavigate();
   const { logout } = useAuth();

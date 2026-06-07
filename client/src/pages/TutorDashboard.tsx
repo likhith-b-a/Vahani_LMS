@@ -19,11 +19,8 @@ import {
   CircleHelp,
   Mail,
   MessageSquareText,
-  Pin,
-  PinOff,
   Plus,
   RefreshCw,
-  Send,
 } from "lucide-react";
 import { createAnnouncement, getAnnouncements, type Announcement } from "@/api/announcements";
 import { sendRoleBasedEmail, type EmailRecipient } from "@/api/emails";
@@ -48,11 +45,7 @@ import {
   type ManagedSubmission,
 } from "@/api/programmeManager";
 import {
-  getSupportQueryDetail,
   getSupportQueries,
-  replyToSupportQuery,
-  updateSupportQueryStatus,
-  type QueryStatus,
   type SupportQuery,
 } from "@/api/queries";
 import {
@@ -64,6 +57,7 @@ import { EmailComposerDialog } from "@/components/dashboard/EmailComposerDialog"
 import { ManagerEvaluationSection } from "@/components/dashboard/manager/ManagerEvaluationSection";
 import { ManagerAnalyticsSection } from "@/components/dashboard/manager/ManagerAnalyticsSection";
 import { ManagerProgrammesSection } from "@/components/dashboard/manager/ManagerProgrammesSection";
+import { ManagerQueriesSection } from "@/components/dashboard/manager/ManagerQueriesSection";
 import type { ManagerProgrammeStatusFilter } from "@/components/dashboard/manager/ManagerProgrammesSection";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -124,21 +118,12 @@ const emptySessionForm = {
   meetingUrl: "",
 };
 
-const queryStatusLabels: Record<QueryStatus, string> = {
-  open: "Open",
-  in_progress: "In Progress",
-  resolved: "Resolved",
-  closed: "Closed",
-};
-
 const calendarWeekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const managerCalendarEventStyles = {
   assignment: "bg-[#f97316]",
   interactive_session: "bg-[#2563eb]",
 } as const;
-
-type QueryTimeRangeFilter = "all" | "7d" | "30d" | "90d";
 
 const formatDate = (value?: string | null) =>
   value
@@ -233,31 +218,6 @@ const matchesDateRange = (
   return true;
 };
 
-const isWithinTimeRange = (
-  value: string | null | undefined,
-  timeRange: QueryTimeRangeFilter,
-) => {
-  if (timeRange === "all") {
-    return true;
-  }
-  if (!value) {
-    return false;
-  }
-
-  const target = new Date(value).getTime();
-  if (Number.isNaN(target)) {
-    return false;
-  }
-
-  const dayMap: Record<Exclude<QueryTimeRangeFilter, "all">, number> = {
-    "7d": 7,
-    "30d": 30,
-    "90d": 90,
-  };
-
-  return Date.now() - target <= dayMap[timeRange] * 24 * 60 * 60 * 1000;
-};
-
 export default function TutorDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -275,8 +235,6 @@ export default function TutorDashboard() {
 
   const [selectedProgrammeId, setSelectedProgrammeId] = useState("");
   const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
-  const [selectedQueryId, setSelectedQueryId] = useState("");
-  const [selectedQueryDetail, setSelectedQueryDetail] = useState<SupportQuery | null>(null);
 
   const [programmeSearch, setProgrammeSearch] = useState("");
   const [programmeDateFrom, setProgrammeDateFrom] = useState("");
@@ -287,21 +245,12 @@ export default function TutorDashboard() {
   const [announcementDateFrom, setAnnouncementDateFrom] = useState("");
   const [announcementDateTo, setAnnouncementDateTo] = useState("");
   const [reportProgrammeId, setReportProgrammeId] = useState("");
-  const [querySearch, setQuerySearch] = useState("");
-  const [queryStatusFilter, setQueryStatusFilter] = useState<"all" | QueryStatus>("all");
-  const [queryBatchFilter, setQueryBatchFilter] = useState("all");
-  const [queryTimeRangeFilter, setQueryTimeRangeFilter] =
-    useState<QueryTimeRangeFilter>("all");
   const [studentSearch, setStudentSearch] = useState("");
   const [evaluationSearch, setEvaluationSearch] = useState("");
   const [evaluationFilter, setEvaluationFilter] = useState("all");
 
   const [submissions, setSubmissions] = useState<ManagedSubmission[]>([]);
   const [scoreDrafts, setScoreDrafts] = useState<Record<string, string>>({});
-  const [queryReplyDraft, setQueryReplyDraft] = useState("");
-  const [queryStatusDraft, setQueryStatusDraft] = useState<QueryStatus>("open");
-  const [pinnedQueryIds, setPinnedQueryIds] = useState<string[]>([]);
-  const [isQueryListCollapsed, setIsQueryListCollapsed] = useState(false);
 
   const [studentDetailId, setStudentDetailId] = useState<string | null>(null);
   const [showAssignmentDialog, setShowAssignmentDialog] = useState(false);
@@ -341,23 +290,6 @@ export default function TutorDashboard() {
   const [overviewVisibleMonth, setOverviewVisibleMonth] = useState(() =>
     startOfMonth(new Date()),
   );
-
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem("manager:pinnedQueries");
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        setPinnedQueryIds(parsed.filter((value): value is string => typeof value === "string"));
-      }
-    } catch {
-      setPinnedQueryIds([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem("manager:pinnedQueries", JSON.stringify(pinnedQueryIds));
-  }, [pinnedQueryIds]);
 
   const loadSelectedProgramme = useCallback(
     async (programmeId: string) => {
@@ -434,15 +366,13 @@ export default function TutorDashboard() {
   }, [toast]);
 
   const loadQueries = useCallback(
-    async (preferredQueryId?: string) => {
+    async (_preferredQueryId?: string) => {
       try {
         const response = await getSupportQueries();
         const nextQueries = Array.isArray(response?.data?.queries)
           ? (response.data.queries as SupportQuery[])
           : [];
         setQueries(nextQueries);
-        setSelectedQueryDetail(null);
-        setSelectedQueryId((current) => preferredQueryId || current || nextQueries[0]?.id || "");
       } catch (error) {
         toast({
           title: "Unable to load scholar queries",
@@ -514,24 +444,6 @@ export default function TutorDashboard() {
   }, [activeSection, loadQueries]);
 
   useEffect(() => {
-    const loadQueryDetail = async () => {
-      if (activeSection !== "queries" || !selectedQueryId) {
-        setSelectedQueryDetail(null);
-        return;
-      }
-
-      try {
-        const response = await getSupportQueryDetail(selectedQueryId);
-        setSelectedQueryDetail((response?.data?.query as SupportQuery) || null);
-      } catch {
-        setSelectedQueryDetail(null);
-      }
-    };
-
-    void loadQueryDetail();
-  }, [activeSection, selectedQueryId]);
-
-  useEffect(() => {
     void loadSelectedProgramme(selectedProgrammeId);
   }, [loadSelectedProgramme, selectedProgrammeId]);
 
@@ -556,10 +468,6 @@ export default function TutorDashboard() {
     () => selectedProgramme?.interactiveSessions || [],
     [selectedProgramme],
   );
-  const selectedQuery =
-    selectedQueryDetail ||
-    queries.find((query) => query.id === selectedQueryId) ||
-    null;
   const selectedAttendanceSession = useMemo(
     () =>
       selectedProgramme?.interactiveSessions.find(
@@ -789,49 +697,6 @@ export default function TutorDashboard() {
     [announcementDateFrom, announcementDateTo, announcementSearch, announcements],
   );
 
-  const queryBatches = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          queries
-            .map((query) => query.author.batch)
-            .filter((value): value is string => Boolean(value)),
-        ),
-      ),
-    [queries],
-  );
-
-  const filteredQueries = useMemo(() => {
-    const filtered = queries.filter((query) => {
-      const matchesSearch = `${query.subject} ${query.message} ${query.author.name} ${query.author.email} ${query.programme?.title || ""}`
-        .toLowerCase()
-        .includes(querySearch.toLowerCase());
-      const matchesStatus =
-        queryStatusFilter === "all" || query.status === queryStatusFilter;
-      const matchesBatch =
-        queryBatchFilter === "all" || query.author.batch === queryBatchFilter;
-      const matchesTimeRange = isWithinTimeRange(
-        query.updatedAt || query.createdAt,
-        queryTimeRangeFilter,
-      );
-      return matchesSearch && matchesStatus && matchesBatch && matchesTimeRange;
-    });
-
-    return [...filtered].sort((left, right) => {
-      const leftPinned = pinnedQueryIds.includes(left.id);
-      const rightPinned = pinnedQueryIds.includes(right.id);
-      if (leftPinned !== rightPinned) return leftPinned ? -1 : 1;
-      return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
-    });
-  }, [
-    pinnedQueryIds,
-    queries,
-    queryBatchFilter,
-    querySearch,
-    queryStatusFilter,
-    queryTimeRangeFilter,
-  ]);
-
   const visibleStudents = selectedProgramme
     ? selectedProgramme.enrollments.filter((enrollment) =>
         `${enrollment.user.name} ${enrollment.user.email} ${enrollment.user.batch || ""} ${enrollment.trackGroup || ""}`
@@ -1019,12 +884,6 @@ export default function TutorDashboard() {
   }, [selectedEvaluationSession]);
 
   useEffect(() => {
-    if (selectedQuery) {
-      setQueryStatusDraft(selectedQuery.status);
-    }
-  }, [selectedQuery]);
-
-  useEffect(() => {
     if (selectedAssignmentType === "assignment") {
       void loadSubmissions(selectedProgrammeId, selectedAssignmentKey);
       return;
@@ -1171,14 +1030,6 @@ export default function TutorDashboard() {
     } finally {
       setSendingEmail(false);
     }
-  };
-
-  const togglePinnedQuery = (queryId: string) => {
-    setPinnedQueryIds((current) =>
-      current.includes(queryId)
-        ? current.filter((id) => id !== queryId)
-        : [queryId, ...current],
-    );
   };
 
   const handleCreateAssignment = async () => {
@@ -1564,52 +1415,6 @@ export default function TutorDashboard() {
       });
     } finally {
       setBulkEvaluationProcessing(false);
-    }
-  };
-
-  const handleReplyToQuery = async () => {
-    if (!selectedQuery || !queryReplyDraft.trim()) {
-      toast({
-        title: "Reply required",
-        description: "Type a response before sending.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      await replyToSupportQuery(selectedQuery.id, queryReplyDraft.trim());
-      setQueryReplyDraft("");
-      await loadQueries(selectedQuery.id);
-      toast({
-        title: "Reply sent",
-        description: "The scholar can now see your response.",
-      });
-    } catch (error) {
-      toast({
-        title: "Unable to send reply",
-        description: error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleUpdateQueryStatus = async () => {
-    if (!selectedQuery) return;
-
-    try {
-      await updateSupportQueryStatus(selectedQuery.id, queryStatusDraft);
-      await loadQueries(selectedQuery.id);
-      toast({
-        title: "Query updated",
-        description: "The thread status has been updated.",
-      });
-    } catch (error) {
-      toast({
-        title: "Unable to update query",
-        description: error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
-      });
     }
   };
 
@@ -2262,291 +2067,7 @@ export default function TutorDashboard() {
             )}
 
             {activeSection === "queries" && (
-              <>
-              <Card>
-                <CardHeader className="gap-4">
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <CardTitle className="flex items-center gap-2">
-                      <MessageSquareText className="h-4 w-4 text-vahani-blue" />
-                      Query Filters
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      {filteredQueries.length} of {queries.length} queries shown
-                    </p>
-                  </div>
-                  <div className="grid gap-3 lg:grid-cols-[minmax(0,1.5fr),repeat(3,minmax(0,1fr))]">
-                    <div className="relative">
-                      <Input
-                        value={querySearch}
-                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                          setQuerySearch(event.target.value)
-                        }
-                        placeholder="Search by subject, scholar, programme, or content"
-                        className="pl-4"
-                      />
-                    </div>
-                    <select
-                      className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                      value={queryBatchFilter}
-                      onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                        setQueryBatchFilter(event.target.value)
-                      }
-                    >
-                      <option value="all">All batches</option>
-                      {queryBatches.map((batch) => (
-                        <option key={batch} value={batch}>
-                          {batch}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                      value={queryTimeRangeFilter}
-                      onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                        setQueryTimeRangeFilter(
-                          event.target.value as QueryTimeRangeFilter,
-                        )
-                      }
-                    >
-                      <option value="all">All time</option>
-                      <option value="7d">Last 7 days</option>
-                      <option value="30d">Last 30 days</option>
-                      <option value="90d">Last 90 days</option>
-                    </select>
-                    <select
-                      className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                      value={queryStatusFilter}
-                      onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                        setQueryStatusFilter(
-                          event.target.value as "all" | QueryStatus,
-                        )
-                      }
-                    >
-                      <option value="all">Any status</option>
-                      <option value="open">Open</option>
-                      <option value="in_progress">In Progress</option>
-                      <option value="resolved">Resolved</option>
-                      <option value="closed">Closed</option>
-                    </select>
-                  </div>
-                </CardHeader>
-              </Card>
-
-              <div
-                className={`grid gap-6 ${
-                  isQueryListCollapsed ? "grid-cols-1" : "lg:grid-cols-[380px,1fr]"
-                }`}
-              >
-                {!isQueryListCollapsed && (
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between gap-3">
-                      <CardTitle>Scholar queries</CardTitle>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setIsQueryListCollapsed(true)}
-                      >
-                        Collapse list
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-3">
-                      {filteredQueries.length === 0 && (
-                        <p className="text-sm text-muted-foreground">
-                          No queries match the current filters.
-                        </p>
-                      )}
-                      {filteredQueries.map((query) => {
-                        const isPinned = pinnedQueryIds.includes(query.id);
-                        return (
-                          <button
-                            key={query.id}
-                            type="button"
-                            onClick={() => setSelectedQueryId(query.id)}
-                            className={`w-full rounded-xl border p-4 text-left transition ${
-                              selectedQuery?.id === query.id
-                                ? "border-vahani-blue bg-vahani-blue/5"
-                                : "border-border hover:bg-muted/30"
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="font-semibold text-foreground">
-                                  {query.subject}
-                                </p>
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                  {query.author.name}
-                                  {query.author.batch
-                                    ? ` - ${query.author.batch}`
-                                    : ""}
-                                </p>
-                              </div>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  togglePinnedQuery(query.id);
-                                }}
-                              >
-                                {isPinned ? (
-                                  <>
-                                    <PinOff className="mr-2 h-4 w-4" />
-                                    Unpin
-                                  </>
-                                ) : (
-                                  <>
-                                    <Pin className="mr-2 h-4 w-4" />
-                                    Pin
-                                  </>
-                                )}
-                              </Button>
-                            </div>
-                            <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                              <Badge variant="outline">
-                                {queryStatusLabels[query.status]}
-                              </Badge>
-                              {query.programme?.title && (
-                                <Badge variant="secondary">
-                                  {query.programme.title}
-                                </Badge>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
-                )}
-
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between gap-3">
-                      <CardTitle>Query thread</CardTitle>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          setIsQueryListCollapsed((current) => !current)
-                        }
-                      >
-                        {isQueryListCollapsed ? "Show query list" : "Hide query list"}
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {!selectedQuery && (
-                      <p className="text-sm text-muted-foreground">
-                        Select a query to open the scholar conversation.
-                      </p>
-                    )}
-
-                    {selectedQuery && (
-                      <>
-                        <div className="rounded-xl border border-border p-4">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-lg font-semibold text-foreground">
-                              {selectedQuery.subject}
-                            </p>
-                            <Badge variant="secondary">
-                              {queryStatusLabels[selectedQuery.status]}
-                            </Badge>
-                            {selectedQuery.programme?.title && (
-                              <Badge variant="outline">
-                                {selectedQuery.programme.title}
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="mt-2 text-sm text-muted-foreground">
-                            From {selectedQuery.author.name} (
-                            {selectedQuery.author.email})
-                          </p>
-                        </div>
-
-                        <div className="space-y-3">
-                          {(selectedQueryDetail?.messages || []).map((message) => (
-                            <div
-                              key={message.id}
-                              className="rounded-xl border p-4"
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-sm font-semibold text-foreground">
-                                  {message.author.id === user?.id
-                                    ? "You"
-                                    : message.author.name}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {formatDateTime(message.createdAt)}
-                                </p>
-                              </div>
-                              <p className="mt-2 text-sm leading-6 text-foreground/90">
-                                {message.message}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-[220px,1fr]">
-                          <div className="space-y-2">
-                            <Label>Status</Label>
-                            <select
-                              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                              value={queryStatusDraft}
-                              onChange={(
-                                event: ChangeEvent<HTMLSelectElement>,
-                              ) =>
-                                setQueryStatusDraft(
-                                  event.target.value as QueryStatus,
-                                )
-                              }
-                            >
-                              <option value="open">Open</option>
-                              <option value="in_progress">In Progress</option>
-                              <option value="resolved">Resolved</option>
-                              <option value="closed">Closed</option>
-                            </select>
-                            <Button
-                              variant="outline"
-                              className="w-full"
-                              onClick={() => void handleUpdateQueryStatus()}
-                            >
-                              Update status
-                            </Button>
-                          </div>
-
-                          <div className="space-y-3 rounded-xl border border-border p-4">
-                            <div className="flex items-center gap-2">
-                              <CircleHelp className="h-4 w-4 text-vahani-blue" />
-                              <p className="text-sm font-semibold text-foreground">
-                                Reply
-                              </p>
-                            </div>
-                            <Textarea
-                              rows={4}
-                              value={queryReplyDraft}
-                              onChange={(
-                                event: ChangeEvent<HTMLTextAreaElement>,
-                              ) => setQueryReplyDraft(event.target.value)}
-                              placeholder="Reply to the scholar or ask for more details."
-                            />
-                            <Button onClick={() => void handleReplyToQuery()}>
-                              <Send className="mr-2 h-4 w-4" />
-                              Send reply
-                            </Button>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-              </>
+              <ManagerQueriesSection queries={queries} reloadQueries={loadQueries} />
             )}
 
             {activeSection === "students" && (
