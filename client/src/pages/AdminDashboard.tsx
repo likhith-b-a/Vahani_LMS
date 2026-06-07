@@ -47,13 +47,7 @@ import {
 import { sendRoleBasedEmail, type EmailRecipient } from "@/api/emails";
 import {
   createAnnouncement,
-  getAnnouncements,
-  type Announcement,
 } from "@/api/announcements";
-import {
-  getSupportQueries,
-  type SupportQuery,
-} from "@/api/queries";
 import {
   type AdminSection,
   getAdminSectionFromPath,
@@ -61,6 +55,7 @@ import {
   AdminSidebar,
 } from "@/components/dashboard/AdminSidebar";
 import { AdminAnalyticsSection } from "@/components/dashboard/admin/AdminAnalyticsSection";
+import { AdminAnnouncementsSection } from "@/components/dashboard/admin/AdminAnnouncementsSection";
 import { AdminQueriesSection } from "@/components/dashboard/admin/AdminQueriesSection";
 import { AdminUsersSection } from "@/components/dashboard/admin/AdminUsersSection";
 import {
@@ -109,6 +104,14 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  AnnouncementsProvider,
+  useAnnouncements,
+} from "@/contexts/AnnouncementsContext";
+import {
+  SupportQueriesProvider,
+  useSupportQueries,
+} from "@/contexts/SupportQueriesContext";
 import { useToast } from "@/hooks/use-toast";
 import { downloadCsvReport, exportReportAsPdf, getReportHeaders } from "@/lib/reportExport";
 import { matchesSelfEnrollmentScholarRules } from "@/lib/selfEnrollmentEligibility";
@@ -219,8 +222,20 @@ const roleLabel = (role: AdminUserRole) =>
       : "Scholar";
 
 export default function AdminDashboard() {
+  return (
+    <SupportQueriesProvider loadErrorTitle="Unable to load support queries">
+      <AnnouncementsProvider loadErrorTitle="Unable to load announcements">
+        <AdminDashboardPage />
+      </AnnouncementsProvider>
+    </SupportQueriesProvider>
+  );
+}
+
+function AdminDashboardPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { openQueryCount } = useSupportQueries();
+  const { announcementCount, reloadAnnouncements } = useAnnouncements();
   const navigate = useNavigate();
   const location = useLocation();
   const adminBasePath = "/admin";
@@ -229,8 +244,6 @@ export default function AdminDashboard() {
   const [summary, setSummary] = useState<AdminSummary | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [programmes, setProgrammes] = useState<AdminProgramme[]>([]);
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [queries, setQueries] = useState<SupportQuery[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [userSearch, setUserSearch] = useState("");
@@ -263,9 +276,6 @@ export default function AdminDashboard() {
     useState<AdminProgramme | null>(null);
   const [pendingDeleteAssignmentId, setPendingDeleteAssignmentId] = useState<string | null>(null);
 
-  const [announcementSearch, setAnnouncementSearch] = useState("");
-  const [announcementDateFrom, setAnnouncementDateFrom] = useState("");
-  const [announcementDateTo, setAnnouncementDateTo] = useState("");
   const [announcementForm, setAnnouncementForm] = useState(emptyAnnouncementForm);
   const [isAnnouncementDialogOpen, setIsAnnouncementDialogOpen] = useState(false);
 
@@ -344,38 +354,6 @@ export default function AdminDashboard() {
     }
   }, [toast]);
 
-  const loadAnnouncements = useCallback(async () => {
-    try {
-      const response = await getAnnouncements();
-      const nextAnnouncements = Array.isArray(response?.data?.announcements)
-        ? (response.data.announcements as Announcement[])
-        : [];
-      setAnnouncements(nextAnnouncements);
-    } catch (error) {
-      toast({
-        title: "Unable to load announcements",
-        description: error instanceof Error ? error.message : "Please try again shortly.",
-        variant: "destructive",
-      });
-    }
-  }, [toast]);
-
-  const loadQueries = useCallback(async (_preferredQueryId?: string) => {
-    try {
-      const response = await getSupportQueries();
-      const nextQueries = Array.isArray(response?.data?.queries)
-        ? (response.data.queries as SupportQuery[])
-        : [];
-      setQueries(nextQueries);
-    } catch (error) {
-      toast({
-        title: "Unable to load support queries",
-        description: error instanceof Error ? error.message : "Please try again shortly.",
-        variant: "destructive",
-      });
-    }
-  }, [toast]);
-
   useEffect(() => {
     void loadSummary();
   }, [loadSummary]);
@@ -393,28 +371,10 @@ export default function AdminDashboard() {
   }, [activeTab, loadProgrammes, loadUsers]);
 
   useEffect(() => {
-    if (activeTab === "announcements") {
-      void loadAnnouncements();
-    }
-    if (activeTab === "analytics") {
-      void loadAnnouncements();
-    }
-  }, [activeTab, loadAnnouncements]);
-
-  useEffect(() => {
     if (activeTab === "settings" && !settingsDraft) {
       void loadSettings();
     }
   }, [activeTab, loadSettings, settingsDraft]);
-
-  useEffect(() => {
-    if (activeTab === "queries") {
-      void loadQueries();
-    }
-    if (activeTab === "analytics") {
-      void loadQueries();
-    }
-  }, [activeTab, loadQueries]);
 
   const scholars = users.filter((entry) => entry.role === "scholar");
   const programmeManagers = users.filter((entry) => entry.role === "programme_manager");
@@ -539,23 +499,7 @@ export default function AdminDashboard() {
     [announcementForm.programmeId, announcementForm.targetBatch, announcementForm.targetRoles, users],
   );
 
-  const filteredAnnouncements = useMemo(
-    () =>
-      announcements.filter((announcement) => {
-        const searchTarget =
-          `${announcement.title} ${announcement.message} ${announcement.programme?.title || ""}`.toLowerCase();
-        const matchesSearch =
-          !announcementSearch.trim() ||
-          searchTarget.includes(announcementSearch.toLowerCase());
-        const matchesTimeline = matchesDateRange(
-          announcement.createdAt,
-          announcementDateFrom,
-          announcementDateTo,
-        );
-        return matchesSearch && matchesTimeline;
-      }),
-    [announcementDateFrom, announcementDateTo, announcementSearch, announcements],
-  );
+
 
   const overviewStats = [
     {
@@ -578,8 +522,8 @@ export default function AdminDashboard() {
     },
     {
       label: "Open queries",
-      value: queries.filter((query) => query.status === "open").length,
-      hint: `${announcements.length} announcements sent`,
+      value: openQueryCount,
+      hint: `${announcementCount} announcements sent`,
       icon: MessageSquareText,
     },
   ];
@@ -966,7 +910,7 @@ export default function AdminDashboard() {
       });
       setAnnouncementForm(emptyAnnouncementForm);
       setIsAnnouncementDialogOpen(false);
-      await loadAnnouncements();
+      await reloadAnnouncements();
       toast({ title: "Announcement sent", description: "Recipients will see it now." });
     } catch (error) {
       toast({
@@ -1132,7 +1076,7 @@ export default function AdminDashboard() {
                         {summary?.stats.programmes ?? overviewProgrammes.length} programmes
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        {queries.filter((query) => query.status === "open").length} open support
+                        {openQueryCount} open support
                         queries
                       </p>
                     </div>
@@ -1413,67 +1357,13 @@ export default function AdminDashboard() {
             </TabsContent>
 
             <TabsContent value="announcements" className="space-y-6">
-              <Card>
-                <CardHeader className="gap-4">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                      <CardTitle>Announcements</CardTitle>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Send filtered announcements and review sent messages by time range.
-                      </p>
-                    </div>
-                    <Button onClick={() => setIsAnnouncementDialogOpen(true)}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Send announcement
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-5">
-                  <div className="grid gap-3 lg:grid-cols-[1.2fr_200px_200px]">
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        value={announcementSearch}
-                        onChange={(event: ChangeEvent<HTMLInputElement>) => setAnnouncementSearch(event.target.value)}
-                        placeholder="Search announcements by title, message, or programme"
-                        className="pl-9"
-                      />
-                    </div>
-                    <Input type="date" value={announcementDateFrom} onChange={(event: ChangeEvent<HTMLInputElement>) => setAnnouncementDateFrom(event.target.value)} />
-                    <Input type="date" value={announcementDateTo} onChange={(event: ChangeEvent<HTMLInputElement>) => setAnnouncementDateTo(event.target.value)} />
-                  </div>
-
-                  <div className="space-y-4">
-                    {filteredAnnouncements.map((announcement) => (
-                      <div key={announcement.id} className="rounded-2xl border border-border p-4">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-semibold text-foreground">{announcement.title}</p>
-                          <Badge variant="outline">{announcement.programme?.title || "General"}</Badge>
-                          <Badge variant="secondary">
-                            {announcement.recipients?.length || announcement.recipientCount || 0} recipients
-                          </Badge>
-                        </div>
-                        <p className="mt-2 text-sm text-muted-foreground">{announcement.message}</p>
-                        <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
-                          <span>{formatDateTime(announcement.createdAt)}</span>
-                          {announcement.targetBatch && <span>Batch {announcement.targetBatch}</span>}
-                          {announcement.targetRoles?.length ? (
-                            <span>Roles: {announcement.targetRoles.join(", ")}</span>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+              <AdminAnnouncementsSection
+                onOpenDialog={() => setIsAnnouncementDialogOpen(true)}
+              />
             </TabsContent>
 
             <TabsContent value="queries" className="space-y-6">
-              <AdminQueriesSection
-                queries={queries}
-                scholarBatches={scholarBatches}
-                reloadQueries={loadQueries}
-              />
+              <AdminQueriesSection scholarBatches={scholarBatches} />
             </TabsContent>
 
             <TabsContent value="reports" className="space-y-6">

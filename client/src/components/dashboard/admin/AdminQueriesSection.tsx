@@ -1,20 +1,12 @@
-import type { SupportQuery } from "@/api/queries";
 import { QueriesSectionContainer } from "@/components/dashboard/shared/QueriesSectionContainer";
 
 interface AdminQueriesSectionProps {
-  queries: SupportQuery[];
-  scholarBatches: string[];
-  reloadQueries: (preferredQueryId?: string) => Promise<void>;
+  scholarBatches?: string[];
 }
 
-export function AdminQueriesSection({
-  queries,
-  scholarBatches,
-  reloadQueries,
-}: AdminQueriesSectionProps) {
+export function AdminQueriesSection({ scholarBatches }: AdminQueriesSectionProps) {
   return (
     <QueriesSectionContainer
-      queries={queries}
       batchOptions={scholarBatches}
       listTitle="Admin queries"
       emptyListMessage="No queries match the current filters."
@@ -23,7 +15,6 @@ export function AdminQueriesSection({
       pinnedStorageKey="admin:pinnedQueries"
       replyErrorTitle="Unable to reply"
       updateErrorTitle="Unable to update query"
-      reloadQueries={reloadQueries}
     />
   );
 }

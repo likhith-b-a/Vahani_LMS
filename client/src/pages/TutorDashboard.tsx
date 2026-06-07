@@ -22,7 +22,7 @@ import {
   Plus,
   RefreshCw,
 } from "lucide-react";
-import { createAnnouncement, getAnnouncements, type Announcement } from "@/api/announcements";
+import { createAnnouncement } from "@/api/announcements";
 import { sendRoleBasedEmail, type EmailRecipient } from "@/api/emails";
 import {
   addProgrammeMeetingLink,
@@ -45,10 +45,6 @@ import {
   type ManagedSubmission,
 } from "@/api/programmeManager";
 import {
-  getSupportQueries,
-  type SupportQuery,
-} from "@/api/queries";
-import {
   getManagerSectionFromPath,
   getManagerSectionRoute,
   ManagerSidebar,
@@ -56,6 +52,7 @@ import {
 import { EmailComposerDialog } from "@/components/dashboard/EmailComposerDialog";
 import { ManagerEvaluationSection } from "@/components/dashboard/manager/ManagerEvaluationSection";
 import { ManagerAnalyticsSection } from "@/components/dashboard/manager/ManagerAnalyticsSection";
+import { ManagerAnnouncementsSection } from "@/components/dashboard/manager/ManagerAnnouncementsSection";
 import { ManagerProgrammesSection } from "@/components/dashboard/manager/ManagerProgrammesSection";
 import { ManagerQueriesSection } from "@/components/dashboard/manager/ManagerQueriesSection";
 import type { ManagerProgrammeStatusFilter } from "@/components/dashboard/manager/ManagerProgrammesSection";
@@ -76,6 +73,14 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  AnnouncementsProvider,
+  useAnnouncements,
+} from "@/contexts/AnnouncementsContext";
+import {
+  SupportQueriesProvider,
+  useSupportQueries,
+} from "@/contexts/SupportQueriesContext";
 import { useToast } from "@/hooks/use-toast";
 import { downloadCsvReport, exportReportAsPdf, getReportHeaders } from "@/lib/reportExport";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -219,8 +224,20 @@ const matchesDateRange = (
 };
 
 export default function TutorDashboard() {
+  return (
+    <SupportQueriesProvider loadErrorTitle="Unable to load scholar queries">
+      <AnnouncementsProvider loadErrorTitle="Unable to load announcements">
+        <TutorDashboardPage />
+      </AnnouncementsProvider>
+    </SupportQueriesProvider>
+  );
+}
+
+function TutorDashboardPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { activeQueryCount } = useSupportQueries();
+  const { announcementCount, reloadAnnouncements } = useAnnouncements();
   const navigate = useNavigate();
   const location = useLocation();
   const dashboardBasePath = location.pathname.startsWith("/tutor")
@@ -230,8 +247,6 @@ export default function TutorDashboard() {
   const [loading, setLoading] = useState(true);
   const [programmes, setProgrammes] = useState<ManagedProgrammeSummary[]>([]);
   const [selectedProgramme, setSelectedProgramme] = useState<ManagedProgramme | null>(null);
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [queries, setQueries] = useState<SupportQuery[]>([]);
 
   const [selectedProgrammeId, setSelectedProgrammeId] = useState("");
   const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
@@ -241,9 +256,6 @@ export default function TutorDashboard() {
   const [programmeDateTo, setProgrammeDateTo] = useState("");
   const [programmeStatusFilter, setProgrammeStatusFilter] =
     useState<ManagerProgrammeStatusFilter>("all");
-  const [announcementSearch, setAnnouncementSearch] = useState("");
-  const [announcementDateFrom, setAnnouncementDateFrom] = useState("");
-  const [announcementDateTo, setAnnouncementDateTo] = useState("");
   const [reportProgrammeId, setReportProgrammeId] = useState("");
   const [studentSearch, setStudentSearch] = useState("");
   const [evaluationSearch, setEvaluationSearch] = useState("");
@@ -349,41 +361,6 @@ export default function TutorDashboard() {
     [loadSelectedProgramme, selectedProgrammeId, toast],
   );
 
-  const loadAnnouncements = useCallback(async () => {
-    try {
-      const response = await getAnnouncements();
-      const nextAnnouncements = Array.isArray(response?.data?.announcements)
-        ? (response.data.announcements as Announcement[])
-        : [];
-      setAnnouncements(nextAnnouncements);
-    } catch (error) {
-      toast({
-        title: "Unable to load announcements",
-        description: error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
-      });
-    }
-  }, [toast]);
-
-  const loadQueries = useCallback(
-    async (_preferredQueryId?: string) => {
-      try {
-        const response = await getSupportQueries();
-        const nextQueries = Array.isArray(response?.data?.queries)
-          ? (response.data.queries as SupportQuery[])
-          : [];
-        setQueries(nextQueries);
-      } catch (error) {
-        toast({
-          title: "Unable to load scholar queries",
-          description: error instanceof Error ? error.message : "Please try again.",
-          variant: "destructive",
-        });
-      }
-    },
-    [toast],
-  );
-
   const loadSubmissions = useCallback(
     async (programmeId: string, assignmentId: string) => {
       if (!programmeId || !assignmentId) {
@@ -424,24 +401,6 @@ export default function TutorDashboard() {
   useEffect(() => {
     void loadProgrammes();
   }, [loadProgrammes]);
-
-  useEffect(() => {
-    if (activeSection === "announcements") {
-      void loadAnnouncements();
-    }
-    if (activeSection === "analytics") {
-      void loadAnnouncements();
-    }
-  }, [activeSection, loadAnnouncements]);
-
-  useEffect(() => {
-    if (activeSection === "queries") {
-      void loadQueries();
-    }
-    if (activeSection === "analytics") {
-      void loadQueries();
-    }
-  }, [activeSection, loadQueries]);
 
   useEffect(() => {
     void loadSelectedProgramme(selectedProgrammeId);
@@ -679,23 +638,6 @@ export default function TutorDashboard() {
     ],
   );
 
-  const filteredAnnouncements = useMemo(
-    () =>
-      announcements.filter((announcement) => {
-        const matchesSearch = `${announcement.title} ${announcement.message} ${announcement.programme?.title || ""}`
-          .toLowerCase()
-          .includes(announcementSearch.toLowerCase());
-        return (
-          matchesSearch &&
-          matchesDateRange(
-            announcement.createdAt,
-            announcementDateFrom,
-            announcementDateTo,
-          )
-        );
-      }),
-    [announcementDateFrom, announcementDateTo, announcementSearch, announcements],
-  );
 
   const visibleStudents = selectedProgramme
     ? selectedProgramme.enrollments.filter((enrollment) =>
@@ -1183,7 +1125,7 @@ export default function TutorDashboard() {
       });
       setAnnouncementForm(emptyAnnouncementForm);
       setShowAnnouncementDialog(false);
-      await loadAnnouncements();
+      await reloadAnnouncements();
       toast({
         title: "Announcement sent",
         description: "The selected programme scholars will receive it in their dashboard.",
@@ -1508,17 +1450,13 @@ export default function TutorDashboard() {
                     },
                     {
                       label: "Announcements",
-                      value: announcements.length,
+                      value: announcementCount,
                       hint: "Messages shared with scholars",
                       icon: MessageSquareText,
                     },
                     {
                       label: "Open queries",
-                      value: queries.filter(
-                        (query) =>
-                          query.status !== "closed" &&
-                          query.status !== "resolved",
-                      ).length,
+                      value: activeQueryCount,
                       hint: "Threads that still need attention",
                       icon: CircleHelp,
                     },
@@ -1773,77 +1711,9 @@ export default function TutorDashboard() {
             )}
 
             {activeSection === "announcements" && (
-              <Card>
-                <CardHeader className="gap-4">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                      <CardTitle>Announcements</CardTitle>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Send programme updates through a dialog and review the
-                        history.
-                      </p>
-                    </div>
-                    <Button onClick={() => setShowAnnouncementDialog(true)}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Send announcement
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-5">
-                  <div className="grid gap-3 lg:grid-cols-[1fr_180px_180px]">
-                    <Input
-                      value={announcementSearch}
-                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                        setAnnouncementSearch(event.target.value)
-                      }
-                      placeholder="Search announcements by title, message, or programme"
-                    />
-                    <Input
-                      type="date"
-                      value={announcementDateFrom}
-                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                        setAnnouncementDateFrom(event.target.value)
-                      }
-                    />
-                    <Input
-                      type="date"
-                      value={announcementDateTo}
-                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                        setAnnouncementDateTo(event.target.value)
-                      }
-                    />
-                  </div>
-
-                  <div className="space-y-4">
-                    {filteredAnnouncements.length === 0 && (
-                      <p className="text-sm text-muted-foreground">
-                        No announcements match the current filters.
-                      </p>
-                    )}
-                    {filteredAnnouncements.map((announcement) => (
-                      <div
-                        key={announcement.id}
-                        className="rounded-xl border border-border p-4"
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-semibold text-foreground">
-                            {announcement.title}
-                          </p>
-                          <Badge variant="outline">
-                            {announcement.programme?.title || "General"}
-                          </Badge>
-                        </div>
-                        <p className="mt-2 text-sm text-muted-foreground">
-                          {announcement.message}
-                        </p>
-                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                          <span>{formatDateTime(announcement.createdAt)}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+              <ManagerAnnouncementsSection
+                onOpenDialog={() => setShowAnnouncementDialog(true)}
+              />
             )}
             {activeSection === "evaluation" && (
               <ManagerEvaluationSection
@@ -2066,9 +1936,7 @@ export default function TutorDashboard() {
               </Card>
             )}
 
-            {activeSection === "queries" && (
-              <ManagerQueriesSection queries={queries} reloadQueries={loadQueries} />
-            )}
+            {activeSection === "queries" && <ManagerQueriesSection />}
 
             {activeSection === "students" && (
               <Card>

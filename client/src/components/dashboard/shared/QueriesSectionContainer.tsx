@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { MessageSquareText, Pin, PinOff, Search, Send } from "lucide-react";
+import { Loader2, MessageSquareText, Pin, PinOff, Search, Send } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSupportQueries } from "@/contexts/SupportQueriesContext";
 import { useToast } from "@/hooks/use-toast";
 import {
   getSupportQueryDetail,
@@ -27,8 +28,8 @@ import { Textarea } from "@/components/ui/textarea";
 type QueryTimeRangeFilter = "all" | "7d" | "30d" | "90d";
 
 interface QueriesSectionContainerProps {
-  queries: SupportQuery[];
-  batchOptions: string[];
+  batchOptions?: string[];
+  deriveBatchOptionsFromQueries?: boolean;
   listTitle: string;
   emptyListMessage: string;
   emptyThreadMessage: string;
@@ -42,7 +43,6 @@ interface QueriesSectionContainerProps {
   updateSuccessTitle?: string;
   updateSuccessDescription?: string;
   updateErrorTitle: string;
-  reloadQueries: (preferredQueryId?: string) => Promise<void>;
 }
 
 const queryStatusLabels: Record<QueryStatus, string> = {
@@ -89,8 +89,8 @@ const isWithinTimeRange = (
 };
 
 export function QueriesSectionContainer({
-  queries,
-  batchOptions,
+  batchOptions = [],
+  deriveBatchOptionsFromQueries = false,
   listTitle,
   emptyListMessage,
   emptyThreadMessage,
@@ -104,10 +104,10 @@ export function QueriesSectionContainer({
   updateSuccessTitle,
   updateSuccessDescription,
   updateErrorTitle,
-  reloadQueries,
 }: QueriesSectionContainerProps) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { queries, loading, reloadQueries } = useSupportQueries();
   const [querySearch, setQuerySearch] = useState("");
   const [queryStatusFilter, setQueryStatusFilter] = useState<"all" | QueryStatus>("all");
   const [queryBatchFilter, setQueryBatchFilter] = useState("all");
@@ -119,6 +119,28 @@ export function QueriesSectionContainer({
   const [queryStatusDraft, setQueryStatusDraft] = useState<QueryStatus>("open");
   const [pinnedQueryIds, setPinnedQueryIds] = useState<string[]>([]);
   const [isQueryListCollapsed, setIsQueryListCollapsed] = useState(false);
+
+  const resolvedBatchOptions = useMemo(() => {
+    if (deriveBatchOptionsFromQueries) {
+      return Array.from(
+        new Set(
+          queries
+            .map((query) => query.author.batch)
+            .filter((value): value is string => Boolean(value)),
+        ),
+      );
+    }
+    return batchOptions;
+  }, [batchOptions, deriveBatchOptionsFromQueries, queries]);
+
+  const refreshSelectedQueryDetail = async (queryId: string) => {
+    try {
+      const response = await getSupportQueryDetail(queryId);
+      setSelectedQueryDetail((response?.data?.query as SupportQuery) || null);
+    } catch {
+      setSelectedQueryDetail(null);
+    }
+  };
 
   useEffect(() => {
     try {
@@ -235,6 +257,7 @@ export function QueriesSectionContainer({
       await replyToSupportQuery(selectedQuery.id, queryReplyDraft.trim());
       setQueryReplyDraft("");
       await reloadQueries(selectedQuery.id);
+      await refreshSelectedQueryDetail(selectedQuery.id);
       if (replySuccessTitle) {
         toast({
           title: replySuccessTitle,
@@ -256,6 +279,7 @@ export function QueriesSectionContainer({
     try {
       await updateSupportQueryStatus(selectedQuery.id, queryStatusDraft);
       await reloadQueries(selectedQuery.id);
+      await refreshSelectedQueryDetail(selectedQuery.id);
       if (updateSuccessTitle) {
         toast({
           title: updateSuccessTitle,
@@ -273,6 +297,12 @@ export function QueriesSectionContainer({
 
   return (
     <>
+      {loading && queries.length === 0 && (
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading queries...
+        </p>
+      )}
       <Card>
         <CardHeader className="gap-4">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -300,7 +330,7 @@ export function QueriesSectionContainer({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All batches</SelectItem>
-                {batchOptions.map((batch) => (
+                {resolvedBatchOptions.map((batch) => (
                   <SelectItem key={batch} value={batch}>
                     {batch}
                   </SelectItem>

@@ -1,32 +1,9 @@
-import { useMemo } from "react";
-import type { SupportQuery } from "@/api/queries";
 import { QueriesSectionContainer } from "@/components/dashboard/shared/QueriesSectionContainer";
 
-interface ManagerQueriesSectionProps {
-  queries: SupportQuery[];
-  reloadQueries: (preferredQueryId?: string) => Promise<void>;
-}
-
-export function ManagerQueriesSection({
-  queries,
-  reloadQueries,
-}: ManagerQueriesSectionProps) {
-  const batchOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          queries
-            .map((query) => query.author.batch)
-            .filter((value): value is string => Boolean(value)),
-        ),
-      ),
-    [queries],
-  );
-
+export function ManagerQueriesSection() {
   return (
     <QueriesSectionContainer
-      queries={queries}
-      batchOptions={batchOptions}
+      deriveBatchOptionsFromQueries
       listTitle="Scholar queries"
       emptyListMessage="No queries match the current filters."
       emptyThreadMessage="Select a query to open the scholar conversation."
@@ -40,7 +17,6 @@ export function ManagerQueriesSection({
       updateSuccessTitle="Query updated"
       updateSuccessDescription="The thread status has been updated."
       updateErrorTitle="Unable to update query"
-      reloadQueries={reloadQueries}
     />
   );
 }
