@@ -2,17 +2,13 @@ import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "rea
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
-  BellRing,
-  BookOpen,
   Download,
   Loader2,
-  MessageSquareText,
   Pencil,
   Plus,
   Search,
   Sparkles,
   Trash2,
-  Users,
 } from "lucide-react";
 import vahaniLogo from "@/assets/vahani-logo.png";
 import {
@@ -46,9 +42,6 @@ import {
 } from "@/api/wishlist";
 import { sendRoleBasedEmail, type EmailRecipient } from "@/api/emails";
 import {
-  createAnnouncement,
-} from "@/api/announcements";
-import {
   type AdminSection,
   getAdminSectionFromPath,
   getAdminSectionRoute,
@@ -56,6 +49,7 @@ import {
 } from "@/components/dashboard/AdminSidebar";
 import { AdminAnalyticsSection } from "@/components/dashboard/admin/AdminAnalyticsSection";
 import { AdminAnnouncementsSection } from "@/components/dashboard/admin/AdminAnnouncementsSection";
+import { AdminOverviewSection } from "@/components/dashboard/admin/AdminOverviewSection";
 import { AdminQueriesSection } from "@/components/dashboard/admin/AdminQueriesSection";
 import { AdminUsersSection } from "@/components/dashboard/admin/AdminUsersSection";
 import {
@@ -104,14 +98,8 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  AnnouncementsProvider,
-  useAnnouncements,
-} from "@/contexts/AnnouncementsContext";
-import {
-  SupportQueriesProvider,
-  useSupportQueries,
-} from "@/contexts/SupportQueriesContext";
+import { AnnouncementsProvider } from "@/contexts/AnnouncementsContext";
+import { SupportQueriesProvider } from "@/contexts/SupportQueriesContext";
 import { useToast } from "@/hooks/use-toast";
 import { downloadCsvReport, exportReportAsPdf, getReportHeaders } from "@/lib/reportExport";
 import { matchesSelfEnrollmentScholarRules } from "@/lib/selfEnrollmentEligibility";
@@ -142,15 +130,6 @@ const emptyProgrammeForm = {
   selfEnrollmentAllowedGenders: [] as string[],
   spotlightTitle: "",
   spotlightMessage: "",
-};
-
-const emptyAnnouncementForm = {
-  title: "",
-  message: "",
-  programmeId: "",
-  targetBatch: "",
-  targetRoles: ["scholar"] as string[],
-  userIds: [] as string[],
 };
 
 type ProgrammeStatusFilter = "all" | "setup" | "active" | "completed";
@@ -214,13 +193,6 @@ const matchesDateRange = (value: string | null | undefined, from: string, to: st
   return true;
 };
 
-const roleLabel = (role: AdminUserRole) =>
-  role === "programme_manager"
-    ? "Programme manager"
-    : role === "admin"
-      ? "Admin"
-      : "Scholar";
-
 export default function AdminDashboard() {
   return (
     <SupportQueriesProvider loadErrorTitle="Unable to load support queries">
@@ -234,8 +206,6 @@ export default function AdminDashboard() {
 function AdminDashboardPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { openQueryCount } = useSupportQueries();
-  const { announcementCount, reloadAnnouncements } = useAnnouncements();
   const navigate = useNavigate();
   const location = useLocation();
   const adminBasePath = "/admin";
@@ -275,9 +245,6 @@ function AdminDashboardPage() {
   const [pendingDeleteProgramme, setPendingDeleteProgramme] =
     useState<AdminProgramme | null>(null);
   const [pendingDeleteAssignmentId, setPendingDeleteAssignmentId] = useState<string | null>(null);
-
-  const [announcementForm, setAnnouncementForm] = useState(emptyAnnouncementForm);
-  const [isAnnouncementDialogOpen, setIsAnnouncementDialogOpen] = useState(false);
 
   const [reportType, setReportType] =
     useState<keyof typeof reportLabels>("scholar");
@@ -368,6 +335,9 @@ function AdminDashboardPage() {
     if (activeTab === "analytics") {
       void Promise.all([loadUsers(), loadProgrammes()]);
     }
+    if (activeTab === "announcements") {
+      void Promise.all([loadUsers(), loadProgrammes()]);
+    }
   }, [activeTab, loadProgrammes, loadUsers]);
 
   useEffect(() => {
@@ -378,8 +348,6 @@ function AdminDashboardPage() {
 
   const scholars = users.filter((entry) => entry.role === "scholar");
   const programmeManagers = users.filter((entry) => entry.role === "programme_manager");
-  const overviewProgrammes = useMemo(() => summary?.programmes ?? [], [summary?.programmes]);
-
   const scholarBatches = useMemo(
     () =>
       Array.from(
@@ -475,58 +443,6 @@ function AdminDashboardPage() {
       scholars,
     ],
   );
-
-  const announcementAudienceUsers = useMemo(
-    () =>
-      users.filter((entry) => {
-        const roleMatch =
-          announcementForm.targetRoles.length === 0 ||
-          announcementForm.targetRoles.includes(entry.role);
-        const batchMatch =
-          !announcementForm.targetBatch ||
-          entry.role !== "scholar" ||
-          entry.batch === announcementForm.targetBatch;
-        const programmeMatch =
-          !announcementForm.programmeId ||
-          (entry.role === "scholar" &&
-            entry.enrollments.some(
-              (enrollment) => enrollment.programme.id === announcementForm.programmeId,
-            )) ||
-          (entry.role === "programme_manager" &&
-            entry.programmes.some((programme) => programme.id === announcementForm.programmeId));
-        return roleMatch && batchMatch && programmeMatch;
-      }),
-    [announcementForm.programmeId, announcementForm.targetBatch, announcementForm.targetRoles, users],
-  );
-
-
-
-  const overviewStats = [
-    {
-      label: "Total users",
-      value: summary?.stats.totalUsers ?? 0,
-      hint: `${summary?.stats.scholars ?? 0} scholars, ${summary?.stats.programmeManagers ?? 0} managers`,
-      icon: Users,
-    },
-    {
-      label: "Open programmes",
-      value: summary?.stats.programmes ?? 0,
-      hint: `${summary?.stats.activeEnrollments ?? 0} active enrollments`,
-      icon: BookOpen,
-    },
-    {
-      label: "Self-enroll enabled",
-      value: programmes.filter((programme) => programme.selfEnrollmentEnabled).length,
-      hint: "Programmes open for scholar-choice registration",
-      icon: BellRing,
-    },
-    {
-      label: "Open queries",
-      value: openQueryCount,
-      hint: `${announcementCount} announcements sent`,
-      icon: MessageSquareText,
-    },
-  ];
 
   const resetUserForm = () => {
     setEditingUserId(null);
@@ -890,37 +806,6 @@ function AdminDashboardPage() {
     }
   };
 
-  const handleSendAnnouncement = async () => {
-    if (!announcementForm.title.trim() || !announcementForm.message.trim()) {
-      toast({
-        title: "Announcement details required",
-        description: "Fill in the announcement title and message.",
-        variant: "destructive",
-      });
-      return;
-    }
-    try {
-      await createAnnouncement({
-        title: announcementForm.title.trim(),
-        message: announcementForm.message.trim(),
-        programmeId: announcementForm.programmeId || undefined,
-        targetBatch: announcementForm.targetBatch || undefined,
-        targetRoles: announcementForm.targetRoles,
-        userIds: announcementForm.userIds.length ? announcementForm.userIds : undefined,
-      });
-      setAnnouncementForm(emptyAnnouncementForm);
-      setIsAnnouncementDialogOpen(false);
-      await reloadAnnouncements();
-      toast({ title: "Announcement sent", description: "Recipients will see it now." });
-    } catch (error) {
-      toast({
-        title: "Could not send announcement",
-        description: error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
   const handleGenerateReport = async () => {
     if (reportType === "wishlist") {
       await handleGenerateWishlistReport();
@@ -1044,63 +929,6 @@ function AdminDashboardPage() {
             </div>
           </header>
 
-          {activeTab === "overview" && (
-            <>
-              <section className="mb-6 overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-vahani-blue/10 via-background to-vahani-gold/10">
-                <div className="grid gap-5 px-6 py-6 lg:grid-cols-[1.25fr_0.75fr] lg:px-8">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-vahani-blue">
-                      Platform Control
-                    </p>
-                    <h2 className="mt-2 text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-                      Coordinate users, programmes, announcements, and support from one place
-                    </h2>
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                      Manage access, keep programmes organized, review support quickly, and keep
-                      communication moving without leaving the admin workspace.
-                    </p>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                    <div className="rounded-2xl border border-border bg-card/80 p-4">
-                      <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">
-                        Admin
-                      </p>
-                      <p className="mt-2 text-lg font-semibold text-foreground">{user?.name}</p>
-                      <p className="text-sm text-muted-foreground">{user?.email}</p>
-                    </div>
-                    <div className="rounded-2xl border border-border bg-card/80 p-4">
-                      <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">
-                        Live scope
-                      </p>
-                      <p className="mt-2 text-lg font-semibold text-foreground">
-                        {summary?.stats.programmes ?? overviewProgrammes.length} programmes
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {openQueryCount} open support
-                        queries
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              <div className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                {overviewStats.map((stat) => (
-                  <Card key={stat.label}>
-                    <CardContent className="pt-5">
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">{stat.label}</span>
-                        <stat.icon className="h-4 w-4 text-vahani-blue" />
-                      </div>
-                      <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-                      <p className="text-xs text-muted-foreground">{stat.hint}</p>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </>
-          )}
-
           <Tabs
             value={activeTab}
             onValueChange={(value) =>
@@ -1109,36 +937,7 @@ function AdminDashboardPage() {
             className="space-y-6"
           >
             <TabsContent value="overview">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Programmes overview</CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-4 md:grid-cols-2">
-                  {overviewProgrammes.map((programme) => (
-                    <button
-                      key={programme.id}
-                      type="button"
-                      onClick={() => {
-                        navigate(`/admin/programmes/${programme.id}`);
-                      }}
-                      className="rounded-xl border border-border p-4 text-left transition hover:border-vahani-blue/40 hover:bg-muted/40"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-foreground">{programme.title}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {programme.programmeManager?.name || "Unassigned manager"}
-                          </p>
-                        </div>
-                        <Badge variant="secondary">{programme.enrollmentsCount} scholars</Badge>
-                      </div>
-                      <p className="mt-3 text-sm text-muted-foreground">
-                        {programme.description || "No programme description added yet."}
-                      </p>
-                    </button>
-                  ))}
-                </CardContent>
-              </Card>
+              <AdminOverviewSection summary={summary} />
             </TabsContent>
 
             <TabsContent value="users" className="space-y-6">
@@ -1358,7 +1157,9 @@ function AdminDashboardPage() {
 
             <TabsContent value="announcements" className="space-y-6">
               <AdminAnnouncementsSection
-                onOpenDialog={() => setIsAnnouncementDialogOpen(true)}
+                programmes={programmes}
+                users={users}
+                scholarBatches={scholarBatches}
               />
             </TabsContent>
 
@@ -1967,117 +1768,6 @@ function AdminDashboardPage() {
             <Button onClick={() => void handleProgrammeSubmit()}>
               {editingProgrammeId ? "Update programme" : "Create programme"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={isAnnouncementDialogOpen}
-        onOpenChange={(open: boolean) => {
-          setIsAnnouncementDialogOpen(open);
-          if (!open) setAnnouncementForm(emptyAnnouncementForm);
-        }}
-      >
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Send announcement</DialogTitle>
-            <DialogDescription>Target users by programme, role, batch, or specific people.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label>Programme filter</Label>
-                <Select value={announcementForm.programmeId || "all"} onValueChange={(value: string) => setAnnouncementForm((current) => ({ ...current, programmeId: value === "all" ? "" : value, userIds: [] }))}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All programmes</SelectItem>
-                    {programmes.map((programme) => (
-                      <SelectItem key={programme.id} value={programme.id}>
-                        {programme.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Batch filter</Label>
-                <Select value={announcementForm.targetBatch || "all"} onValueChange={(value: string) => setAnnouncementForm((current) => ({ ...current, targetBatch: value === "all" ? "" : value, userIds: [] }))}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All batches</SelectItem>
-                    {scholarBatches.map((batch) => (
-                      <SelectItem key={batch} value={batch}>
-                        {batch}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Role filters</Label>
-              <div className="grid gap-2 sm:grid-cols-3">
-                {(["scholar", "programme_manager", "admin"] as const).map((role) => (
-                  <label key={role} className="flex items-center gap-2 rounded-lg border border-border p-3 text-sm">
-                    <Checkbox
-                      checked={announcementForm.targetRoles.includes(role)}
-                      onCheckedChange={() =>
-                        setAnnouncementForm((current) => ({
-                          ...current,
-                          targetRoles: current.targetRoles.includes(role)
-                            ? current.targetRoles.filter((item) => item !== role)
-                            : [...current.targetRoles, role],
-                          userIds: [],
-                        }))
-                      }
-                    />
-                    <span>{roleLabel(role)}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Specific users</Label>
-              <div className="max-h-52 space-y-2 overflow-y-auto rounded-xl border border-border p-3">
-                {announcementAudienceUsers.map((member) => (
-                  <label key={member.id} className="flex items-center gap-3 text-sm">
-                    <Checkbox
-                      checked={announcementForm.userIds.includes(member.id)}
-                      onCheckedChange={() =>
-                        setAnnouncementForm((current) => ({
-                          ...current,
-                          userIds: current.userIds.includes(member.id)
-                            ? current.userIds.filter((id) => id !== member.id)
-                            : [...current.userIds, member.id],
-                        }))
-                      }
-                    />
-                    <span>
-                      {member.name} â€¢ {roleLabel(member.role)}
-                      {member.batch ? ` â€¢ ${member.batch}` : ""}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Title</Label>
-              <Input value={announcementForm.title} onChange={(event: ChangeEvent<HTMLInputElement>) => setAnnouncementForm((current) => ({ ...current, title: event.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Message</Label>
-              <Textarea rows={5} value={announcementForm.message} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setAnnouncementForm((current) => ({ ...current, message: event.target.value }))} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAnnouncementDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={() => void handleSendAnnouncement()}>Send announcement</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
