@@ -1,0 +1,32 @@
+project: Vahani_LMS
+
+prerequisites:
+  node: "22.x recommended"
+  npm: "10.x or later"
+  database: "PostgreSQL / Supabase connection configured in server/.env"
+
+install:
+  client:
+    working_directory: client
+    commands:
+      - npm install
+
+  server:
+    working_directory: server
+    commands:
+      - npm install
+      - npx prisma generate
+      - npx prisma migrate deploy
+
+run:
+  server:
+    working_directory: server
+    command: node src/index.js
+
+  client:
+    working_directory: client
+    command: npm run dev
+
+notes:
+  - "Update server/.env before first run if you need different database or service keys."
+  - "Install dependencies in both client and server because node_modules is not tracked in the repository."

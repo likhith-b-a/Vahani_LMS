@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&family=Gloock&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -82,6 +82,48 @@
     --sidebar-border: 217 33% 18%;
     --sidebar-ring: 213 27% 84%;
   }
+
+  /* Vahani Scholarship Trust brand palette, scoped to scholar-facing pages */
+  .scholar-theme {
+    --background: 60 8% 97%;
+    --foreground: 40 3% 19%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 40 3% 19%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 40 3% 19%;
+
+    --primary: 238 73% 16%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 40 15% 93%;
+    --secondary-foreground: 40 3% 19%;
+
+    --muted: 40 15% 93%;
+    --muted-foreground: 40 3% 39%;
+
+    --accent: 238 73% 16%;
+    --accent-foreground: 0 0% 100%;
+
+    --vahani-blue: 238 73% 16%;
+    --vahani-gold: 39 95% 75%;
+    --vahani-gold-light: 39 90% 94%;
+    --vahani-gold-border: 39 60% 85%;
+
+    --border: 40 10% 80%;
+    --input: 40 10% 80%;
+    --ring: 238 73% 16%;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 40 3% 39%;
+    --sidebar-primary: 238 73% 16%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 40 15% 94%;
+    --sidebar-accent-foreground: 238 73% 16%;
+    --sidebar-border: 40 10% 85%;
+    --sidebar-ring: 238 73% 16%;
+  }
 }
 
 @layer base {
@@ -90,6 +132,17 @@
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  .scholar-theme {
+    font-family: Georgia, Cambria, "Times New Roman", serif;
+  }
+  .scholar-theme h1,
+  .scholar-theme h2,
+  .scholar-theme h3,
+  .scholar-theme h4 {
+    font-family: "Gloock", Georgia, serif;
+    letter-spacing: 0.01em;
   }
 }
 

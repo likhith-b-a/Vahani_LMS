@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { exportAdminUserDetailPdf } from "@/lib/adminDetailPdfExport";
+import { formatDate as formatDateBase } from "@/lib/dateFormat";
 
 const roleLabel = (role: AdminUserDetail["role"]) =>
   role === "programme_manager"
@@ -24,14 +25,7 @@ const roleLabel = (role: AdminUserDetail["role"]) =>
       ? "Admin"
       : "Scholar";
 
-const formatDate = (value?: string | null) =>
-  value
-    ? new Date(value).toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      })
-    : "--";
+const formatDate = (value?: string | null) => formatDateBase(value, "--");
 
 export default function AdminUserDetailPage() {
   const { userId } = useParams();
@@ -116,10 +110,7 @@ export default function AdminUserDetailPage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="flex">
-        <AdminSidebar
-          activeSection="users"
-          onSelectSection={(section) => navigate("/admin", { state: { section } })}
-        />
+        <AdminSidebar />
         <main className="flex-1 px-6 py-8 lg:px-10">
           <div className="mx-auto w-full max-w-7xl space-y-6">
             <div className="flex flex-wrap items-center gap-3">
@@ -347,24 +338,24 @@ export default function AdminUserDetailPage() {
                             <TableHeader>
                               <TableRow>
                                 <TableHead>Programme</TableHead>
-                                <TableHead>Created</TableHead>
+                                <TableHead className="hidden md:table-cell">Created</TableHead>
                                 <TableHead className="text-right">Scholars</TableHead>
-                                <TableHead className="text-right">Completed</TableHead>
-                                <TableHead className="text-right">Assignments</TableHead>
-                                <TableHead className="text-right">Sessions</TableHead>
-                                <TableHead className="text-right">Certificates</TableHead>
+                                <TableHead className="hidden text-right md:table-cell">Completed</TableHead>
+                                <TableHead className="hidden text-right lg:table-cell">Assignments</TableHead>
+                                <TableHead className="hidden text-right lg:table-cell">Sessions</TableHead>
+                                <TableHead className="hidden text-right lg:table-cell">Certificates</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
                               {userDetail.managedProgrammes.map((programme) => (
                                 <TableRow key={programme.id}>
                                   <TableCell>{programme.title}</TableCell>
-                                  <TableCell>{formatDate(programme.createdAt)}</TableCell>
+                                  <TableCell className="hidden md:table-cell">{formatDate(programme.createdAt)}</TableCell>
                                   <TableCell className="text-right">{programme.scholarCount}</TableCell>
-                                  <TableCell className="text-right">{programme.completedScholarCount}</TableCell>
-                                  <TableCell className="text-right">{programme.assignmentCount}</TableCell>
-                                  <TableCell className="text-right">{programme.interactiveSessionCount}</TableCell>
-                                  <TableCell className="text-right">{programme.certificatesIssuedCount}</TableCell>
+                                  <TableCell className="hidden text-right md:table-cell">{programme.completedScholarCount}</TableCell>
+                                  <TableCell className="hidden text-right lg:table-cell">{programme.assignmentCount}</TableCell>
+                                  <TableCell className="hidden text-right lg:table-cell">{programme.interactiveSessionCount}</TableCell>
+                                  <TableCell className="hidden text-right lg:table-cell">{programme.certificatesIssuedCount}</TableCell>
                                 </TableRow>
                               ))}
                             </TableBody>

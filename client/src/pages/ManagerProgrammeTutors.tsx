@@ -8,7 +8,7 @@ import {
   type ManagedProgramme,
   updateManagedProgrammeScholarTutor,
 } from "../api/programmeManager";
-import { ManagerSidebar } from "../components/dashboard/ManagerSidebar";
+import { getManagerSectionRoute, ManagerSidebar } from "../components/dashboard/ManagerSidebar";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader } from "../components/ui/card";
@@ -16,15 +16,7 @@ import { Input } from "../components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../hooks/use-toast";
-
-const formatDate = (value?: string | null) =>
-  value
-    ? new Date(value).toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      })
-    : "No date";
+import { formatDate } from "../lib/dateFormat";
 
 export default function ManagerProgrammeTutors() {
   const { user } = useAuth();
@@ -181,18 +173,15 @@ export default function ManagerProgrammeTutors() {
 
   return (
     <div className="flex min-h-screen bg-background">
-      <ManagerSidebar
-        activeSection="programmes"
-        onSelectSection={(section) => navigate(`${dashboardBasePath}?section=${section}`)}
-      />
+      <ManagerSidebar basePath={dashboardBasePath} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-border bg-card/80 px-4 pl-14 backdrop-blur-md lg:px-8 lg:pl-8">
-          <div>
-            <h1 className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
+        <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-card/80 px-4 py-3 pl-14 backdrop-blur-md lg:px-8 lg:pl-8">
+          <div className="min-w-0">
+            <h1 className="truncate text-sm font-medium uppercase tracking-widest text-muted-foreground">
               Programme Manager
             </h1>
-            <p className="text-xs text-muted-foreground">Welcome, {user?.name}</p>
+            <p className="truncate text-xs text-muted-foreground">Welcome, {user?.name}</p>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => void loadProgramme()}>

@@ -2,8 +2,8 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppSidebar } from "../components/dashboard/AppSidebar";
 import { TopNavbar } from "../components/dashboard/TopNavbar";
-import { ManagerSidebar } from "../components/dashboard/ManagerSidebar";
-import { AdminSidebar } from "../components/dashboard/AdminSidebar";
+import { getManagerSectionRoute, ManagerSidebar } from "../components/dashboard/ManagerSidebar";
+import { getAdminSectionRoute, AdminSidebar } from "../components/dashboard/AdminSidebar";
 import { useAuth } from "../contexts/AuthContext";
 import { Moon, Sun, Type, Zap, Lock } from "lucide-react";
 import { Switch } from "../components/ui/switch";
@@ -65,23 +65,20 @@ export default function Settings() {
   return (
     <div className="flex min-h-screen bg-background">
       {isManager ? (
-        <ManagerSidebar
-          activeSection="settings"
-          onSelectSection={(section) => navigate(`/programme-manager?section=${section}`)}
-        />
+        <ManagerSidebar basePath="/programme-manager" />
       ) : isAdmin ? (
-        <AdminSidebar activeSection="settings" onSelectSection={() => navigate("/admin")} />
+        <AdminSidebar />
       ) : (
-        <AppSidebar activePage="Overview" />
+        <AppSidebar />
       )}
       <div className="flex-1 flex flex-col min-w-0">
         {isManager || isAdmin ? (
-          <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-border bg-card/80 px-4 pl-14 backdrop-blur-md lg:px-8 lg:pl-8">
-            <div>
-              <h1 className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
+          <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-card/80 px-4 py-3 pl-14 backdrop-blur-md lg:px-8 lg:pl-8">
+            <div className="min-w-0">
+              <h1 className="truncate text-sm font-medium uppercase tracking-widest text-muted-foreground">
                 {settingsCopy.roleLabel}
               </h1>
-              <p className="text-xs text-muted-foreground">Welcome, {user?.name}</p>
+              <p className="truncate text-xs text-muted-foreground">Welcome, {user?.name}</p>
             </div>
           </header>
         ) : (

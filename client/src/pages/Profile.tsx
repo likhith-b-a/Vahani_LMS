@@ -3,11 +3,10 @@ import {
   BookOpen,
   CalendarCheck,
   CheckCircle2,
+  ClipboardList,
   Mail,
-  Mars,
   Save,
   Trophy,
-  User,
   Users,
 } from "lucide-react";
 import { AppSidebar } from "../components/dashboard/AppSidebar";
@@ -23,15 +22,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../hooks/use-toast";
 import { getMyProfile, updateMyProfile, type MyProfileResponse } from "../api/profile";
 import { getMyProgrammes, type Programme } from "../api/programmes";
-
-const formatDate = (value?: string | null) =>
-  value
-    ? new Date(value).toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      })
-    : "No date";
+import { formatDate } from "../lib/dateFormat";
 
 export default function Profile() {
   const { user, setAuthData } = useAuth();
@@ -202,9 +193,11 @@ export default function Profile() {
     }
   };
 
+  const isScholar = (profile?.role || user?.role) === "scholar";
+
   return (
-    <div className="flex min-h-screen bg-background">
-      <AppSidebar activePage="Overview" />
+    <div className={`${isScholar ? "scholar-theme " : ""}flex min-h-screen bg-background`}>
+      <AppSidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopNavbar />
         <main className="flex-1 overflow-y-auto">
@@ -346,82 +339,79 @@ export default function Profile() {
                 <CardHeader>
                   <CardTitle>Learning Snapshot</CardTitle>
                 </CardHeader>
-                <CardContent className="grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-xl border border-border p-4">
-                    <div className="mb-2 flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Active Programmes</span>
-                      <BookOpen size={16} className="text-vahani-blue" />
-                    </div>
-                    <p className="text-2xl font-bold">{programmeStats.active}</p>
-                  </div>
-                  <div className="rounded-xl border border-border p-4">
-                    <div className="mb-2 flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Completed</span>
-                      <CheckCircle2 size={16} className="text-success" />
-                    </div>
-                    <p className="text-2xl font-bold">{programmeStats.completed}</p>
-                  </div>
-                  <div className="rounded-xl border border-border p-4">
-                    <div className="mb-2 flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Attendance Rate</span>
-                      <CalendarCheck size={16} className="text-vahani-gold" />
-                    </div>
-                    <p className="text-2xl font-bold">
-                      {attendanceStats.totalSessions ? `${attendanceStats.attendanceRate}%` : "--"}
+                <CardContent className="space-y-5">
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Programmes
                     </p>
-                  </div>
-                  <div className="rounded-xl border border-border p-4">
-                    <div className="mb-2 flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Certificates Ready</span>
-                      <Trophy size={16} className="text-accent" />
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="rounded-xl border border-border p-4">
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Active</span>
+                          <BookOpen size={16} className="text-vahani-blue" />
+                        </div>
+                        <p className="text-2xl font-bold">{programmeStats.active}</p>
+                      </div>
+                      <div className="rounded-xl border border-border p-4">
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Completed</span>
+                          <CheckCircle2 size={16} className="text-success" />
+                        </div>
+                        <p className="text-2xl font-bold">{programmeStats.completed}</p>
+                      </div>
+                      <div className="rounded-xl border border-border p-4">
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Attendance Rate</span>
+                          <CalendarCheck size={16} className="text-vahani-gold" />
+                        </div>
+                        <p className="text-2xl font-bold">
+                          {attendanceStats.totalSessions ? `${attendanceStats.attendanceRate}%` : "--"}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border p-4">
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Certificates Ready</span>
+                          <Trophy size={16} className="text-accent" />
+                        </div>
+                        <p className="text-2xl font-bold">{attendanceStats.certificateReady}</p>
+                      </div>
                     </div>
-                    <p className="text-2xl font-bold">{attendanceStats.certificateReady}</p>
                   </div>
-                </CardContent>
-              </Card>
-            </div>
 
-            <div className="grid gap-6 lg:grid-cols-4">
-              <Card>
-                <CardContent className="pt-5">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Pending Tasks</span>
-                    <User size={16} className="text-accent" />
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Assignments
+                    </p>
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <div className="rounded-xl border border-border p-4">
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Pending</span>
+                          <ClipboardList size={16} className="text-accent" />
+                        </div>
+                        <p className="text-2xl font-bold">
+                          {assignmentsLoading ? "..." : assignmentStats.pending}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border p-4">
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Submitted</span>
+                          <Mail size={16} className="text-vahani-blue" />
+                        </div>
+                        <p className="text-2xl font-bold">
+                          {assignmentsLoading ? "..." : assignmentStats.submitted}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border p-4">
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Graded</span>
+                          <CheckCircle2 size={16} className="text-success" />
+                        </div>
+                        <p className="text-2xl font-bold">
+                          {assignmentsLoading ? "..." : assignmentStats.graded}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-2xl font-bold">
-                    {assignmentsLoading ? "..." : assignmentStats.pending}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-5">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Submitted</span>
-                    <Mail size={16} className="text-vahani-blue" />
-                  </div>
-                  <p className="text-2xl font-bold">
-                    {assignmentsLoading ? "..." : assignmentStats.submitted}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-5">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Graded</span>
-                    <CheckCircle2 size={16} className="text-success" />
-                  </div>
-                  <p className="text-2xl font-bold">
-                    {assignmentsLoading ? "..." : assignmentStats.graded}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-5">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Gender on Record</span>
-                    <Mars size={16} className="text-muted-foreground" />
-                  </div>
-                  <p className="text-lg font-bold">{profile?.gender || "Add to profile"}</p>
                 </CardContent>
               </Card>
             </div>
@@ -491,37 +481,22 @@ export default function Profile() {
                   <CardTitle>Support Contacts</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {profile?.enrollments.length ? (
-                    profile.enrollments.map((programme) => (
-                      <div
-                        key={`${programme.id}-manager`}
-                        className="rounded-xl border border-border p-4"
-                      >
-                        <div className="mb-2 flex items-center gap-2">
-                          <Users size={16} className="text-muted-foreground" />
-                          <p className="font-medium text-foreground">{programme.title}</p>
-                        </div>
-                        <p className="text-sm">
-                          {programme.programmeManager?.name || "No manager assigned"}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {programme.programmeManager?.email || "No contact email"}
-                        </p>
-                        <div className="mt-3 border-t border-border pt-3">
-                          <p className="text-sm">
-                            {programme.assignedTutor?.name || "No tutor assigned"}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {programme.assignedTutor?.email || "Tutor details will appear here after assignment."}
-                          </p>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      Your assigned programme managers will appear here.
-                    </p>
-                  )}
+                  <div className="rounded-xl border border-border p-4">
+                    <div className="mb-2 flex items-center gap-2">
+                      <Users size={16} className="text-muted-foreground" />
+                      <p className="font-medium text-foreground">Admin Support</p>
+                    </div>
+                    <p className="text-sm">Vahani Scholarship Trust</p>
+                    <p className="text-xs text-muted-foreground">support@vahanischolarship.com</p>
+                  </div>
+                  <div className="rounded-xl border border-border p-4">
+                    <div className="mb-2 flex items-center gap-2">
+                      <Users size={16} className="text-muted-foreground" />
+                      <p className="font-medium text-foreground">Your Mentor</p>
+                    </div>
+                    <p className="text-sm">Assigned mentor</p>
+                    <p className="text-xs text-muted-foreground">mentor@vahanischolarship.com</p>
+                  </div>
                 </CardContent>
               </Card>
             </div>

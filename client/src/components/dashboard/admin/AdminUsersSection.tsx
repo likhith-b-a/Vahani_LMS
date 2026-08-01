@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -71,7 +71,13 @@ interface AdminUsersSectionProps {
   onUserGenderFilterChange: (value: string) => void;
   scholarBatches: string[];
   scholarGenders: string[];
-  filteredUsers: AdminUser[];
+  users: AdminUser[];
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  totalCount: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
   selectedEmailUserIds: string[];
   onToggleEmailUser: (userId: string) => void;
   onSelectMatchedUsersForEmail: () => void;
@@ -95,7 +101,13 @@ export function AdminUsersSection({
   onUserGenderFilterChange,
   scholarBatches,
   scholarGenders,
-  filteredUsers,
+  users,
+  page,
+  pageSize,
+  totalPages,
+  totalCount,
+  onPageChange,
+  onPageSizeChange,
   selectedEmailUserIds,
   onToggleEmailUser,
   onSelectMatchedUsersForEmail,
@@ -109,8 +121,6 @@ export function AdminUsersSection({
 }: AdminUsersSectionProps) {
   const [sortKey, setSortKey] = useState<UserSortKey>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
-  const [pageSize, setPageSize] = useState("10");
-  const [page, setPage] = useState(1);
 
   const sortedUsers = useMemo(() => {
     const getSortableValue = (member: AdminUser, key: UserSortKey) => {
@@ -140,7 +150,7 @@ export function AdminUsersSection({
       }
     };
 
-    return [...filteredUsers].sort((left, right) => {
+    return [...users].sort((left, right) => {
       const leftValue = getSortableValue(left, sortKey);
       const rightValue = getSortableValue(right, sortKey);
 
@@ -154,33 +164,13 @@ export function AdminUsersSection({
       });
       return sortDirection === "asc" ? compared : -compared;
     });
-  }, [filteredUsers, sortDirection, sortKey]);
-
-  const numericPageSize = Number(pageSize);
-  const totalPages = Math.max(1, Math.ceil(sortedUsers.length / numericPageSize));
-  const currentPage = Math.min(page, totalPages);
-
-  const paginatedUsers = useMemo(() => {
-    const start = (currentPage - 1) * numericPageSize;
-    return sortedUsers.slice(start, start + numericPageSize);
-  }, [currentPage, numericPageSize, sortedUsers]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [pageSize, userBatchFilter, userRoleFilter, userSearch]);
+  }, [users, sortDirection, sortKey]);
 
   const showScholarColumns = userRoleFilter === "scholar";
   const showManagerColumns = userRoleFilter === "programme_manager";
   const showBatchColumn = userRoleFilter !== "admin";
 
-  const resultLabel =
-    sortedUsers.length === 1 ? "1 user" : `${sortedUsers.length} users`;
-
-  useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
-    }
-  }, [page, totalPages]);
+  const resultLabel = totalCount === 1 ? "1 user" : `${totalCount} users`;
 
   const handleSort = (nextKey: UserSortKey) => {
     if (sortKey === nextKey) {
@@ -193,8 +183,7 @@ export function AdminUsersSection({
   };
 
   const handlePageSizeChange = (value: string) => {
-    setPageSize(value);
-    setPage(1);
+    onPageSizeChange(Number(value));
   };
 
   const renderSortIcon = (columnKey: UserSortKey) => {
@@ -242,7 +231,7 @@ export function AdminUsersSection({
             <Button
               variant="outline"
               onClick={onSelectMatchedUsersForEmail}
-              disabled={filteredUsers.length === 0}
+              disabled={users.length === 0}
             >
               <Mail className="mr-2 h-4 w-4" />
               Select matched
@@ -314,7 +303,7 @@ export function AdminUsersSection({
             </Select>
           ) : (
             <div className="rounded-xl border border-dashed border-border px-4 py-2 text-sm text-muted-foreground">
-              {filteredUsers.length} users matched
+              {totalCount} users matched
             </div>
           )}
           <Select value={userGenderFilter} onValueChange={onUserGenderFilterChange}>
@@ -334,13 +323,13 @@ export function AdminUsersSection({
 
         <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/20 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
           <div className="text-muted-foreground">
-            Showing {(currentPage - 1) * numericPageSize + (paginatedUsers.length > 0 ? 1 : 0)}
+            Showing {(page - 1) * pageSize + (sortedUsers.length > 0 ? 1 : 0)}
             {" - "}
-            {(currentPage - 1) * numericPageSize + paginatedUsers.length} of {resultLabel}
+            {(page - 1) * pageSize + sortedUsers.length} of {resultLabel}
           </div>
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground">Rows per page</span>
-            <Select value={pageSize} onValueChange={handlePageSizeChange}>
+            <Select value={String(pageSize)} onValueChange={handlePageSizeChange}>
               <SelectTrigger className="w-[92px]">
                 <SelectValue />
               </SelectTrigger>
@@ -363,25 +352,25 @@ export function AdminUsersSection({
                 <TableHead>
                   <SortButton columnKey="name" label="Name" />
                 </TableHead>
-                <TableHead>
+                <TableHead className="hidden md:table-cell">
                   <SortButton columnKey="email" label="Email" />
                 </TableHead>
                 <TableHead>
                   <SortButton columnKey="role" label="Role" />
                 </TableHead>
                 {showBatchColumn && (
-                  <TableHead>
+                  <TableHead className="hidden md:table-cell">
                     <SortButton columnKey="batch" label="Batch" />
                   </TableHead>
                 )}
-                <TableHead>
+                <TableHead className="hidden md:table-cell">
                   <SortButton columnKey="gender" label="Gender" />
                 </TableHead>
-                <TableHead>
+                <TableHead className="hidden md:table-cell">
                   <SortButton columnKey="phoneNumber" label="Phone" />
                 </TableHead>
                 {showScholarColumns && (
-                  <TableHead className="text-right">
+                  <TableHead className="hidden text-right lg:table-cell">
                     <SortButton
                       columnKey="activeProgrammes"
                       label="Active Programmes"
@@ -390,7 +379,7 @@ export function AdminUsersSection({
                   </TableHead>
                 )}
                 {showManagerColumns && (
-                  <TableHead className="text-right">
+                  <TableHead className="hidden text-right lg:table-cell">
                     <SortButton
                       columnKey="managedCourses"
                       label="Managed Courses"
@@ -399,7 +388,7 @@ export function AdminUsersSection({
                   </TableHead>
                 )}
                 {showManagerColumns && (
-                  <TableHead className="text-right">
+                  <TableHead className="hidden text-right lg:table-cell">
                     <SortButton
                       columnKey="currentProgrammes"
                       label="Current Programmes"
@@ -408,7 +397,7 @@ export function AdminUsersSection({
                   </TableHead>
                 )}
                 {showScholarColumns && (
-                  <TableHead className="text-right">
+                  <TableHead className="hidden text-right lg:table-cell">
                     <SortButton
                       columnKey="creditsEarned"
                       label="Credits"
@@ -420,7 +409,7 @@ export function AdminUsersSection({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedUsers.map((member) => (
+              {sortedUsers.map((member) => (
                 <TableRow
                   key={member.id}
                   className="cursor-pointer"
@@ -438,40 +427,40 @@ export function AdminUsersSection({
                       <p className="text-xs text-muted-foreground">{member.id}</p>
                     </div>
                   </TableCell>
-                  <TableCell className="max-w-[240px] truncate text-muted-foreground">
+                  <TableCell className="hidden max-w-[240px] truncate text-muted-foreground md:table-cell">
                     {member.email}
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary">{roleLabel(member.role)}</Badge>
                   </TableCell>
                   {showBatchColumn && (
-                    <TableCell className="text-muted-foreground">
+                    <TableCell className="hidden text-muted-foreground md:table-cell">
                       {member.batch || "--"}
                     </TableCell>
                   )}
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="hidden text-muted-foreground md:table-cell">
                     {member.gender || "--"}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="hidden text-muted-foreground md:table-cell">
                     {member.phoneNumber || "--"}
                   </TableCell>
                   {showScholarColumns && (
-                    <TableCell className="text-right font-medium text-foreground">
+                    <TableCell className="hidden text-right font-medium text-foreground lg:table-cell">
                       {member.role === "scholar" ? member.enrolledProgrammesCount : "--"}
                     </TableCell>
                   )}
                   {showManagerColumns && (
-                    <TableCell className="text-right font-medium text-foreground">
+                    <TableCell className="hidden text-right font-medium text-foreground lg:table-cell">
                       {member.role === "programme_manager" ? member.managedProgrammesCount : "--"}
                     </TableCell>
                   )}
                   {showManagerColumns && (
-                    <TableCell className="text-right font-medium text-foreground">
+                    <TableCell className="hidden text-right font-medium text-foreground lg:table-cell">
                       {member.role === "programme_manager" ? member.programmes.length : "--"}
                     </TableCell>
                   )}
                   {showScholarColumns && (
-                    <TableCell className="text-right font-medium text-foreground">
+                    <TableCell className="hidden text-right font-medium text-foreground lg:table-cell">
                       {member.role === "scholar" ? member.creditsEarned : "--"}
                     </TableCell>
                   )}
@@ -517,14 +506,14 @@ export function AdminUsersSection({
                   href="#"
                   onClick={(event) => {
                     event.preventDefault();
-                    setPage((current) => Math.max(1, current - 1));
+                    onPageChange(Math.max(1, page - 1));
                   }}
-                  className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                  className={page === 1 ? "pointer-events-none opacity-50" : ""}
                 />
               </PaginationItem>
               <PaginationItem>
                 <span className="px-3 text-sm text-muted-foreground">
-                  Page {currentPage} of {totalPages}
+                  Page {page} of {totalPages}
                 </span>
               </PaginationItem>
               <PaginationItem>
@@ -532,9 +521,9 @@ export function AdminUsersSection({
                   href="#"
                   onClick={(event) => {
                     event.preventDefault();
-                    setPage((current) => Math.min(totalPages, current + 1));
+                    onPageChange(Math.min(totalPages, page + 1));
                   }}
-                  className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
+                  className={page === totalPages ? "pointer-events-none opacity-50" : ""}
                 />
               </PaginationItem>
             </PaginationContent>
