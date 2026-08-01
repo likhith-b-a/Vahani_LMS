@@ -123,6 +123,11 @@
     --sidebar-accent-foreground: 238 73% 16%;
     --sidebar-border: 40 10% 85%;
     --sidebar-ring: 238 73% 16%;
+
+    background-image:
+      radial-gradient(1100px circle at 0% 0%, hsl(var(--vahani-blue) / 6%), transparent 55%),
+      radial-gradient(900px circle at 100% 100%, hsl(var(--vahani-gold) / 16%), transparent 50%);
+    background-attachment: fixed;
   }
 }
 

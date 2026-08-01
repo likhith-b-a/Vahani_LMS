@@ -41,7 +41,7 @@ export function TopNavbar() {
 
   return (
     <>
-      <header className="h-14 lg:h-16 border-b border-border bg-card/80 backdrop-blur-md sticky top-0 z-10 px-4 pl-14 lg:pl-8 lg:px-8 flex items-center justify-between">
+      <header className="h-14 lg:h-16 border-b-2 border-vahani-gold-border/60 bg-card/80 backdrop-blur-md sticky top-0 z-10 px-4 pl-14 lg:pl-8 lg:px-8 flex items-center justify-between">
         <h1 className="text-xs lg:text-sm font-medium text-muted-foreground uppercase tracking-widest truncate">
           Scholar Dashboard
         </h1>

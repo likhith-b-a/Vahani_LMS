@@ -44,7 +44,7 @@ export function SidebarShell({
 
   const sidebarContent = (
     <>
-      <div className="flex items-center justify-between gap-3 border-b border-border px-6 py-5">
+      <div className="flex items-center justify-between gap-3 border-b border-border bg-gradient-to-r from-vahani-blue/5 to-vahani-gold/10 px-6 py-5">
         <div className="flex items-center gap-3">
           <img src={vahaniLogo} alt="Vahani" className="h-9 w-auto object-contain" />
           <div>
@@ -68,10 +68,10 @@ export function SidebarShell({
             end={item.end}
             onClick={() => setOpen(false)}
             className={({ isActive }) =>
-              `flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all ${
+              `flex w-full items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-sm transition-all ${
                 isActive
-                  ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent/50"
+                  ? "border-vahani-gold bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
+                  : "border-transparent text-sidebar-foreground hover:bg-sidebar-accent/50"
               }`
             }
           >
