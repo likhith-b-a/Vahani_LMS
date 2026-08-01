@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, ExternalLink, ShieldCheck } from "lucide-react";
+import { Award, CheckCircle2, Download, ExternalLink, ShieldCheck, Sparkles } from "lucide-react";
 import { AppSidebar } from "../../components/dashboard/AppSidebar";
 import { TopNavbar } from "../../components/dashboard/TopNavbar";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../components/ui/select";
 import { useToast } from "../../hooks/use-toast";
 import {
   downloadCertificateFile,
@@ -29,6 +36,13 @@ export default function Certificates() {
             ? (response.data.certificates as CertificateRecord[])
             : [],
         );
+        setActiveCertificateId((current) => {
+          if (current) return current;
+          const list = Array.isArray(response?.data?.certificates)
+            ? (response.data.certificates as CertificateRecord[])
+            : [];
+          return list[0]?.id ?? null;
+        });
       } catch (error) {
         toast({
           title: "Unable to load certificates",
@@ -43,14 +57,32 @@ export default function Certificates() {
     void loadCertificates();
   }, [toast]);
 
-  const stats = useMemo(
-    () => ({
-      total: certificates.length,
-      available: certificates.filter((certificate) => certificate.status === "available").length,
-      claimed: certificates.filter((certificate) => certificate.status === "claimed").length,
-    }),
-    [certificates],
-  );
+  const stats = useMemo(() => {
+    const total = certificates.length;
+    const available = certificates.filter((certificate) => certificate.status === "available").length;
+    const claimed = certificates.filter((certificate) => certificate.status === "claimed").length;
+
+    return [
+      {
+        label: "Earned so far",
+        value: total,
+        icon: Award,
+        iconClassName: "bg-primary/10 text-primary",
+      },
+      {
+        label: "Ready to download",
+        value: available,
+        icon: Sparkles,
+        iconClassName: "bg-amber-500/10 text-amber-600",
+      },
+      {
+        label: "Already claimed",
+        value: claimed,
+        icon: CheckCircle2,
+        iconClassName: "bg-green-500/10 text-green-600",
+      },
+    ];
+  }, [certificates]);
 
   const activeCertificate =
     certificates.find((certificate) => certificate.id === activeCertificateId) || null;
@@ -74,8 +106,8 @@ export default function Certificates() {
   };
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <AppSidebar activePage="Certificates" />
+    <div className="scholar-theme flex min-h-screen bg-background">
+      <AppSidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopNavbar />
         <main className="flex-1 overflow-y-auto">
@@ -88,24 +120,19 @@ export default function Certificates() {
             </section>
 
             <div className="grid gap-4 md:grid-cols-3">
-              <Card>
-                <CardContent className="p-4">
-                  <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Total</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{stats.total}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-4">
-                  <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Available</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{stats.available}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-4">
-                  <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Claimed</p>
-                  <p className="mt-2 text-2xl font-semibold text-foreground">{stats.claimed}</p>
-                </CardContent>
-              </Card>
+              {stats.map((stat) => (
+                <Card key={stat.label}>
+                  <CardContent className="flex items-center gap-3 p-4">
+                    <div className={`rounded-lg p-2.5 ${stat.iconClassName}`}>
+                      <stat.icon size={22} />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-semibold text-foreground">{stat.value}</p>
+                      <p className="text-xs text-muted-foreground">{stat.label}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
 
             {loading ? (
@@ -121,37 +148,32 @@ export default function Certificates() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid gap-6 lg:grid-cols-[360px,1fr]">
+              <div className="space-y-6">
                 <Card>
-                  <CardHeader>
+                  <CardHeader className="pb-3">
                     <CardTitle>Your certificates</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-3">
-                    {certificates.map((certificate) => (
-                      <button
-                        key={certificate.id}
-                        type="button"
-                        onClick={() => setActiveCertificateId(certificate.id)}
-                        className={`w-full rounded-2xl border p-4 text-left transition ${
-                          activeCertificateId === certificate.id
-                            ? "border-vahani-blue bg-vahani-blue/5"
-                            : "border-border hover:bg-muted/40"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-semibold text-foreground">{certificate.programmeTitle}</p>
-                            <p className="mt-1 text-xs text-muted-foreground">{certificate.credentialId}</p>
-                          </div>
-                          <Badge variant={certificate.status === "claimed" ? "default" : "outline"}>
-                            {certificate.status}
-                          </Badge>
-                        </div>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          Issued {new Date(certificate.issuedAt).toLocaleDateString("en-IN")}
-                        </p>
-                      </button>
-                    ))}
+                  <CardContent>
+                    <Select
+                      value={activeCertificateId ?? undefined}
+                      onValueChange={(value) => setActiveCertificateId(value)}
+                    >
+                      <SelectTrigger className="w-full sm:max-w-md">
+                        <SelectValue placeholder="Select a certificate" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {certificates.map((certificate) => (
+                          <SelectItem key={certificate.id} value={certificate.id}>
+                            <span className="flex items-center gap-2">
+                              {certificate.programmeTitle}
+                              <span className="text-xs text-muted-foreground">
+                                ({certificate.status})
+                              </span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </CardContent>
                 </Card>
 

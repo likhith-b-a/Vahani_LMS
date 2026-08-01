@@ -133,18 +133,18 @@ export function ManagerStudentsSection({
                   <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
                     Scholar
                   </TableHead>
-                  <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                  <TableHead className="hidden h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground md:table-cell">
                     Batch
                   </TableHead>
                   {selectedProgramme?.groupedDeliveryEnabled ? (
-                    <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                    <TableHead className="hidden h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground md:table-cell">
                       Track group
                     </TableHead>
                   ) : null}
                   <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
                     Status
                   </TableHead>
-                  <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                  <TableHead className="hidden h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground lg:table-cell">
                     Enrolled on
                   </TableHead>
                 </TableRow>
@@ -185,11 +185,11 @@ export function ManagerStudentsSection({
                           </p>
                         </div>
                       </TableCell>
-                      <TableCell className="px-6 py-5 text-[15px] text-muted-foreground">
+                      <TableCell className="hidden px-6 py-5 text-[15px] text-muted-foreground md:table-cell">
                         {enrollment.user.batch || "No batch"}
                       </TableCell>
                       {selectedProgramme?.groupedDeliveryEnabled ? (
-                        <TableCell className="px-6 py-5">
+                        <TableCell className="hidden px-6 py-5 md:table-cell">
                           <Badge
                             variant="secondary"
                             className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-foreground"
@@ -206,7 +206,7 @@ export function ManagerStudentsSection({
                           {enrollment.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="px-6 py-5 text-[15px] text-muted-foreground">
+                      <TableCell className="hidden px-6 py-5 text-[15px] text-muted-foreground lg:table-cell">
                         {formatDate(enrollment.enrolledAt)}
                       </TableCell>
                     </TableRow>

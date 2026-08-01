@@ -352,25 +352,25 @@ export function AdminUsersSection({
                 <TableHead>
                   <SortButton columnKey="name" label="Name" />
                 </TableHead>
-                <TableHead>
+                <TableHead className="hidden md:table-cell">
                   <SortButton columnKey="email" label="Email" />
                 </TableHead>
                 <TableHead>
                   <SortButton columnKey="role" label="Role" />
                 </TableHead>
                 {showBatchColumn && (
-                  <TableHead>
+                  <TableHead className="hidden md:table-cell">
                     <SortButton columnKey="batch" label="Batch" />
                   </TableHead>
                 )}
-                <TableHead>
+                <TableHead className="hidden md:table-cell">
                   <SortButton columnKey="gender" label="Gender" />
                 </TableHead>
-                <TableHead>
+                <TableHead className="hidden md:table-cell">
                   <SortButton columnKey="phoneNumber" label="Phone" />
                 </TableHead>
                 {showScholarColumns && (
-                  <TableHead className="text-right">
+                  <TableHead className="hidden text-right lg:table-cell">
                     <SortButton
                       columnKey="activeProgrammes"
                       label="Active Programmes"
@@ -379,7 +379,7 @@ export function AdminUsersSection({
                   </TableHead>
                 )}
                 {showManagerColumns && (
-                  <TableHead className="text-right">
+                  <TableHead className="hidden text-right lg:table-cell">
                     <SortButton
                       columnKey="managedCourses"
                       label="Managed Courses"
@@ -388,7 +388,7 @@ export function AdminUsersSection({
                   </TableHead>
                 )}
                 {showManagerColumns && (
-                  <TableHead className="text-right">
+                  <TableHead className="hidden text-right lg:table-cell">
                     <SortButton
                       columnKey="currentProgrammes"
                       label="Current Programmes"
@@ -397,7 +397,7 @@ export function AdminUsersSection({
                   </TableHead>
                 )}
                 {showScholarColumns && (
-                  <TableHead className="text-right">
+                  <TableHead className="hidden text-right lg:table-cell">
                     <SortButton
                       columnKey="creditsEarned"
                       label="Credits"
@@ -427,40 +427,40 @@ export function AdminUsersSection({
                       <p className="text-xs text-muted-foreground">{member.id}</p>
                     </div>
                   </TableCell>
-                  <TableCell className="max-w-[240px] truncate text-muted-foreground">
+                  <TableCell className="hidden max-w-[240px] truncate text-muted-foreground md:table-cell">
                     {member.email}
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary">{roleLabel(member.role)}</Badge>
                   </TableCell>
                   {showBatchColumn && (
-                    <TableCell className="text-muted-foreground">
+                    <TableCell className="hidden text-muted-foreground md:table-cell">
                       {member.batch || "--"}
                     </TableCell>
                   )}
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="hidden text-muted-foreground md:table-cell">
                     {member.gender || "--"}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="hidden text-muted-foreground md:table-cell">
                     {member.phoneNumber || "--"}
                   </TableCell>
                   {showScholarColumns && (
-                    <TableCell className="text-right font-medium text-foreground">
+                    <TableCell className="hidden text-right font-medium text-foreground lg:table-cell">
                       {member.role === "scholar" ? member.enrolledProgrammesCount : "--"}
                     </TableCell>
                   )}
                   {showManagerColumns && (
-                    <TableCell className="text-right font-medium text-foreground">
+                    <TableCell className="hidden text-right font-medium text-foreground lg:table-cell">
                       {member.role === "programme_manager" ? member.managedProgrammesCount : "--"}
                     </TableCell>
                   )}
                   {showManagerColumns && (
-                    <TableCell className="text-right font-medium text-foreground">
+                    <TableCell className="hidden text-right font-medium text-foreground lg:table-cell">
                       {member.role === "programme_manager" ? member.programmes.length : "--"}
                     </TableCell>
                   )}
                   {showScholarColumns && (
-                    <TableCell className="text-right font-medium text-foreground">
+                    <TableCell className="hidden text-right font-medium text-foreground lg:table-cell">
                       {member.role === "scholar" ? member.creditsEarned : "--"}
                     </TableCell>
                   )}

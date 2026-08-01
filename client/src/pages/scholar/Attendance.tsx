@@ -6,7 +6,6 @@ import { AppSidebar } from "../../components/dashboard/AppSidebar";
 import { TopNavbar } from "../../components/dashboard/TopNavbar";
 import { Badge } from "../../components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
-import { Progress } from "../../components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { useToast } from "../../hooks/use-toast";
@@ -70,13 +69,17 @@ export default function Attendance() {
   const { toast } = useToast();
   const [programmes, setProgrammes] = useState<ProgrammeSchedule[]>([]);
   const [loading, setLoading] = useState(true);
-  const [programmeFilter, setProgrammeFilter] = useState("all");
+  const [programmeFilter, setProgrammeFilter] = useState("");
 
   useEffect(() => {
     const loadProgrammes = async () => {
       try {
         const response = await getMyProgrammeSchedule();
-        setProgrammes(Array.isArray(response?.data?.programmes) ? (response.data.programmes as ProgrammeSchedule[]) : []);
+        const list = Array.isArray(response?.data?.programmes)
+          ? (response.data.programmes as ProgrammeSchedule[])
+          : [];
+        setProgrammes(list);
+        setProgrammeFilter((current) => current || list[0]?.id || "");
       } catch (error) {
         toast({
           title: "Unable to load attendance",
@@ -124,7 +127,7 @@ export default function Attendance() {
   }, [programmes]);
 
   const filteredSessions = useMemo(
-    () => sessions.filter((session) => programmeFilter === "all" || session.programmeId === programmeFilter),
+    () => sessions.filter((session) => session.programmeId === programmeFilter),
     [programmeFilter, sessions],
   );
 
@@ -132,7 +135,6 @@ export default function Attendance() {
   const historySessions = filteredSessions.filter((session) => session.status !== "upcoming");
   const presentSessions = historySessions.filter((session) => session.status === "present");
   const absentSessions = historySessions.filter((session) => session.status === "absent");
-  const unmarkedSessions = historySessions.filter((session) => session.status === "unmarked");
   const attendanceRate = historySessions.length > 0 ? Math.round((presentSessions.length / historySessions.length) * 100) : 0;
 
   const programmeAttendance = useMemo(
@@ -154,7 +156,7 @@ export default function Attendance() {
             rate,
           };
         })
-        .filter((programme) => programmeFilter === "all" || programme.id === programmeFilter),
+        .filter((programme) => programme.id === programmeFilter),
     [filteredSessions, programmeFilter, programmes],
   );
 
@@ -163,8 +165,8 @@ export default function Attendance() {
   );
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <AppSidebar activePage="Attendance" />
+    <div className="scholar-theme flex min-h-screen bg-background">
+      <AppSidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopNavbar />
         <main className="flex-1 space-y-6 p-4 sm:p-6 lg:p-8">
@@ -178,10 +180,9 @@ export default function Attendance() {
             <div className="w-full max-w-xs">
               <Select value={programmeFilter} onValueChange={setProgrammeFilter}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Filter by programme" />
+                  <SelectValue placeholder="Select a programme" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All programmes</SelectItem>
                   {programmes.map((programme) => (
                     <SelectItem key={programme.id} value={programme.id}>
                       {programme.title}
@@ -258,68 +259,7 @@ export default function Attendance() {
             </div>
           ) : null}
 
-          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-            <Card className="border border-border">
-              <CardHeader>
-                <CardTitle>Programme-wise attendance</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {loading ? (
-                  <p className="text-sm text-muted-foreground">Loading attendance summary...</p>
-                ) : programmeAttendance.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No interactive sessions found for your enrolled programmes yet.</p>
-                ) : (
-                  programmeAttendance.map((programme) => (
-                    <div key={programme.id} className="rounded-xl border border-border p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-foreground">{programme.title}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {programme.present} present out of {programme.total || 0} marked sessions
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-lg font-semibold text-foreground">
-                            {programme.rate !== null ? `${programme.rate}%` : "--"}
-                          </p>
-                          <p className="text-xs text-muted-foreground">{programme.upcoming} upcoming</p>
-                        </div>
-                      </div>
-                      <Progress className="mt-4 h-2.5" value={programme.rate ?? 0} />
-                    </div>
-                  ))
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="border border-border">
-              <CardHeader>
-                <CardTitle>Pending updates</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {unmarkedSessions.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    All past sessions in this view have already been marked by your programme manager.
-                  </p>
-                ) : (
-                  unmarkedSessions.map((session) => (
-                    <div key={session.id} className="rounded-xl border border-border p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-medium text-foreground">{session.title}</p>
-                          <p className="text-xs text-muted-foreground">{session.programmeTitle}</p>
-                        </div>
-                        {getStatusBadge(session.status)}
-                      </div>
-                      <p className="mt-3 text-sm text-muted-foreground">{formatDateTime(session.scheduledAt)}</p>
-                    </div>
-                  ))
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          <Tabs defaultValue="upcoming" className="space-y-4">
+          <Tabs defaultValue="history" className="space-y-4">
             <TabsList>
               <TabsTrigger value="upcoming">Upcoming Sessions</TabsTrigger>
               <TabsTrigger value="history">Attendance History</TabsTrigger>

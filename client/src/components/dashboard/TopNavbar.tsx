@@ -61,7 +61,7 @@ export function TopNavbar() {
             </button>
 
             {notificationsOpen && (
-              <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-lg border border-border bg-card py-2 shadow-lg">
+              <div className="absolute right-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-card py-2 shadow-lg">
                 <div className="flex items-center justify-between px-4 pb-2">
                   <p className="text-sm font-semibold text-foreground">Notifications</p>
                   {unreadCount > 0 && (

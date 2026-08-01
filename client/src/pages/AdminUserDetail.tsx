@@ -338,24 +338,24 @@ export default function AdminUserDetailPage() {
                             <TableHeader>
                               <TableRow>
                                 <TableHead>Programme</TableHead>
-                                <TableHead>Created</TableHead>
+                                <TableHead className="hidden md:table-cell">Created</TableHead>
                                 <TableHead className="text-right">Scholars</TableHead>
-                                <TableHead className="text-right">Completed</TableHead>
-                                <TableHead className="text-right">Assignments</TableHead>
-                                <TableHead className="text-right">Sessions</TableHead>
-                                <TableHead className="text-right">Certificates</TableHead>
+                                <TableHead className="hidden text-right md:table-cell">Completed</TableHead>
+                                <TableHead className="hidden text-right lg:table-cell">Assignments</TableHead>
+                                <TableHead className="hidden text-right lg:table-cell">Sessions</TableHead>
+                                <TableHead className="hidden text-right lg:table-cell">Certificates</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
                               {userDetail.managedProgrammes.map((programme) => (
                                 <TableRow key={programme.id}>
                                   <TableCell>{programme.title}</TableCell>
-                                  <TableCell>{formatDate(programme.createdAt)}</TableCell>
+                                  <TableCell className="hidden md:table-cell">{formatDate(programme.createdAt)}</TableCell>
                                   <TableCell className="text-right">{programme.scholarCount}</TableCell>
-                                  <TableCell className="text-right">{programme.completedScholarCount}</TableCell>
-                                  <TableCell className="text-right">{programme.assignmentCount}</TableCell>
-                                  <TableCell className="text-right">{programme.interactiveSessionCount}</TableCell>
-                                  <TableCell className="text-right">{programme.certificatesIssuedCount}</TableCell>
+                                  <TableCell className="hidden text-right md:table-cell">{programme.completedScholarCount}</TableCell>
+                                  <TableCell className="hidden text-right lg:table-cell">{programme.assignmentCount}</TableCell>
+                                  <TableCell className="hidden text-right lg:table-cell">{programme.interactiveSessionCount}</TableCell>
+                                  <TableCell className="hidden text-right lg:table-cell">{programme.certificatesIssuedCount}</TableCell>
                                 </TableRow>
                               ))}
                             </TableBody>

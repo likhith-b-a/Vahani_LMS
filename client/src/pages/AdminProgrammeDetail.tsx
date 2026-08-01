@@ -402,14 +402,14 @@ export default function AdminProgrammeDetailPage() {
                         <TableHeader>
                           <TableRow>
                             <TableHead>Scholar</TableHead>
-                            <TableHead>Batch</TableHead>
-                            <TableHead>Gender</TableHead>
-                            <TableHead className="text-right">Assignment score</TableHead>
-                            <TableHead className="text-right">Session score</TableHead>
-                            <TableHead className="text-right">Attendance</TableHead>
+                            <TableHead className="hidden md:table-cell">Batch</TableHead>
+                            <TableHead className="hidden md:table-cell">Gender</TableHead>
+                            <TableHead className="hidden text-right lg:table-cell">Assignment score</TableHead>
+                            <TableHead className="hidden text-right lg:table-cell">Session score</TableHead>
+                            <TableHead className="hidden text-right lg:table-cell">Attendance</TableHead>
                             <TableHead className="text-right">Overall</TableHead>
                             <TableHead>Status</TableHead>
-                            <TableHead>Certificate</TableHead>
+                            <TableHead className="hidden md:table-cell">Certificate</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -422,11 +422,11 @@ export default function AdminProgrammeDetailPage() {
                                   <p className="text-xs text-muted-foreground">{scholar.user.email}</p>
                                 </div>
                               </TableCell>
-                              <TableCell>{scholar.user.batch || "--"}</TableCell>
-                              <TableCell>{scholar.user.gender || "--"}</TableCell>
-                              <TableCell className="text-right">{scholar.assignmentScore}</TableCell>
-                              <TableCell className="text-right">{scholar.sessionScore}</TableCell>
-                              <TableCell className="text-right">
+                              <TableCell className="hidden md:table-cell">{scholar.user.batch || "--"}</TableCell>
+                              <TableCell className="hidden md:table-cell">{scholar.user.gender || "--"}</TableCell>
+                              <TableCell className="hidden text-right lg:table-cell">{scholar.assignmentScore}</TableCell>
+                              <TableCell className="hidden text-right lg:table-cell">{scholar.sessionScore}</TableCell>
+                              <TableCell className="hidden text-right lg:table-cell">
                                 {scholar.attendancePercent !== null &&
                                 scholar.attendancePercent !== undefined
                                   ? `${scholar.attendancePercent}%`
@@ -441,7 +441,7 @@ export default function AdminProgrammeDetailPage() {
                               <TableCell>
                                 <Badge variant="outline">{scholar.status}</Badge>
                               </TableCell>
-                              <TableCell>
+                              <TableCell className="hidden md:table-cell">
                                 {scholar.certificate ? scholar.certificate.credentialId : "--"}
                               </TableCell>
                               <TableCell className="text-right">

@@ -432,12 +432,12 @@ export default function ManagerProgrammeDetail() {
       <ManagerSidebar basePath={dashboardBasePath} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-border bg-card/80 px-4 pl-14 backdrop-blur-md lg:px-8 lg:pl-8">
-          <div>
-            <h1 className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
+        <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-card/80 px-4 py-3 pl-14 backdrop-blur-md lg:px-8 lg:pl-8">
+          <div className="min-w-0">
+            <h1 className="truncate text-sm font-medium uppercase tracking-widest text-muted-foreground">
               Programme Manager
             </h1>
-            <p className="text-xs text-muted-foreground">Welcome, {user?.name}</p>
+            <p className="truncate text-xs text-muted-foreground">Welcome, {user?.name}</p>
           </div>
           <Button variant="outline" onClick={() => void loadProgramme()}>
             <RefreshCw size={16} className="mr-2" />
@@ -847,21 +847,21 @@ export default function ManagerProgrammeDetail() {
                                   <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
                                     Scholar
                                   </TableHead>
-                                  <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                                  <TableHead className="hidden h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground md:table-cell">
                                     Batch
                                   </TableHead>
-                                  <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                                  <TableHead className="hidden h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground md:table-cell">
                                     Gender
                                   </TableHead>
                                   {programme.groupedDeliveryEnabled ? (
-                                    <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                                    <TableHead className="hidden h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground md:table-cell">
                                       Track group
                                     </TableHead>
                                   ) : null}
                                   <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
                                     Status
                                   </TableHead>
-                                  <TableHead className="h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                                  <TableHead className="hidden h-14 px-6 text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground lg:table-cell">
                                     Enrolled on
                                   </TableHead>
                                 </TableRow>
@@ -877,14 +877,14 @@ export default function ManagerProgrammeDetail() {
                                         <p className="mt-1 text-sm text-muted-foreground">{enrollment.user.email}</p>
                                       </div>
                                     </TableCell>
-                                    <TableCell className="px-6 py-5 text-[15px] text-muted-foreground">
+                                    <TableCell className="hidden px-6 py-5 text-[15px] text-muted-foreground md:table-cell">
                                       {enrollment.user.batch || "No batch"}
                                     </TableCell>
-                                    <TableCell className="px-6 py-5 text-[15px] text-muted-foreground">
+                                    <TableCell className="hidden px-6 py-5 text-[15px] text-muted-foreground md:table-cell">
                                       {enrollment.user.gender || "No gender"}
                                     </TableCell>
                                     {programme.groupedDeliveryEnabled ? (
-                                      <TableCell className="px-6 py-5">
+                                      <TableCell className="hidden px-6 py-5 md:table-cell">
                                         <Badge
                                           variant="secondary"
                                           className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-foreground"
@@ -901,7 +901,7 @@ export default function ManagerProgrammeDetail() {
                                         {enrollment.status}
                                       </Badge>
                                     </TableCell>
-                                    <TableCell className="px-6 py-5 text-[15px] text-muted-foreground">
+                                    <TableCell className="hidden px-6 py-5 text-[15px] text-muted-foreground lg:table-cell">
                                       {formatDate(enrollment.enrolledAt)}
                                     </TableCell>
                                   </TableRow>

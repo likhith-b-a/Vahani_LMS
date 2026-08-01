@@ -268,13 +268,13 @@ export default function Queries() {
   };
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <AppSidebar activePage="Queries" />
+    <div className="scholar-theme flex min-h-screen bg-background">
+      <AppSidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopNavbar />
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6 lg:p-8">
-            <section className="overflow-hidden rounded-[2rem] border border-border bg-[linear-gradient(135deg,rgba(12,106,204,0.12),rgba(255,140,92,0.08),rgba(255,255,255,0.98))] p-6 shadow-sm sm:p-8">
+            <section className="overflow-hidden rounded-[2rem] border border-border bg-[linear-gradient(135deg,rgba(11,13,71,0.10),rgba(252,209,129,0.16),rgba(255,255,255,0.98))] p-6 shadow-sm sm:p-8">
               <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.3em] text-vahani-blue">

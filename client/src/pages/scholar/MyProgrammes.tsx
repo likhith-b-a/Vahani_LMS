@@ -20,6 +20,7 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { Progress } from "../../components/ui/progress";
 import { useToast } from "../../hooks/use-toast";
 import { useAuth } from "../../contexts/AuthContext";
 import { getMyProgrammes, type Programme, type ProgrammeAssignment } from "../../api/programmes";
@@ -151,8 +152,8 @@ const MyProgrammes = () => {
   };
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <AppSidebar activePage="My Programmes" />
+    <div className="scholar-theme flex min-h-screen bg-background">
+      <AppSidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopNavbar />
         <main className="flex-1 overflow-y-auto">
@@ -297,7 +298,11 @@ function ProgrammeCard({
   onContinue: () => void;
 }) {
   const nextAssignment = getNextUpcomingAssignment(programme.assignments);
+  const totalAssignments = programme.assignments.length;
   const pendingAssignments = getPendingAssignments(programme.assignments).length;
+  const completedAssignments = totalAssignments - pendingAssignments;
+  const progressPercent =
+    totalAssignments > 0 ? Math.round((completedAssignments / totalAssignments) * 100) : 0;
 
   return (
     <motion.div
@@ -305,11 +310,11 @@ function ProgrammeCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
     >
-      <Card className="group overflow-hidden transition-shadow hover:shadow-lg">
-        <div className="h-1.5 bg-gradient-to-r from-primary to-accent" />
+      <Card className="group overflow-hidden border-border/80 transition-all hover:-translate-y-0.5 hover:shadow-lg">
+        <div className="h-1.5 bg-gradient-to-r from-vahani-blue to-vahani-gold" />
         <CardContent className="space-y-4 p-4 sm:p-5">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="font-bold leading-tight text-foreground">
+            <h3 className="text-lg leading-tight text-foreground">
               {programme.title}
             </h3>
             <Badge className={`${badgeClassName} shrink-0 text-[10px]`}>
@@ -317,30 +322,50 @@ function ProgrammeCard({
             </Badge>
           </div>
 
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {programme.programmeManager?.name
+              ? `Managed by ${programme.programmeManager.name}`
+              : "No manager assigned"}
+          </p>
+
           <p className="line-clamp-2 text-sm text-muted-foreground">
             {programme.description}
           </p>
 
-          <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-            <span className="line-clamp-2">
-              Handled by: {programme.programmeManager?.name || "Not assigned"}
-            </span>
-            <span className="flex items-center gap-1.5">
+          {totalAssignments > 0 && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>
+                  {completedAssignments}/{totalAssignments} assignments done
+                </span>
+                <span className="font-semibold text-primary">{progressPercent}%</span>
+              </div>
+              <Progress value={progressPercent} className="h-1.5" />
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1">
               <CalendarDays size={13} />
               Enrolled {format(new Date(programme.enrolledAt || programme.createdAt), "dd MMM yyyy")}
             </span>
-            <span className="flex items-center gap-1.5">
+            <span className="flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1">
               <ClipboardCheck size={13} />
               {pendingAssignments} pending
             </span>
-            <span className="flex items-center gap-1.5">
-              <AlertCircle size={13} />
-              {nextAssignment ? nextAssignment.title : "No upcoming assignment"}
-            </span>
           </div>
 
+          {nextAssignment && (
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+              <AlertCircle size={14} className="shrink-0 text-primary" />
+              <span className="line-clamp-1">
+                Next up: <span className="text-foreground">{nextAssignment.title}</span>
+              </span>
+            </div>
+          )}
+
           {(programme.spotlightTitle || programme.spotlightMessage) && (
-            <div className="rounded-lg border border-vahani-blue/20 bg-vahani-blue/5 p-3">
+            <div className="rounded-lg border border-vahani-gold-border bg-vahani-gold-light p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-vahani-blue">
                 {programme.spotlightTitle || "Spotlight"}
               </p>
@@ -354,14 +379,14 @@ function ProgrammeCard({
             <Button
               variant="outline"
               size="sm"
-              className="flex-1 gap-1 text-xs"
+              className="flex-1 gap-1 border-primary/30 text-xs text-primary hover:bg-primary/5"
               onClick={onViewDetails}
             >
               <Eye size={13} /> View Details
             </Button>
             <Button
               size="sm"
-              className="flex-1 gap-1 bg-accent text-xs text-accent-foreground hover:bg-accent/90"
+              className="flex-1 gap-1 border border-vahani-gold-border bg-primary text-xs text-primary-foreground hover:bg-primary/90"
               onClick={onContinue}
             >
               <Play size={13} /> Continue
