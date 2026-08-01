@@ -23,15 +23,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../hooks/use-toast";
 import { getMyProfile, updateMyProfile, type MyProfileResponse } from "../api/profile";
 import { getMyProgrammes, type Programme } from "../api/programmes";
-
-const formatDate = (value?: string | null) =>
-  value
-    ? new Date(value).toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      })
-    : "No date";
+import { formatDate } from "../lib/dateFormat";
 
 export default function Profile() {
   const { user, setAuthData } = useAuth();

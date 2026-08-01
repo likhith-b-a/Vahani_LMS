@@ -1,147 +1,104 @@
-import { useState, type ChangeEvent } from "react";
-import { createAnnouncement } from "@/api/announcements";
-import type { ManagedProgrammeSummary } from "@/api/programmeManager";
-import { AnnouncementsSectionContainer } from "@/components/dashboard/shared/AnnouncementsSectionContainer";
+import type { ChangeEvent } from "react";
+import { Plus } from "lucide-react";
+import { type Announcement } from "@/api/announcements";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { useAnnouncements } from "@/contexts/AnnouncementsContext";
-import { useToast } from "@/hooks/use-toast";
-
-const emptyAnnouncementForm = {
-  title: "",
-  message: "",
-  programmeId: "",
-};
+import { formatDateTime } from "@/lib/dateFormat";
 
 interface ManagerAnnouncementsSectionProps {
-  programmes: ManagedProgrammeSummary[];
-  defaultProgrammeId?: string;
+  announcementSearch: string;
+  onAnnouncementSearchChange: (value: string) => void;
+  announcementDateFrom: string;
+  onAnnouncementDateFromChange: (value: string) => void;
+  announcementDateTo: string;
+  onAnnouncementDateToChange: (value: string) => void;
+  filteredAnnouncements: Announcement[];
+  onOpenSendDialog: () => void;
 }
 
 export function ManagerAnnouncementsSection({
-  programmes,
-  defaultProgrammeId = "",
+  announcementSearch,
+  onAnnouncementSearchChange,
+  announcementDateFrom,
+  onAnnouncementDateFromChange,
+  announcementDateTo,
+  onAnnouncementDateToChange,
+  filteredAnnouncements,
+  onOpenSendDialog,
 }: ManagerAnnouncementsSectionProps) {
-  const { toast } = useToast();
-  const { reloadAnnouncements } = useAnnouncements();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [announcementForm, setAnnouncementForm] = useState(emptyAnnouncementForm);
-
-  const handleSendAnnouncement = async () => {
-    const programmeId = announcementForm.programmeId || defaultProgrammeId;
-    if (!programmeId || !announcementForm.title.trim() || !announcementForm.message.trim()) {
-      toast({
-        title: "Announcement details required",
-        description: "Choose a programme, then add a title and message.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      await createAnnouncement({
-        programmeId,
-        title: announcementForm.title.trim(),
-        message: announcementForm.message.trim(),
-      });
-      setAnnouncementForm(emptyAnnouncementForm);
-      setIsDialogOpen(false);
-      await reloadAnnouncements();
-      toast({
-        title: "Announcement sent",
-        description: "The selected programme scholars will receive it in their dashboard.",
-      });
-    } catch (error) {
-      toast({
-        title: "Unable to send announcement",
-        description: error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
   return (
-    <>
-      <AnnouncementsSectionContainer
-        title="Announcements"
-        description="Send programme updates through a dialog and review the history."
-        variant="manager"
-        onOpenDialog={() => setIsDialogOpen(true)}
-      />
-
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Send announcement</DialogTitle>
-            <DialogDescription>
-              Choose a programme and send an update to scholars.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Programme</Label>
-              <select
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                value={announcementForm.programmeId || defaultProgrammeId}
-                onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                  setAnnouncementForm((current) => ({
-                    ...current,
-                    programmeId: event.target.value,
-                  }))
-                }
-              >
-                <option value="">Select a programme</option>
-                {programmes.map((programme) => (
-                  <option key={programme.id} value={programme.id}>
-                    {programme.title}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label>Title</Label>
-              <Input
-                value={announcementForm.title}
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  setAnnouncementForm((current) => ({
-                    ...current,
-                    title: event.target.value,
-                  }))
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Message</Label>
-              <Textarea
-                rows={5}
-                value={announcementForm.message}
-                onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
-                  setAnnouncementForm((current) => ({
-                    ...current,
-                    message: event.target.value,
-                  }))
-                }
-              />
-            </div>
+    <Card>
+      <CardHeader className="gap-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <CardTitle>Announcements</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Send programme updates through a dialog and review the
+              history.
+            </p>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={() => void handleSendAnnouncement()}>Send announcement</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+          <Button onClick={onOpenSendDialog}>
+            <Plus className="mr-2 h-4 w-4" />
+            Send announcement
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="grid gap-3 lg:grid-cols-[1fr_180px_180px]">
+          <Input
+            value={announcementSearch}
+            onChange={(event: ChangeEvent<HTMLInputElement>) =>
+              onAnnouncementSearchChange(event.target.value)
+            }
+            placeholder="Search announcements by title, message, or programme"
+          />
+          <Input
+            type="date"
+            value={announcementDateFrom}
+            onChange={(event: ChangeEvent<HTMLInputElement>) =>
+              onAnnouncementDateFromChange(event.target.value)
+            }
+          />
+          <Input
+            type="date"
+            value={announcementDateTo}
+            onChange={(event: ChangeEvent<HTMLInputElement>) =>
+              onAnnouncementDateToChange(event.target.value)
+            }
+          />
+        </div>
+
+        <div className="space-y-4">
+          {filteredAnnouncements.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              No announcements match the current filters.
+            </p>
+          )}
+          {filteredAnnouncements.map((announcement) => (
+            <div
+              key={announcement.id}
+              className="rounded-xl border border-border p-4"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold text-foreground">
+                  {announcement.title}
+                </p>
+                <Badge variant="outline">
+                  {announcement.programme?.title || "General"}
+                </Badge>
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {announcement.message}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                <span>{formatDateTime(announcement.createdAt)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

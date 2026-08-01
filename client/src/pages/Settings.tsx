@@ -65,15 +65,9 @@ export default function Settings() {
   return (
     <div className="flex min-h-screen bg-background">
       {isManager ? (
-        <ManagerSidebar
-          activeSection="settings"
-          onSelectSection={(section) => navigate(getManagerSectionRoute("/programme-manager", section))}
-        />
+        <ManagerSidebar basePath="/programme-manager" />
       ) : isAdmin ? (
-        <AdminSidebar
-          activeSection="settings"
-          onSelectSection={(section) => navigate(getAdminSectionRoute("/admin", section))}
-        />
+        <AdminSidebar />
       ) : (
         <AppSidebar activePage="Overview" />
       )}

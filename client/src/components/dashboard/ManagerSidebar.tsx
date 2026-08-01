@@ -12,49 +12,22 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import vahaniLogo from "@/assets/vahani-logo.png";
 import { useAuth } from "@/contexts/AuthContext";
 
-export const primaryNav = [
-  { icon: LayoutDashboard, label: "Overview", value: "overview" },
-  { icon: BookOpen, label: "Programmes", value: "programmes" },
-  { icon: BarChart3, label: "Analytics", value: "analytics" },
-  { icon: BellRing, label: "Announcements", value: "announcements" },
-  { icon: FileText, label: "Evaluation", value: "evaluation" },
-  { icon: BarChart3, label: "Reports", value: "reports" },
-  { icon: CircleHelp, label: "Queries", value: "queries" },
-  { icon: Users, label: "Students", value: "students" },
- ] as const;
+export function ManagerSidebar({ basePath }: { basePath: "/tutor" | "/programme-manager" }) {
+  const primaryNav = [
+    { icon: LayoutDashboard, label: "Overview", to: basePath, end: true },
+    { icon: BookOpen, label: "Programmes", to: `${basePath}/programmes`, end: true },
+    { icon: BarChart3, label: "Analytics", to: `${basePath}/analytics` },
+    { icon: BellRing, label: "Announcements", to: `${basePath}/announcements` },
+    { icon: FileText, label: "Evaluation", to: `${basePath}/evaluation` },
+    { icon: BarChart3, label: "Reports", to: `${basePath}/reports` },
+    { icon: CircleHelp, label: "Queries", to: `${basePath}/queries` },
+    { icon: Users, label: "Students", to: `${basePath}/students` },
+  ];
 
-export type ManagerSection = (typeof primaryNav)[number]["value"];
-
-const managerSections = new Set<ManagerSection>(primaryNav.map((item) => item.value));
-
-export const getManagerSectionRoute = (basePath: string, section: ManagerSection) =>
-  section === "overview" ? basePath : `${basePath}/${section}`;
-
-export const getManagerSectionFromPath = (
-  pathname: string,
-  basePath: string,
-): ManagerSection => {
-  if (pathname === basePath || pathname === `${basePath}/`) {
-    return "overview";
-  }
-
-  const segment = pathname.slice(basePath.length + 1).split("/")[0];
-  return managerSections.has(segment as ManagerSection)
-    ? (segment as ManagerSection)
-    : "overview";
-};
-
-export function ManagerSidebar({
-  activeSection,
-  onSelectSection,
-}: {
-  activeSection: ManagerSection | "settings";
-  onSelectSection: (section: ManagerSection) => void;
-}) {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const [open, setOpen] = useState(false);
@@ -79,21 +52,22 @@ export function ManagerSidebar({
 
       <nav className="flex-1 space-y-1 px-3 py-4">
         {primaryNav.map((item) => (
-          <button
-            key={item.value}
-            onClick={() => {
-              onSelectSection(item.value);
-              setOpen(false);
-            }}
-            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all ${
-              activeSection === item.value
-                ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
-                : "text-sidebar-foreground hover:bg-sidebar-accent/50"
-            }`}
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            onClick={() => setOpen(false)}
+            className={({ isActive }) =>
+              `flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all ${
+                isActive
+                  ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
+                  : "text-sidebar-foreground hover:bg-sidebar-accent/50"
+              }`
+            }
           >
             <item.icon size={18} />
             <span>{item.label}</span>
-          </button>
+          </NavLink>
         ))}
       </nav>
 

@@ -305,6 +305,31 @@ export interface AdminSettings {
   };
 }
 
+export interface AdminPagination {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface AdminUsersParams {
+  role?: AdminUserRole | "all";
+  search?: string;
+  batch?: string;
+  gender?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface AdminProgrammesParams {
+  search?: string;
+  status?: "all" | "setup" | "active" | "completed";
+  from?: string;
+  to?: string;
+  page?: number;
+  pageSize?: number;
+}
+
 export interface AdminReportResponse {
   type: "scholar" | "programme" | "wishlist";
   generatedAt: string;
@@ -377,14 +402,19 @@ export const getAdminSummary = async () => {
   });
 };
 
-export const getAdminUsers = async (role = "all") => {
-  const query =
-    role && role !== "all" ? `?role=${encodeURIComponent(role)}` : "";
+export const getAdminUsers = async (params: AdminUsersParams = {}) => {
+  const query = new URLSearchParams();
+  if (params.role && params.role !== "all") query.set("role", params.role);
+  if (params.search?.trim()) query.set("search", params.search.trim());
+  if (params.batch && params.batch !== "all") query.set("batch", params.batch);
+  if (params.gender && params.gender !== "all") query.set("gender", params.gender);
+  if (params.page !== undefined) query.set("page", String(params.page));
+  if (params.pageSize !== undefined) query.set("pageSize", String(params.pageSize));
 
-  return fetchWithAuth(`/admin/users${query}`, {
+  const qs = query.toString();
+
+  return fetchWithAuth(`/admin/users${qs ? `?${qs}` : ""}`, {
     method: "GET",
-    cacheTtlMs: 20_000,
-    cacheKey: `admin:users:${query || "all"}`,
   });
 };
 
@@ -458,11 +488,19 @@ export const deleteAdminUser = async (userId: string) => {
   });
 };
 
-export const getAdminProgrammes = async () => {
-  return fetchWithAuth("/admin/programmes", {
+export const getAdminProgrammes = async (params: AdminProgrammesParams = {}) => {
+  const query = new URLSearchParams();
+  if (params.search?.trim()) query.set("search", params.search.trim());
+  if (params.status && params.status !== "all") query.set("status", params.status);
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  if (params.page !== undefined) query.set("page", String(params.page));
+  if (params.pageSize !== undefined) query.set("pageSize", String(params.pageSize));
+
+  const qs = query.toString();
+
+  return fetchWithAuth(`/admin/programmes${qs ? `?${qs}` : ""}`, {
     method: "GET",
-    cacheTtlMs: 30_000,
-    cacheKey: "admin:programmes",
   });
 };
 

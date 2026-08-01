@@ -18,21 +18,13 @@ import { Label } from "../components/ui/label";
 import { Switch } from "../components/ui/switch";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../hooks/use-toast";
+import { formatDate } from "../lib/dateFormat";
 
 const parseCommaSeparatedValues = (value: string) =>
   value
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
-
-const formatDate = (value?: string | null) =>
-  value
-    ? new Date(value).toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      })
-    : "No date";
 
 export default function ManagerProgrammeGrouping() {
   const { user } = useAuth();
@@ -221,10 +213,7 @@ export default function ManagerProgrammeGrouping() {
 
   return (
     <div className="flex min-h-screen bg-background">
-      <ManagerSidebar
-        activeSection="programmes"
-        onSelectSection={(section) => navigate(getManagerSectionRoute(dashboardBasePath, section))}
-      />
+      <ManagerSidebar basePath={dashboardBasePath} />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-border bg-card/80 px-4 pl-14 backdrop-blur-md lg:px-8 lg:pl-8">

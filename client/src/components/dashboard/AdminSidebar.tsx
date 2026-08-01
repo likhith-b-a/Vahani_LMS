@@ -9,49 +9,22 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import vahaniLogo from "@/assets/vahani-logo.png";
 import { useAuth } from "@/contexts/AuthContext";
 
-export const primaryNav = [
-  { icon: BarChart3, label: "Overview", value: "overview" },
-  { icon: Users, label: "Users", value: "users" },
-  { icon: BookOpen, label: "Programmes", value: "programmes" },
-  { icon: BarChart3, label: "Analytics", value: "analytics" },
-  { icon: BellRing, label: "Announcements", value: "announcements" },
-  { icon: Users, label: "Queries", value: "queries" },
-  { icon: BarChart3, label: "Reports", value: "reports" },
-  { icon: Settings2, label: "Settings", value: "settings" },
-] as const;
+const primaryNav = [
+  { icon: BarChart3, label: "Overview", to: "/admin", end: true },
+  { icon: Users, label: "Users", to: "/admin/users" },
+  { icon: BookOpen, label: "Programmes", to: "/admin/programmes" },
+  { icon: BarChart3, label: "Analytics", to: "/admin/analytics" },
+  { icon: BellRing, label: "Announcements", to: "/admin/announcements" },
+  { icon: Users, label: "Queries", to: "/admin/queries" },
+  { icon: BarChart3, label: "Reports", to: "/admin/reports" },
+  { icon: Settings2, label: "Settings", to: "/admin/settings" },
+];
 
-export type AdminSection = (typeof primaryNav)[number]["value"];
-
-const adminSections = new Set<AdminSection>(primaryNav.map((item) => item.value));
-
-export const getAdminSectionRoute = (basePath: string, section: AdminSection) =>
-  section === "overview" ? basePath : `${basePath}/${section}`;
-
-export const getAdminSectionFromPath = (
-  pathname: string,
-  basePath: string,
-): AdminSection => {
-  if (pathname === basePath || pathname === `${basePath}/`) {
-    return "overview";
-  }
-
-  const segment = pathname.slice(basePath.length + 1).split("/")[0];
-  return adminSections.has(segment as AdminSection)
-    ? (segment as AdminSection)
-    : "overview";
-};
-
-export function AdminSidebar({
-  activeSection,
-  onSelectSection,
-}: {
-  activeSection: AdminSection | "settings";
-  onSelectSection: (section: AdminSection) => void;
-}) {
+export function AdminSidebar() {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const [open, setOpen] = useState(false);
@@ -76,21 +49,22 @@ export function AdminSidebar({
 
       <nav className="flex-1 space-y-1 px-3 py-4">
         {primaryNav.map((item) => (
-          <button
-            key={item.value}
-            onClick={() => {
-              onSelectSection(item.value);
-              setOpen(false);
-            }}
-            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all ${
-              activeSection === item.value
-                ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
-                : "text-sidebar-foreground hover:bg-sidebar-accent/50"
-            }`}
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            onClick={() => setOpen(false)}
+            className={({ isActive }) =>
+              `flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all ${
+                isActive
+                  ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
+                  : "text-sidebar-foreground hover:bg-sidebar-accent/50"
+              }`
+            }
           >
             <item.icon size={18} />
             <span>{item.label}</span>
-          </button>
+          </NavLink>
         ))}
       </nav>
 

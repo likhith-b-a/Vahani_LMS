@@ -1,6 +1,6 @@
-import { type ChangeEvent } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 import { Download, Pencil } from "lucide-react";
-import { type AdminUser, type AdminUserRole } from "@/api/admin";
+import { type AdminUser, type AdminUserPayload, type AdminUserRole } from "@/api/admin";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
 
 const roleLabel = (role: AdminUserRole) =>
   role === "programme_manager"
@@ -39,27 +40,64 @@ interface AdminUserFormState {
   creditsEarned: string;
 }
 
+const emptyUserForm: AdminUserFormState = {
+  name: "",
+  email: "",
+  password: "vahani123",
+  role: "scholar",
+  batch: "",
+  gender: "RatherNoTSay",
+  phoneNumber: "",
+  creditsEarned: "0",
+};
+
+const userToFormState = (user: AdminUser): AdminUserFormState => ({
+  name: user.name,
+  email: user.email,
+  password: "",
+  role: user.role,
+  batch: user.batch || "",
+  gender: user.gender || "RatherNoTSay",
+  phoneNumber: user.phoneNumber || "",
+  creditsEarned: String(user.creditsEarned ?? 0),
+});
+
 interface BulkUserImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  bulkUserFile: File | null;
-  onBulkUserFileChange: (file: File | null) => void;
   isDownloadingUserTemplate: boolean;
   isImportingUsers: boolean;
   onDownloadTemplate: () => void;
-  onImportUsers: () => void;
+  onImportUsers: (file: File) => void;
 }
 
 export function BulkUserImportDialog({
   open,
   onOpenChange,
-  bulkUserFile,
-  onBulkUserFileChange,
   isDownloadingUserTemplate,
   isImportingUsers,
   onDownloadTemplate,
   onImportUsers,
 }: BulkUserImportDialogProps) {
+  const { toast } = useToast();
+  const [bulkUserFile, setBulkUserFile] = useState<File | null>(null);
+
+  useEffect(() => {
+    if (!open) setBulkUserFile(null);
+  }, [open]);
+
+  const handleImport = () => {
+    if (!bulkUserFile) {
+      toast({
+        title: "Select a file first",
+        description: "Choose the filled template before importing users.",
+        variant: "destructive",
+      });
+      return;
+    }
+    onImportUsers(bulkUserFile);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl">
@@ -104,7 +142,7 @@ export function BulkUserImportDialog({
               type="file"
               accept=".xlsx,.xls,.csv"
               onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                onBulkUserFileChange(event.target.files?.[0] || null)
+                setBulkUserFile(event.target.files?.[0] || null)
               }
             />
             <p className="text-xs text-muted-foreground">
@@ -121,7 +159,7 @@ export function BulkUserImportDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={onImportUsers} disabled={isImportingUsers}>
+          <Button onClick={handleImport} disabled={isImportingUsers}>
             {isImportingUsers ? "Importing..." : "Upload users"}
           </Button>
         </DialogFooter>
@@ -133,25 +171,89 @@ export function BulkUserImportDialog({
 interface AdminUserDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  editingUserId: string | null;
-  userForm: AdminUserFormState;
-  onUserFormChange: (updater: (current: AdminUserFormState) => AdminUserFormState) => void;
-  onSubmit: () => void;
+  editingUser: AdminUser | null;
+  onSubmit: (payload: AdminUserPayload, editingUserId: string | null) => void;
 }
 
 export function AdminUserDialog({
   open,
   onOpenChange,
-  editingUserId,
-  userForm,
-  onUserFormChange,
+  editingUser,
   onSubmit,
 }: AdminUserDialogProps) {
+  const { toast } = useToast();
+  const [userForm, setUserForm] = useState<AdminUserFormState>(emptyUserForm);
+
+  useEffect(() => {
+    if (open) {
+      setUserForm(editingUser ? userToFormState(editingUser) : emptyUserForm);
+    }
+  }, [open, editingUser]);
+
+  const handleSubmit = () => {
+    const trimmedName = userForm.name.trim();
+    const trimmedEmail = userForm.email.trim().toLowerCase();
+    const trimmedBatch = userForm.batch.trim();
+    const trimmedGender = userForm.gender.trim();
+    const trimmedPhone = userForm.phoneNumber.trim();
+    const trimmedPassword = userForm.password.trim();
+
+    if (!trimmedName || !trimmedEmail || !userForm.role || (!editingUser && !trimmedPassword)) {
+      toast({
+        title: "Missing user details",
+        description: "Name, email, role, gender, and password are required for new users.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!trimmedGender) {
+      toast({
+        title: "Gender required",
+        description: "Add the user's gender before saving this profile.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (userForm.role === "scholar" && !trimmedBatch) {
+      toast({
+        title: "Batch required",
+        description: "Every scholar should have a batch before the user is created.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      toast({
+        title: "Invalid email",
+        description: "Enter a valid email address before saving the user.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    onSubmit(
+      {
+        name: trimmedName,
+        email: trimmedEmail,
+        password: trimmedPassword,
+        role: userForm.role,
+        batch: userForm.role === "scholar" ? trimmedBatch : "",
+        gender: trimmedGender,
+        phoneNumber: trimmedPhone,
+        creditsEarned: Number(userForm.creditsEarned || 0),
+      },
+      editingUser?.id || null,
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{editingUserId ? "Edit user" : "Create user"}</DialogTitle>
+          <DialogTitle>{editingUser ? "Edit user" : "Create user"}</DialogTitle>
           <DialogDescription>Add or update user details here.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -160,7 +262,7 @@ export function AdminUserDialog({
             <Input
               value={userForm.name}
               onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                onUserFormChange((current) => ({ ...current, name: event.target.value }))
+                setUserForm((current) => ({ ...current, name: event.target.value }))
               }
             />
           </div>
@@ -169,7 +271,7 @@ export function AdminUserDialog({
             <Input
               value={userForm.email}
               onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                onUserFormChange((current) => ({ ...current, email: event.target.value }))
+                setUserForm((current) => ({ ...current, email: event.target.value }))
               }
             />
           </div>
@@ -178,7 +280,7 @@ export function AdminUserDialog({
             <Select
               value={userForm.role}
               onValueChange={(value: AdminUserRole) =>
-                onUserFormChange((current) => ({ ...current, role: value }))
+                setUserForm((current) => ({ ...current, role: value }))
               }
             >
               <SelectTrigger>
@@ -196,7 +298,7 @@ export function AdminUserDialog({
             <Input
               value={userForm.phoneNumber}
               onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                onUserFormChange((current) => ({
+                setUserForm((current) => ({
                   ...current,
                   phoneNumber: event.target.value,
                 }))
@@ -210,7 +312,7 @@ export function AdminUserDialog({
                 <Input
                   value={userForm.batch}
                   onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                    onUserFormChange((current) => ({ ...current, batch: event.target.value }))
+                    setUserForm((current) => ({ ...current, batch: event.target.value }))
                   }
                 />
               </div>
@@ -220,7 +322,7 @@ export function AdminUserDialog({
               <Select
                 value={userForm.gender || "RatherNoTSay"}
                 onValueChange={(value: string) =>
-                  onUserFormChange((current) => ({ ...current, gender: value }))
+                  setUserForm((current) => ({ ...current, gender: value }))
                 }
               >
                 <SelectTrigger>
@@ -241,7 +343,7 @@ export function AdminUserDialog({
                   min="0"
                   value={userForm.creditsEarned}
                   onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                    onUserFormChange((current) => ({
+                    setUserForm((current) => ({
                       ...current,
                       creditsEarned: event.target.value,
                     }))
@@ -251,15 +353,15 @@ export function AdminUserDialog({
             )}
           </>
           <div className="space-y-1.5 sm:col-span-2">
-            <Label>Password {editingUserId ? "(optional)" : "*"}</Label>
+            <Label>Password {editingUser ? "(optional)" : "*"}</Label>
             <Input
               type="password"
               value={userForm.password}
               onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                onUserFormChange((current) => ({ ...current, password: event.target.value }))
+                setUserForm((current) => ({ ...current, password: event.target.value }))
               }
             />
-            {!editingUserId ? (
+            {!editingUser ? (
               <p className="text-xs text-muted-foreground">
                 Default password is <span className="font-medium">vahani123</span>.
               </p>
@@ -270,8 +372,8 @@ export function AdminUserDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={onSubmit}>
-            {editingUserId ? "Update user" : "Create user"}
+          <Button onClick={handleSubmit}>
+            {editingUser ? "Update user" : "Create user"}
           </Button>
         </DialogFooter>
       </DialogContent>

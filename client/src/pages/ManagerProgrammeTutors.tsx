@@ -16,15 +16,7 @@ import { Input } from "../components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../hooks/use-toast";
-
-const formatDate = (value?: string | null) =>
-  value
-    ? new Date(value).toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      })
-    : "No date";
+import { formatDate } from "../lib/dateFormat";
 
 export default function ManagerProgrammeTutors() {
   const { user } = useAuth();
@@ -181,10 +173,7 @@ export default function ManagerProgrammeTutors() {
 
   return (
     <div className="flex min-h-screen bg-background">
-      <ManagerSidebar
-        activeSection="programmes"
-        onSelectSection={(section) => navigate(getManagerSectionRoute(dashboardBasePath, section))}
-      />
+      <ManagerSidebar basePath={dashboardBasePath} />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-border bg-card/80 px-4 pl-14 backdrop-blur-md lg:px-8 lg:pl-8">

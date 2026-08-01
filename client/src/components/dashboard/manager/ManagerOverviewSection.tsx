@@ -1,30 +1,19 @@
-import { useMemo, useState, type ChangeEvent } from "react";
-import {
-  addDays,
-  addMonths,
-  endOfMonth,
-  endOfWeek,
-  format,
-  isSameDay,
-  isSameMonth,
-  startOfMonth,
-  startOfWeek,
-} from "date-fns";
-import {
-  BellRing,
-  BookOpen,
-  ChevronLeft,
-  ChevronRight,
-  CircleHelp,
-  MessageSquareText,
-} from "lucide-react";
-import type { ManagedProgramme, ManagedProgrammeSummary } from "@/api/programmeManager";
+import type { ChangeEvent } from "react";
+import { addMonths, format, isSameDay, isSameMonth } from "date-fns";
+import { BellRing, BookOpen, ChevronLeft, ChevronRight, CircleHelp, MessageSquareText } from "lucide-react";
+import { type SupportQuery } from "@/api/queries";
+import { type ManagedProgrammeSummary } from "@/api/programmeManager";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useAnnouncements } from "@/contexts/AnnouncementsContext";
-import { useAuth } from "@/contexts/AuthContext";
-import { useSupportQueries } from "@/contexts/SupportQueriesContext";
+
+export interface ManagerCalendarEvent {
+  id: string;
+  type: "assignment" | "interactive_session";
+  title: string;
+  date: string;
+  meta: string;
+}
 
 const calendarWeekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -33,185 +22,70 @@ const managerCalendarEventStyles = {
   interactive_session: "bg-[#2563eb]",
 } as const;
 
-type OverviewCalendarEvent = {
-  id: string;
-  programmeId?: string;
-  programmeTitle?: string;
-  type: "assignment" | "interactive_session";
-  title: string;
-  date: string;
-  meta: string;
-};
-
 interface ManagerOverviewSectionProps {
-  programmes: ManagedProgrammeSummary[];
-  programmeDetails: ManagedProgramme[];
+  managerName?: string;
   loading: boolean;
+  programmes: ManagedProgrammeSummary[];
+  totalStudents: number;
+  totalResources: number;
+  announcementsCount: number;
+  queries: SupportQuery[];
+  overviewProgrammeId: string;
+  onOverviewProgrammeIdChange: (value: string) => void;
+  overviewProgrammeOptions: { id: string; title: string }[];
+  overviewVisibleMonth: Date;
+  onOverviewVisibleMonthChange: (updater: (current: Date) => Date) => void;
+  overviewCalendarWeeks: Date[][];
+  overviewEventsByDay: Record<string, ManagerCalendarEvent[]>;
+  overviewMonthEvents: ManagerCalendarEvent[];
 }
 
 export function ManagerOverviewSection({
-  programmes,
-  programmeDetails,
+  managerName,
   loading,
+  programmes,
+  totalStudents,
+  totalResources,
+  announcementsCount,
+  queries,
+  overviewProgrammeId,
+  onOverviewProgrammeIdChange,
+  overviewProgrammeOptions,
+  overviewVisibleMonth,
+  onOverviewVisibleMonthChange,
+  overviewCalendarWeeks,
+  overviewEventsByDay,
+  overviewMonthEvents,
 }: ManagerOverviewSectionProps) {
-  const { user } = useAuth();
-  const { announcementCount } = useAnnouncements();
-  const { activeQueryCount } = useSupportQueries();
-  const [overviewProgrammeId, setOverviewProgrammeId] = useState("all");
-  const [overviewVisibleMonth, setOverviewVisibleMonth] = useState(() =>
-    startOfMonth(new Date()),
-  );
-
-  const totalStudents = useMemo(
-    () => programmes.reduce((sum, programme) => sum + programme.scholarsCount, 0),
-    [programmes],
-  );
-
-  const totalResources = useMemo(
-    () =>
-      programmes.reduce(
-        (sum, programme) =>
-          sum + (programme.resourcesCount || 0) + (programme.meetingsCount || 0),
-        0,
-      ),
-    [programmes],
-  );
-
-  const overviewProgrammeOptions = useMemo(
-    () =>
-      programmeDetails.map((programme) => ({
-        id: programme.id,
-        title: programme.title,
-      })),
-    [programmeDetails],
-  );
-
-  const displayOverviewCalendarEvents = useMemo(() => {
-    if (!programmeDetails.length) {
-      return [] as OverviewCalendarEvent[];
-    }
-
-    const programmesToUse =
-      overviewProgrammeId === "all"
-        ? programmeDetails
-        : programmeDetails.filter((programme) => programme.id === overviewProgrammeId);
-
-    return programmesToUse
-      .flatMap((programme) => {
-        const assignmentItems = (programme.assignments || [])
-          .filter((assignment) => assignment.dueDate)
-          .map((assignment) => ({
-            id: `assignment:${programme.id}:${assignment.id}`,
-            programmeId: programme.id,
-            programmeTitle: programme.title,
-            type: "assignment" as const,
-            title: assignment.title,
-            date: assignment.dueDate as string,
-            meta:
-              assignment.maxScore !== null && assignment.maxScore !== undefined
-                ? `${assignment.maxScore} marks`
-                : "Due",
-          }));
-
-        const sessionItems = (programme.interactiveSessions || []).flatMap((session) =>
-          (session.occurrences || []).map((occurrence) => ({
-            id: `session:${programme.id}:${session.id}:${occurrence.id}`,
-            programmeId: programme.id,
-            programmeTitle: programme.title,
-            type: "interactive_session" as const,
-            title: session.title,
-            date: occurrence.scheduledAt,
-            meta: session.maxScore > 0 ? `${session.maxScore} marks` : "Attendance only",
-          })),
-        );
-
-        return [...assignmentItems, ...sessionItems];
-      })
-      .sort(
-        (left, right) => new Date(left.date).getTime() - new Date(right.date).getTime(),
-      );
-  }, [overviewProgrammeId, programmeDetails]);
-
-  const overviewMonthEvents = useMemo(
-    () =>
-      displayOverviewCalendarEvents.filter((event) =>
-        isSameMonth(new Date(event.date), overviewVisibleMonth),
-      ),
-    [displayOverviewCalendarEvents, overviewVisibleMonth],
-  );
-
-  const overviewEventsByDay = useMemo(
-    () =>
-      displayOverviewCalendarEvents.reduce<Record<string, OverviewCalendarEvent[]>>(
-        (acc, event) => {
-          const key = format(new Date(event.date), "yyyy-MM-dd");
-          if (!acc[key]) {
-            acc[key] = [];
-          }
-          acc[key].push(event);
-          acc[key].sort(
-            (first, second) =>
-              new Date(first.date).getTime() - new Date(second.date).getTime(),
-          );
-          return acc;
-        },
-        {},
-      ),
-    [displayOverviewCalendarEvents],
-  );
-
-  const overviewCalendarWeeks = useMemo(() => {
-    const start = startOfWeek(startOfMonth(overviewVisibleMonth), {
-      weekStartsOn: 1,
-    });
-    const end = endOfWeek(endOfMonth(overviewVisibleMonth), { weekStartsOn: 1 });
-    const weeks: Date[][] = [];
-    let cursor = start;
-
-    while (cursor <= end) {
-      const week: Date[] = [];
-      for (let index = 0; index < 7; index += 1) {
-        week.push(cursor);
-        cursor = addDays(cursor, 1);
-      }
-      weeks.push(week);
-    }
-
-    return weeks;
-  }, [overviewVisibleMonth]);
-
-  const overviewStats = useMemo(
-    () => [
-      {
-        label: "Managed programmes",
-        value: programmes.length,
-        hint: "Courses under your care",
-        icon: BookOpen,
-      },
-      {
-        label: "Study items",
-        value: totalResources,
-        hint: "Resources and meetings published",
-        icon: BellRing,
-      },
-      {
-        label: "Announcements",
-        value: announcementCount,
-        hint: "Messages shared with scholars",
-        icon: MessageSquareText,
-      },
-      {
-        label: "Open queries",
-        value: activeQueryCount,
-        hint: "Threads that still need attention",
-        icon: CircleHelp,
-      },
-    ],
-    [activeQueryCount, announcementCount, programmes.length, totalResources],
-  );
+  const stats = [
+    {
+      label: "Managed programmes",
+      value: programmes.length,
+      hint: "Courses under your care",
+      icon: BookOpen,
+    },
+    {
+      label: "Study items",
+      value: totalResources,
+      hint: "Resources and meetings published",
+      icon: BellRing,
+    },
+    {
+      label: "Announcements",
+      value: announcementsCount,
+      hint: "Messages shared with scholars",
+      icon: MessageSquareText,
+    },
+    {
+      label: "Open queries",
+      value: queries.filter((query) => query.status !== "closed" && query.status !== "resolved").length,
+      hint: "Threads that still need attention",
+      icon: CircleHelp,
+    },
+  ];
 
   return (
-    <div className="space-y-6">
+    <>
       <section className="overflow-hidden rounded-[2rem] border border-border bg-[linear-gradient(135deg,rgba(12,106,204,0.10),rgba(32,201,151,0.06),rgba(255,255,255,0.98))] p-6 shadow-sm sm:p-8">
         <div className="space-y-5">
           <div>
@@ -219,11 +93,12 @@ export function ManagerOverviewSection({
               Platform Control
             </p>
             <h2 className="mt-2 text-lg font-semibold tracking-tight sm:text-xl">
-              Manage programmes, content, evaluation, and scholar support
+              Manage programmes, content, evaluation, and scholar
+              support
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Work one programme at a time and keep assignment, resource, announcement,
-              and evaluation workflows tidy.
+              Work one programme at a time and keep assignment,
+              resource, announcement, and evaluation workflows tidy.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
@@ -231,7 +106,9 @@ export function ManagerOverviewSection({
               <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">
                 Manager
               </p>
-              <p className="mt-2 text-base font-semibold text-foreground">{user?.name}</p>
+              <p className="mt-2 text-base font-semibold text-foreground">
+                {managerName}
+              </p>
             </div>
             <div className="rounded-2xl border border-border bg-card/80 p-4">
               <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">
@@ -254,17 +131,21 @@ export function ManagerOverviewSection({
       </section>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {overviewStats.map((stat) => (
+        {stats.map((stat) => (
           <Card key={stat.label}>
             <CardContent className="pt-5">
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">{stat.label}</span>
+                <span className="text-xs text-muted-foreground">
+                  {stat.label}
+                </span>
                 <stat.icon className="h-4 w-4 text-vahani-blue" />
               </div>
               <p className="text-2xl font-bold text-foreground">
                 {loading ? "..." : stat.value}
               </p>
-              <p className="text-xs text-muted-foreground">{stat.hint}</p>
+              <p className="text-xs text-muted-foreground">
+                {stat.hint}
+              </p>
             </CardContent>
           </Card>
         ))}
@@ -282,7 +163,7 @@ export function ManagerOverviewSection({
             <select
               value={overviewProgrammeId}
               onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                setOverviewProgrammeId(event.target.value)
+                onOverviewProgrammeIdChange(event.target.value)
               }
               className="h-10 min-w-[180px] rounded-md border border-input bg-background px-3 text-sm"
             >
@@ -317,7 +198,7 @@ export function ManagerOverviewSection({
                     variant="outline"
                     size="sm"
                     onClick={() =>
-                      setOverviewVisibleMonth((current) => addMonths(current, -1))
+                      onOverviewVisibleMonthChange((current) => addMonths(current, -1))
                     }
                   >
                     <ChevronLeft className="mr-1 h-4 w-4" />
@@ -330,7 +211,7 @@ export function ManagerOverviewSection({
                     variant="outline"
                     size="sm"
                     onClick={() =>
-                      setOverviewVisibleMonth((current) => addMonths(current, 1))
+                      onOverviewVisibleMonthChange((current) => addMonths(current, 1))
                     }
                   >
                     {format(addMonths(overviewVisibleMonth, 1), "MMMM")}
@@ -394,7 +275,9 @@ export function ManagerOverviewSection({
                                   <span
                                     className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${managerCalendarEventStyles[event.type]}`}
                                   />
-                                  <span className="line-clamp-2">{event.title}</span>
+                                  <span className="line-clamp-2">
+                                    {event.title}
+                                  </span>
                                 </div>
                               ))}
                               {dayEvents.length > 3 && (
@@ -423,7 +306,9 @@ export function ManagerOverviewSection({
               </div>
 
               <div className="space-y-3">
-                <p className="text-sm font-semibold text-foreground">This month at a glance</p>
+                <p className="text-sm font-semibold text-foreground">
+                  This month at a glance
+                </p>
                 {overviewMonthEvents.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
                     No calendar events for this month.
@@ -442,7 +327,9 @@ export function ManagerOverviewSection({
                           <p className="truncate text-sm font-medium text-foreground">
                             {event.title}
                           </p>
-                          <p className="text-xs text-muted-foreground">{event.meta}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {event.meta}
+                          </p>
                           <p className="text-xs text-muted-foreground">
                             {format(new Date(event.date), "dd MMM yyyy")}
                           </p>
@@ -456,6 +343,6 @@ export function ManagerOverviewSection({
           )}
         </CardContent>
       </Card>
-    </div>
+    </>
   );
 }

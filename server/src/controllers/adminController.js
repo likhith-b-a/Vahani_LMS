@@ -666,52 +666,103 @@ const getAdminOverview = asyncHandler(async (req, res) => {
 });
 
 const getAdminUsers = asyncHandler(async (req, res) => {
-  const { role } = req.query;
-  const cacheKey = `admin:users:${req.user.id}:${role || "all"}`;
+  const { role, search, batch, gender } = req.query;
+  const isPaginated = req.query.page !== undefined || req.query.pageSize !== undefined;
+  const page = isPaginated ? Math.max(1, parseInt(req.query.page, 10) || 1) : null;
+  const pageSize = isPaginated
+    ? Math.min(100, Math.max(1, parseInt(req.query.pageSize, 10) || 25))
+    : null;
+  const skip = isPaginated ? (page - 1) * pageSize : undefined;
+
+  const cacheKey = `admin:users:${req.user.id}:${role || "all"}:${search || ""}:${batch || "all"}:${gender || "all"}:${page || "-"}:${pageSize || "-"}`;
   const cachedResponse = getCachedResponse(cacheKey);
 
   if (cachedResponse) {
     return res.status(200).json(cachedResponse);
   }
 
-  const users = await db.user.findMany({
-    where:
-      role && role !== "all"
-        ? {
-            role: String(role),
-          }
-        : undefined,
-    include: {
-      managedProgrammes: {
-        select: {
-          id: true,
-          title: true,
+  const andConditions = [];
+
+  if (role && role !== "all") {
+    andConditions.push({ role: String(role) });
+  }
+
+  if (search && String(search).trim()) {
+    const term = String(search).trim();
+    andConditions.push({
+      OR: [
+        { name: { contains: term, mode: "insensitive" } },
+        { email: { contains: term, mode: "insensitive" } },
+        { phoneNumber: { contains: term, mode: "insensitive" } },
+        { batch: { contains: term, mode: "insensitive" } },
+      ],
+    });
+  }
+
+  if (batch && batch !== "all" && role === "scholar") {
+    andConditions.push({ batch: String(batch) });
+  }
+
+  if (gender && gender !== "all") {
+    andConditions.push(
+      gender === "RatherNoTSay"
+        ? { OR: [{ gender: "RatherNoTSay" }, { gender: null }] }
+        : { gender: String(gender) },
+    );
+  }
+
+  const where = andConditions.length ? { AND: andConditions } : undefined;
+
+  const [users, total] = await Promise.all([
+    db.user.findMany({
+      where,
+      skip,
+      take: isPaginated ? pageSize : undefined,
+      include: {
+        managedProgrammes: {
+          select: {
+            id: true,
+            title: true,
+          },
         },
-      },
-      enrollments: {
-        include: {
-          programme: {
-            select: {
-              id: true,
-              title: true,
+        enrollments: {
+          include: {
+            programme: {
+              select: {
+                id: true,
+                title: true,
+              },
             },
           },
         },
-      },
-      submissions: {
-        select: {
-          id: true,
+        submissions: {
+          select: {
+            id: true,
+          },
         },
       },
-    },
-    orderBy: {
-      name: "asc",
-    },
-  });
+      orderBy: {
+        name: "asc",
+      },
+    }),
+    isPaginated ? db.user.count({ where }) : Promise.resolve(null),
+  ]);
 
   const response = new ApiResponse(
     200,
-    { users: users.map(normalizeUser) },
+    {
+      users: users.map(normalizeUser),
+      ...(isPaginated
+        ? {
+            pagination: {
+              page,
+              pageSize,
+              total,
+              totalPages: Math.max(1, Math.ceil(total / pageSize)),
+            },
+          }
+        : {}),
+    },
     "Users fetched successfully",
   );
 
@@ -1310,25 +1361,97 @@ const deleteAdminUser = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, {}, "User deleted successfully"));
 });
 
+const getAdminProgrammeStatusWhere = (status) => {
+  const completedWhere = { enrollments: { some: { status: "completed" } } };
+  const setupWhere = {
+    AND: [
+      { enrollments: { none: {} } },
+      { assignments: { none: {} } },
+      { resources: { none: {} } },
+    ],
+  };
+
+  if (status === "completed") return completedWhere;
+  if (status === "setup") return setupWhere;
+  if (status === "active") {
+    return { NOT: [completedWhere, setupWhere] };
+  }
+  return null;
+};
+
 const getAdminProgrammes = asyncHandler(async (req, res) => {
-  const cacheKey = `admin:programmes:${req.user.id}`;
+  const { search, status, from, to } = req.query;
+  const isPaginated = req.query.page !== undefined || req.query.pageSize !== undefined;
+  const page = isPaginated ? Math.max(1, parseInt(req.query.page, 10) || 1) : null;
+  const pageSize = isPaginated
+    ? Math.min(100, Math.max(1, parseInt(req.query.pageSize, 10) || 25))
+    : null;
+  const skip = isPaginated ? (page - 1) * pageSize : undefined;
+
+  const cacheKey = `admin:programmes:${req.user.id}:${search || ""}:${status || "all"}:${from || ""}:${to || ""}:${page || "-"}:${pageSize || "-"}`;
   const cachedResponse = getCachedResponse(cacheKey);
 
   if (cachedResponse) {
     return res.status(200).json(cachedResponse);
   }
 
-  const programmes = await db.programme.findMany({
-    select: adminProgrammeSelect,
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+  const andConditions = [];
+
+  if (search && String(search).trim()) {
+    const term = String(search).trim();
+    andConditions.push({
+      OR: [
+        { title: { contains: term, mode: "insensitive" } },
+        { description: { contains: term, mode: "insensitive" } },
+        { programmeManager: { name: { contains: term, mode: "insensitive" } } },
+      ],
+    });
+  }
+
+  if (status && status !== "all") {
+    const statusWhere = getAdminProgrammeStatusWhere(String(status));
+    if (statusWhere) andConditions.push(statusWhere);
+  }
+
+  if (from) {
+    andConditions.push({ createdAt: { gte: new Date(String(from)) } });
+  }
+
+  if (to) {
+    const toDate = new Date(String(to));
+    toDate.setHours(23, 59, 59, 999);
+    andConditions.push({ createdAt: { lte: toDate } });
+  }
+
+  const where = andConditions.length ? { AND: andConditions } : undefined;
+
+  const [programmes, total] = await Promise.all([
+    db.programme.findMany({
+      where,
+      select: adminProgrammeSelect,
+      orderBy: {
+        createdAt: "desc",
+      },
+      skip,
+      take: isPaginated ? pageSize : undefined,
+    }),
+    isPaginated ? db.programme.count({ where }) : Promise.resolve(null),
+  ]);
 
   const response = new ApiResponse(
     200,
     {
       programmes: programmes.map((programme) => normalizeProgramme(programme)),
+      ...(isPaginated
+        ? {
+            pagination: {
+              page,
+              pageSize,
+              total,
+              totalPages: Math.max(1, Math.ceil(total / pageSize)),
+            },
+          }
+        : {}),
     },
     "Programmes fetched successfully",
   );

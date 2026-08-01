@@ -38,16 +38,10 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { exportAdminProgrammeDetailPdf } from "@/lib/adminDetailPdfExport";
+import { formatDate as formatDateBase } from "@/lib/dateFormat";
 import { matchesSelfEnrollmentScholarRules } from "@/lib/selfEnrollmentEligibility";
 
-const formatDate = (value?: string | null) =>
-  value
-    ? new Date(value).toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      })
-    : "--";
+const formatDate = (value?: string | null) => formatDateBase(value, "--");
 
 export default function AdminProgrammeDetailPage() {
   const { programmeId } = useParams();
@@ -100,7 +94,7 @@ export default function AdminProgrammeDetailPage() {
   useEffect(() => {
     const loadScholars = async () => {
       try {
-        const response = await getAdminUsers("scholar");
+        const response = await getAdminUsers({ role: "scholar" });
         setScholars(Array.isArray(response?.data?.users) ? (response.data.users as AdminUser[]) : []);
       } catch {
         setScholars([]);
@@ -270,10 +264,7 @@ export default function AdminProgrammeDetailPage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="flex">
-        <AdminSidebar
-          activeSection="programmes"
-          onSelectSection={(section) => navigate("/admin", { state: { section } })}
-        />
+        <AdminSidebar />
         <main className="flex-1 px-6 py-8 lg:px-10">
           <div className="mx-auto w-full max-w-7xl space-y-6">
             <Button

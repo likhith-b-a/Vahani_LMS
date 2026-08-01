@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { exportAdminUserDetailPdf } from "@/lib/adminDetailPdfExport";
+import { formatDate as formatDateBase } from "@/lib/dateFormat";
 
 const roleLabel = (role: AdminUserDetail["role"]) =>
   role === "programme_manager"
@@ -24,14 +25,7 @@ const roleLabel = (role: AdminUserDetail["role"]) =>
       ? "Admin"
       : "Scholar";
 
-const formatDate = (value?: string | null) =>
-  value
-    ? new Date(value).toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      })
-    : "--";
+const formatDate = (value?: string | null) => formatDateBase(value, "--");
 
 export default function AdminUserDetailPage() {
   const { userId } = useParams();
@@ -116,10 +110,7 @@ export default function AdminUserDetailPage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="flex">
-        <AdminSidebar
-          activeSection="users"
-          onSelectSection={(section) => navigate("/admin", { state: { section } })}
-        />
+        <AdminSidebar />
         <main className="flex-1 px-6 py-8 lg:px-10">
           <div className="mx-auto w-full max-w-7xl space-y-6">
             <div className="flex flex-wrap items-center gap-3">

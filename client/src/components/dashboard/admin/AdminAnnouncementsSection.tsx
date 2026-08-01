@@ -1,284 +1,86 @@
-import { useMemo, useState, type ChangeEvent } from "react";
-import { createAnnouncement } from "@/api/announcements";
-import type { AdminProgramme, AdminUser, AdminUserRole } from "@/api/admin";
-import { AnnouncementsSectionContainer } from "@/components/dashboard/shared/AnnouncementsSectionContainer";
+import type { ChangeEvent } from "react";
+import { Plus, Search } from "lucide-react";
+import { type Announcement } from "@/api/announcements";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { useAnnouncements } from "@/contexts/AnnouncementsContext";
-import { useToast } from "@/hooks/use-toast";
-
-const emptyAnnouncementForm = {
-  title: "",
-  message: "",
-  programmeId: "",
-  targetBatch: "",
-  targetRoles: ["scholar"] as string[],
-  userIds: [] as string[],
-};
-
-const roleLabel = (role: AdminUserRole) =>
-  role === "programme_manager"
-    ? "Programme manager"
-    : role === "admin"
-      ? "Admin"
-      : "Scholar";
+import { formatDateTime } from "@/lib/dateFormat";
 
 interface AdminAnnouncementsSectionProps {
-  programmes: AdminProgramme[];
-  users: AdminUser[];
-  scholarBatches: string[];
+  announcementSearch: string;
+  onAnnouncementSearchChange: (value: string) => void;
+  announcementDateFrom: string;
+  onAnnouncementDateFromChange: (value: string) => void;
+  announcementDateTo: string;
+  onAnnouncementDateToChange: (value: string) => void;
+  filteredAnnouncements: Announcement[];
+  onOpenSendDialog: () => void;
 }
 
 export function AdminAnnouncementsSection({
-  programmes,
-  users,
-  scholarBatches,
+  announcementSearch,
+  onAnnouncementSearchChange,
+  announcementDateFrom,
+  onAnnouncementDateFromChange,
+  announcementDateTo,
+  onAnnouncementDateToChange,
+  filteredAnnouncements,
+  onOpenSendDialog,
 }: AdminAnnouncementsSectionProps) {
-  const { toast } = useToast();
-  const { reloadAnnouncements } = useAnnouncements();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [announcementForm, setAnnouncementForm] = useState(emptyAnnouncementForm);
-
-  const announcementAudienceUsers = useMemo(
-    () =>
-      users.filter((entry) => {
-        const roleMatch =
-          announcementForm.targetRoles.length === 0 ||
-          announcementForm.targetRoles.includes(entry.role);
-        const batchMatch =
-          !announcementForm.targetBatch ||
-          entry.role !== "scholar" ||
-          entry.batch === announcementForm.targetBatch;
-        const programmeMatch =
-          !announcementForm.programmeId ||
-          (entry.role === "scholar" &&
-            entry.enrollments.some(
-              (enrollment) => enrollment.programme.id === announcementForm.programmeId,
-            )) ||
-          (entry.role === "programme_manager" &&
-            entry.programmes.some((programme) => programme.id === announcementForm.programmeId));
-        return roleMatch && batchMatch && programmeMatch;
-      }),
-    [
-      announcementForm.programmeId,
-      announcementForm.targetBatch,
-      announcementForm.targetRoles,
-      users,
-    ],
-  );
-
-  const handleSendAnnouncement = async () => {
-    if (!announcementForm.title.trim() || !announcementForm.message.trim()) {
-      toast({
-        title: "Announcement details required",
-        description: "Fill in the announcement title and message.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      await createAnnouncement({
-        title: announcementForm.title.trim(),
-        message: announcementForm.message.trim(),
-        programmeId: announcementForm.programmeId || undefined,
-        targetBatch: announcementForm.targetBatch || undefined,
-        targetRoles: announcementForm.targetRoles,
-        userIds: announcementForm.userIds.length ? announcementForm.userIds : undefined,
-      });
-      setAnnouncementForm(emptyAnnouncementForm);
-      setIsDialogOpen(false);
-      await reloadAnnouncements();
-      toast({
-        title: "Announcement sent",
-        description: "Recipients will see it now.",
-      });
-    } catch (error) {
-      toast({
-        title: "Could not send announcement",
-        description: error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
   return (
-    <>
-      <AnnouncementsSectionContainer
-        title="Announcements"
-        description="Send filtered announcements and review sent messages by time range."
-        variant="admin"
-        onOpenDialog={() => setIsDialogOpen(true)}
-      />
-
-      <Dialog
-        open={isDialogOpen}
-        onOpenChange={(open: boolean) => {
-          setIsDialogOpen(open);
-          if (!open) setAnnouncementForm(emptyAnnouncementForm);
-        }}
-      >
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Send announcement</DialogTitle>
-            <DialogDescription>
-              Target users by programme, role, batch, or specific people.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label>Programme filter</Label>
-                <Select
-                  value={announcementForm.programmeId || "all"}
-                  onValueChange={(value: string) =>
-                    setAnnouncementForm((current) => ({
-                      ...current,
-                      programmeId: value === "all" ? "" : value,
-                      userIds: [],
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All programmes</SelectItem>
-                    {programmes.map((programme) => (
-                      <SelectItem key={programme.id} value={programme.id}>
-                        {programme.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Batch filter</Label>
-                <Select
-                  value={announcementForm.targetBatch || "all"}
-                  onValueChange={(value: string) =>
-                    setAnnouncementForm((current) => ({
-                      ...current,
-                      targetBatch: value === "all" ? "" : value,
-                      userIds: [],
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All batches</SelectItem>
-                    {scholarBatches.map((batch) => (
-                      <SelectItem key={batch} value={batch}>
-                        {batch}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Role filters</Label>
-              <div className="grid gap-2 sm:grid-cols-3">
-                {(["scholar", "programme_manager", "admin"] as const).map((role) => (
-                  <label
-                    key={role}
-                    className="flex items-center gap-2 rounded-lg border border-border p-3 text-sm"
-                  >
-                    <Checkbox
-                      checked={announcementForm.targetRoles.includes(role)}
-                      onCheckedChange={() =>
-                        setAnnouncementForm((current) => ({
-                          ...current,
-                          targetRoles: current.targetRoles.includes(role)
-                            ? current.targetRoles.filter((item) => item !== role)
-                            : [...current.targetRoles, role],
-                          userIds: [],
-                        }))
-                      }
-                    />
-                    <span>{roleLabel(role)}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Specific users</Label>
-              <div className="max-h-52 space-y-2 overflow-y-auto rounded-xl border border-border p-3">
-                {announcementAudienceUsers.map((member) => (
-                  <label key={member.id} className="flex items-center gap-3 text-sm">
-                    <Checkbox
-                      checked={announcementForm.userIds.includes(member.id)}
-                      onCheckedChange={() =>
-                        setAnnouncementForm((current) => ({
-                          ...current,
-                          userIds: current.userIds.includes(member.id)
-                            ? current.userIds.filter((id) => id !== member.id)
-                            : [...current.userIds, member.id],
-                        }))
-                      }
-                    />
-                    <span>
-                      {member.name} • {roleLabel(member.role)}
-                      {member.batch ? ` • ${member.batch}` : ""}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Title</Label>
-              <Input
-                value={announcementForm.title}
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  setAnnouncementForm((current) => ({
-                    ...current,
-                    title: event.target.value,
-                  }))
-                }
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Message</Label>
-              <Textarea
-                rows={5}
-                value={announcementForm.message}
-                onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
-                  setAnnouncementForm((current) => ({
-                    ...current,
-                    message: event.target.value,
-                  }))
-                }
-              />
-            </div>
+    <Card>
+      <CardHeader className="gap-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <CardTitle>Announcements</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Send filtered announcements and review sent messages by time range.
+            </p>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={() => void handleSendAnnouncement()}>Send announcement</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+          <Button onClick={onOpenSendDialog}>
+            <Plus className="mr-2 h-4 w-4" />
+            Send announcement
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="grid gap-3 lg:grid-cols-[1.2fr_200px_200px]">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={announcementSearch}
+              onChange={(event: ChangeEvent<HTMLInputElement>) => onAnnouncementSearchChange(event.target.value)}
+              placeholder="Search announcements by title, message, or programme"
+              className="pl-9"
+            />
+          </div>
+          <Input type="date" value={announcementDateFrom} onChange={(event: ChangeEvent<HTMLInputElement>) => onAnnouncementDateFromChange(event.target.value)} />
+          <Input type="date" value={announcementDateTo} onChange={(event: ChangeEvent<HTMLInputElement>) => onAnnouncementDateToChange(event.target.value)} />
+        </div>
+
+        <div className="space-y-4">
+          {filteredAnnouncements.map((announcement) => (
+            <div key={announcement.id} className="rounded-2xl border border-border p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold text-foreground">{announcement.title}</p>
+                <Badge variant="outline">{announcement.programme?.title || "General"}</Badge>
+                <Badge variant="secondary">
+                  {announcement.recipients?.length || announcement.recipientCount || 0} recipients
+                </Badge>
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">{announcement.message}</p>
+              <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                <span>{formatDateTime(announcement.createdAt)}</span>
+                {announcement.targetBatch && <span>Batch {announcement.targetBatch}</span>}
+                {announcement.targetRoles?.length ? (
+                  <span>Roles: {announcement.targetRoles.join(", ")}</span>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
