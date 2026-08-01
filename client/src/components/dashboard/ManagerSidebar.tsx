@@ -16,6 +16,18 @@ import { NavLink, useNavigate } from "react-router-dom";
 import vahaniLogo from "@/assets/vahani-logo.png";
 import { useAuth } from "@/contexts/AuthContext";
 
+export function getManagerSectionRoute(
+  basePath: "/tutor" | "/programme-manager",
+  section: string,
+) {
+  const normalizedSection = section.replace(/^\/+/, "");
+  if (!normalizedSection || normalizedSection === "overview") {
+    return basePath;
+  }
+
+  return `${basePath}/${normalizedSection}`;
+}
+
 export function ManagerSidebar({ basePath }: { basePath: "/tutor" | "/programme-manager" }) {
   const primaryNav = [
     { icon: LayoutDashboard, label: "Overview", to: basePath, end: true },

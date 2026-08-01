@@ -13,6 +13,15 @@ import { NavLink, useNavigate } from "react-router-dom";
 import vahaniLogo from "@/assets/vahani-logo.png";
 import { useAuth } from "@/contexts/AuthContext";
 
+export function getAdminSectionRoute(section: string) {
+  const normalizedSection = section.replace(/^\/+/, "");
+  if (!normalizedSection || normalizedSection === "overview") {
+    return "/admin";
+  }
+
+  return `/admin/${normalizedSection}`;
+}
+
 const primaryNav = [
   { icon: BarChart3, label: "Overview", to: "/admin", end: true },
   { icon: Users, label: "Users", to: "/admin/users" },

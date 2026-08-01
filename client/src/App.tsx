@@ -201,7 +201,7 @@ const App = () => (
                 path="/admin/overview"
                 element={
                   <ProtectedRoute allowedRoles={["admin"]}>
-                    <AdminDashboard />
+                    <AdminOverviewPage />
                   </ProtectedRoute>
                 }
               />
@@ -209,7 +209,7 @@ const App = () => (
                 path="/admin/users"
                 element={
                   <ProtectedRoute allowedRoles={["admin"]}>
-                    <AdminDashboard />
+                    <AdminUsersPage />
                   </ProtectedRoute>
                 }
               />
@@ -217,7 +217,7 @@ const App = () => (
                 path="/admin/programmes"
                 element={
                   <ProtectedRoute allowedRoles={["admin"]}>
-                    <AdminDashboard />
+                    <AdminProgrammesPage />
                   </ProtectedRoute>
                 }
               />
@@ -225,7 +225,7 @@ const App = () => (
                 path="/admin/analytics"
                 element={
                   <ProtectedRoute allowedRoles={["admin"]}>
-                    <AdminDashboard />
+                    <AdminAnalyticsPage />
                   </ProtectedRoute>
                 }
               />
@@ -233,7 +233,7 @@ const App = () => (
                 path="/admin/announcements"
                 element={
                   <ProtectedRoute allowedRoles={["admin"]}>
-                    <AdminDashboard />
+                    <AdminAnnouncementsPage />
                   </ProtectedRoute>
                 }
               />
@@ -241,7 +241,7 @@ const App = () => (
                 path="/admin/queries"
                 element={
                   <ProtectedRoute allowedRoles={["admin"]}>
-                    <AdminDashboard />
+                    <AdminQueriesPage />
                   </ProtectedRoute>
                 }
               />
@@ -249,7 +249,7 @@ const App = () => (
                 path="/admin/reports"
                 element={
                   <ProtectedRoute allowedRoles={["admin"]}>
-                    <AdminDashboard />
+                    <AdminReportsPage />
                   </ProtectedRoute>
                 }
               />
@@ -257,7 +257,7 @@ const App = () => (
                 path="/admin/settings"
                 element={
                   <ProtectedRoute allowedRoles={["admin"]}>
-                    <AdminDashboard />
+                    <AdminSettingsPage />
                   </ProtectedRoute>
                 }
               />
@@ -298,7 +298,7 @@ const App = () => (
                 path="/programme-manager/overview"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
-                    <TutorDashboard />
+                    <ManagerOverviewPage />
                   </ProtectedRoute>
                 }
               />
@@ -306,7 +306,7 @@ const App = () => (
                 path="/programme-manager/programmes"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
-                    <TutorDashboard />
+                    <ManagerProgrammesPage />
                   </ProtectedRoute>
                 }
               />
@@ -314,7 +314,7 @@ const App = () => (
                 path="/programme-manager/analytics"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
-                    <TutorDashboard />
+                    <ManagerAnalyticsPage />
                   </ProtectedRoute>
                 }
               />
@@ -322,7 +322,7 @@ const App = () => (
                 path="/programme-manager/announcements"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
-                    <TutorDashboard />
+                    <ManagerAnnouncementsPage />
                   </ProtectedRoute>
                 }
               />
@@ -330,7 +330,7 @@ const App = () => (
                 path="/programme-manager/evaluation"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
-                    <TutorDashboard />
+                    <ManagerEvaluationPage />
                   </ProtectedRoute>
                 }
               />
@@ -338,7 +338,7 @@ const App = () => (
                 path="/programme-manager/reports"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
-                    <TutorDashboard />
+                    <ManagerReportsPage />
                   </ProtectedRoute>
                 }
               />
@@ -346,7 +346,7 @@ const App = () => (
                 path="/programme-manager/queries"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
-                    <TutorDashboard />
+                    <ManagerQueriesPage />
                   </ProtectedRoute>
                 }
               />
@@ -354,7 +354,7 @@ const App = () => (
                 path="/programme-manager/students"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
-                    <TutorDashboard />
+                    <ManagerStudentsPage />
                   </ProtectedRoute>
                 }
               />
@@ -419,7 +419,7 @@ const App = () => (
                 path="/tutor/overview"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
-                    <TutorDashboard />
+                    <ManagerOverviewPage />
                   </ProtectedRoute>
                 }
               />
@@ -427,7 +427,7 @@ const App = () => (
                 path="/tutor/programmes"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
-                    <TutorDashboard />
+                    <ManagerProgrammesPage />
                   </ProtectedRoute>
                 }
               />
@@ -435,7 +435,7 @@ const App = () => (
                 path="/tutor/analytics"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
-                    <TutorDashboard />
+                    <ManagerAnalyticsPage />
                   </ProtectedRoute>
                 }
               />
@@ -443,7 +443,7 @@ const App = () => (
                 path="/tutor/announcements"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
-                    <TutorDashboard />
+                    <ManagerAnnouncementsPage />
                   </ProtectedRoute>
                 }
               />
@@ -451,7 +451,7 @@ const App = () => (
                 path="/tutor/evaluation"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
-                    <TutorDashboard />
+                    <ManagerEvaluationPage />
                   </ProtectedRoute>
                 }
               />
@@ -459,7 +459,7 @@ const App = () => (
                 path="/tutor/reports"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
-                    <TutorDashboard />
+                    <ManagerReportsPage />
                   </ProtectedRoute>
                 }
               />
@@ -467,7 +467,7 @@ const App = () => (
                 path="/tutor/queries"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
-                    <TutorDashboard />
+                    <ManagerQueriesPage />
                   </ProtectedRoute>
                 }
               />
@@ -475,7 +475,7 @@ const App = () => (
                 path="/tutor/students"
                 element={
                   <ProtectedRoute allowedRoles={["programme_manager", "tutor"]}>
-                    <TutorDashboard />
+                    <ManagerStudentsPage />
                   </ProtectedRoute>
                 }
               />
