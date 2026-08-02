@@ -51,7 +51,7 @@ import {
 
 const statusTone: Record<QueryStatus, string> = {
   open: "bg-amber-500/10 text-amber-700 border-amber-500/20",
-  in_progress: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+  in_progress: "bg-vahani-blue/10 text-vahani-blue border-vahani-blue/20",
   resolved: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20",
   closed: "bg-slate-500/10 text-slate-700 border-slate-500/20",
 };
@@ -277,7 +277,7 @@ export default function Queries() {
             <section className="overflow-hidden rounded-[2rem] border border-border bg-[linear-gradient(135deg,rgba(11,13,71,0.10),rgba(252,209,129,0.16),rgba(255,255,255,0.98))] p-6 shadow-sm sm:p-8">
               <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-vahani-blue">
+                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-vahani-gold">
                     Scholar Support
                   </p>
                   <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">

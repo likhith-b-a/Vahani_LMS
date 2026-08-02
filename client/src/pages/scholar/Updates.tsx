@@ -17,7 +17,7 @@ export default function Updates() {
             <section className="overflow-hidden rounded-[2rem] border border-border bg-[linear-gradient(135deg,rgba(11,13,71,0.10),rgba(252,209,129,0.16),rgba(255,255,255,0.98))] p-6 shadow-sm sm:p-8">
               <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-vahani-blue">
+                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-vahani-gold">
                     Updates Center
                   </p>
                   <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">

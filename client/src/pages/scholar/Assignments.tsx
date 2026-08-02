@@ -63,7 +63,7 @@ function getAssignmentBadge(assignment: EnrichedAssignment) {
       className:
         assignment.status === "GRADED"
           ? "bg-green-500/15 text-green-600 border-green-500/30"
-          : "bg-blue-500/15 text-blue-600 border-blue-500/30",
+          : "bg-vahani-blue/15 text-vahani-blue border-vahani-blue/30",
     };
   }
 
