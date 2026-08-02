@@ -1,12 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
-import {
-  AlertTriangle,
-  Lightbulb,
-  MessageSquarePlus,
-  Sparkles,
-  ThumbsUp,
-  Trash2,
-} from "lucide-react";
+import { BookPlus, Sparkles, Trash2 } from "lucide-react";
 
 import {
   addToWishlist,
@@ -16,7 +9,6 @@ import {
 } from "../../api/wishlist";
 import { AppSidebar } from "../../components/dashboard/AppSidebar";
 import { TopNavbar } from "../../components/dashboard/TopNavbar";
-import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
@@ -24,48 +16,13 @@ import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
 import { useToast } from "../../hooks/use-toast";
 
-const MAX_WISHLIST_ITEMS = 5;
-
-const CATEGORIES = [
-  {
-    value: "Suggestion",
-    icon: Lightbulb,
-    badgeClass: "border-vahani-blue/20 bg-vahani-blue/10 text-vahani-blue",
-  },
-  {
-    value: "Issue",
-    icon: AlertTriangle,
-    badgeClass: "border-red-500/20 bg-red-500/10 text-red-600",
-  },
-  {
-    value: "New Feature",
-    icon: Sparkles,
-    badgeClass: "border-purple-500/20 bg-purple-500/10 text-purple-600",
-  },
-  {
-    value: "Recommendation",
-    icon: ThumbsUp,
-    badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600",
-  },
-] as const;
-
-type Category = (typeof CATEGORIES)[number]["value"];
-
-const parseEntryTitle = (requestedTitle: string): { category: Category; subject: string } => {
-  const match = requestedTitle.match(/^\[(.+?)\]\s*(.*)$/);
-  const matchedCategory = CATEGORIES.find((category) => category.value === match?.[1]);
-  return {
-    category: matchedCategory ? matchedCategory.value : "Suggestion",
-    subject: match ? match[2] : requestedTitle,
-  };
-};
+const MAX_WISHLIST_ENTRIES = 5;
 
 export default function Wishlist() {
   const { toast } = useToast();
   const [wishlist, setWishlist] = useState<WishlistEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyEntryId, setBusyEntryId] = useState<string | null>(null);
-  const [category, setCategory] = useState<Category>("Suggestion");
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
   const [search, setSearch] = useState("");
@@ -82,7 +39,7 @@ export default function Wishlist() {
         );
       } catch (error) {
         toast({
-          title: "Unable to load suggestions",
+          title: "Unable to load wishlist",
           description: error instanceof Error ? error.message : "Please try again.",
           variant: "destructive",
         });
@@ -97,17 +54,25 @@ export default function Wishlist() {
   const filteredWishlist = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return wishlist;
-    return wishlist.filter((entry) => {
-      const { subject } = parseEntryTitle(entry.requestedTitle);
-      return `${subject} ${entry.note || ""}`.toLowerCase().includes(term);
-    });
+    return wishlist.filter((entry) =>
+      `${entry.requestedTitle} ${entry.note || ""}`.toLowerCase().includes(term),
+    );
   }, [search, wishlist]);
 
   const handleAdd = async () => {
     if (!title.trim()) {
       toast({
-        title: "Subject required",
-        description: "Tell us what your suggestion, issue, or idea is about.",
+        title: "Programme name required",
+        description: "Tell us the name of the programme you'd like to see offered.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (wishlist.length >= MAX_WISHLIST_ENTRIES) {
+      toast({
+        title: "Wishlist full",
+        description: `You can only keep up to ${MAX_WISHLIST_ENTRIES} programmes in your wishlist.`,
         variant: "destructive",
       });
       return;
@@ -115,21 +80,18 @@ export default function Wishlist() {
 
     try {
       setBusyEntryId("new");
-      const response = await addToWishlist(
-        `[${category}] ${title.trim()}`,
-        note.trim() || undefined,
-      );
+      const response = await addToWishlist(title.trim(), note.trim() || undefined);
       const createdEntry = response?.data as WishlistEntry;
       setWishlist((current) => [createdEntry, ...current]);
       setTitle("");
       setNote("");
       toast({
-        title: "Thanks for the feedback",
-        description: "Your submission has been shared with admin.",
+        title: "Added to wishlist",
+        description: "Admin can see which programmes scholars want offered.",
       });
     } catch (error) {
       toast({
-        title: "Unable to submit",
+        title: "Unable to add",
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
@@ -145,11 +107,11 @@ export default function Wishlist() {
       setWishlist((current) => current.filter((entry) => entry.id !== wishlistId));
       toast({
         title: "Removed",
-        description: "The submission has been removed.",
+        description: "The programme has been removed from your wishlist.",
       });
     } catch (error) {
       toast({
-        title: "Unable to remove submission",
+        title: "Unable to remove",
         description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
@@ -166,94 +128,61 @@ export default function Wishlist() {
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6 lg:p-8">
             <section>
-              <h1 className="text-2xl font-bold tracking-tight">Suggestions &amp; Feedback</h1>
+              <h1 className="text-2xl font-bold tracking-tight">Wishlist</h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                Share portal issues, new programme ideas, feature requests, or general
-                recommendations with admin.
+                Tell admin which programmes you wish were offered. Keep up to{" "}
+                {MAX_WISHLIST_ENTRIES} programmes in your wishlist.
               </p>
             </section>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card>
-                <CardContent className="flex items-center gap-3 p-4">
-                  <div className="rounded-xl bg-vahani-blue/10 p-2.5">
-                    <MessageSquarePlus className="h-5 w-5 text-vahani-blue" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Submitted</p>
-                    <p className="text-xl font-bold text-foreground">{wishlist.length}</p>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-4">
-                  <p className="text-xs text-muted-foreground">How admin uses this</p>
-                  <p className="mt-1 text-sm text-foreground">
-                    Every submission appears in admin reports so issues get fixed and good ideas
-                    get planned.
+            <Card>
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className="rounded-xl bg-vahani-blue/10 p-2.5">
+                  <BookPlus className="h-5 w-5 text-vahani-blue" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">In your wishlist</p>
+                  <p className="text-xl font-bold text-foreground">
+                    {wishlist.length} / {MAX_WISHLIST_ENTRIES}
                   </p>
-                </CardContent>
-              </Card>
-            </div>
+                </div>
+              </CardContent>
+            </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Share a suggestion</CardTitle>
+                <CardTitle>Add a programme</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Type</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {CATEGORIES.map((option) => {
-                      const Icon = option.icon;
-                      const selected = option.value === category;
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => setCategory(option.value)}
-                          className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
-                            selected
-                              ? option.badgeClass
-                              : "border-border text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          <Icon className="h-3.5 w-3.5" />
-                          {option.value}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
                 <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
                   <div className="space-y-2">
-                    <Label>Subject</Label>
+                    <Label>Programme name</Label>
                     <Input
                       value={title}
                       onChange={(event: ChangeEvent<HTMLInputElement>) =>
                         setTitle(event.target.value)
                       }
-                      placeholder="Example: Add dark mode / Attendance page loads slowly"
+                      placeholder="Example: Advanced Excel for Data Analysis"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Details (optional)</Label>
+                    <Label>Why you want it (optional)</Label>
                     <Textarea
                       rows={3}
                       value={note}
                       onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
                         setNote(event.target.value)
                       }
-                      placeholder="Example: Describe the issue, why it matters, or what you'd like to see"
+                      placeholder="Example: Would help with my current role / interests"
                     />
                   </div>
                   <div className="flex items-end">
                     <Button
                       className="w-full lg:w-auto"
-                      disabled={busyEntryId === "new"}
+                      disabled={busyEntryId === "new" || wishlist.length >= MAX_WISHLIST_ENTRIES}
                       onClick={() => void handleAdd()}
                     >
-                      Submit
+                      Add
                     </Button>
                   </div>
                 </div>
@@ -262,7 +191,7 @@ export default function Wishlist() {
 
             <Card>
               <CardHeader>
-                <CardTitle>My submissions</CardTitle>
+                <CardTitle>My wishlist</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <Input
@@ -270,62 +199,44 @@ export default function Wishlist() {
                   onChange={(event: ChangeEvent<HTMLInputElement>) =>
                     setSearch(event.target.value)
                   }
-                  placeholder="Search your submissions"
+                  placeholder="Search your wishlist"
                 />
 
                 {loading ? (
-                  <p className="text-sm text-muted-foreground">Loading submissions...</p>
+                  <p className="text-sm text-muted-foreground">Loading wishlist...</p>
                 ) : filteredWishlist.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    No suggestions submitted yet.
+                    No programmes added to your wishlist yet.
                   </p>
                 ) : (
                   <div className="space-y-3">
-                    {filteredWishlist.map((entry) => {
-                      const { category: entryCategory, subject } = parseEntryTitle(
-                        entry.requestedTitle,
-                      );
-                      const categoryOption = CATEGORIES.find(
-                        (option) => option.value === entryCategory,
-                      );
-                      const Icon = categoryOption?.icon ?? Lightbulb;
-
-                      return (
-                        <div
-                          key={entry.id}
-                          className="flex flex-col gap-3 rounded-xl border border-border p-4 sm:flex-row sm:items-start sm:justify-between"
-                        >
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge
-                                variant="outline"
-                                className={`gap-1 ${categoryOption?.badgeClass ?? ""}`}
-                              >
-                                <Icon className="h-3 w-3" />
-                                {entryCategory}
-                              </Badge>
-                              <p className="font-medium text-foreground">{subject}</p>
-                            </div>
-                            {entry.note ? (
-                              <p className="mt-2 text-sm text-muted-foreground">{entry.note}</p>
-                            ) : (
-                              <p className="mt-2 text-sm text-muted-foreground">
-                                No details added for this submission.
-                              </p>
-                            )}
+                    {filteredWishlist.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="flex flex-col gap-3 rounded-xl border border-border p-4 sm:flex-row sm:items-start sm:justify-between"
+                      >
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Sparkles className="h-4 w-4 text-vahani-gold" />
+                            <p className="font-medium text-foreground">
+                              {entry.requestedTitle}
+                            </p>
                           </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={busyEntryId === entry.id}
-                            onClick={() => void handleRemove(entry.id)}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Remove
-                          </Button>
+                          {entry.note ? (
+                            <p className="mt-2 text-sm text-muted-foreground">{entry.note}</p>
+                          ) : null}
                         </div>
-                      );
-                    })}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={busyEntryId === entry.id}
+                          onClick={() => void handleRemove(entry.id)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Remove
+                        </Button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </CardContent>

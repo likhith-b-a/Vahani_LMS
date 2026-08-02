@@ -147,7 +147,8 @@
   }
 
   .scholar-theme {
-    font-family: Georgia, Cambria, "Times New Roman", serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+      sans-serif;
   }
   .scholar-theme h1,
   .scholar-theme h2,

@@ -108,6 +108,7 @@ model User {
   certificates              Certificate[]           @relation("CertificateOwner")
   issuedCertificates        Certificate[]           @relation("CertificateIssuer")
   wishlistEntries           ProgrammeWishlist[]
+  suggestions               Suggestion[]            @relation("SuggestionAuthor")
   authoredQueries           SupportQuery[]          @relation("QueryAuthor")
   assignedQueries           SupportQuery[]          @relation("QueryAssignee")
   queryMessages             SupportQueryMessage[]   @relation("QueryMessageAuthor")
@@ -431,6 +432,26 @@ model ProgrammeWishlist {
   user                      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, requestedTitle])
+  @@index([userId, createdAt])
+}
+
+enum SuggestionCategory {
+  suggestion
+  issue
+  new_feature
+  recommendation
+}
+
+model Suggestion {
+  id                        String                  @id @default(uuid(7))
+  category                  SuggestionCategory      @default(suggestion)
+  subject                   String
+  note                      String?
+  createdAt                 DateTime                @default(now())
+
+  userId                    String
+  user                      User                    @relation("SuggestionAuthor", fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId, createdAt])
 }
 

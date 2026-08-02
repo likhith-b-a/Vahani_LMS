@@ -16,7 +16,8 @@ const mainNav = [
   { icon: BarChart3, label: "Marks", to: "/marks" },
   { icon: Megaphone, label: "Announcements", to: "/updates" },
   { icon: CircleHelp, label: "Queries", to: "/queries" },
-  { icon: MessageSquarePlus, label: "Suggestions", to: "/wishlist" },
+  { icon: BookPlus, label: "Wishlist", to: "/wishlist" },
+  { icon: MessageSquarePlus, label: "Suggestions", to: "/suggestions" },
 ];
 
 export function AppSidebar() {
