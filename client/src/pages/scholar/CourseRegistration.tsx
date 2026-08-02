@@ -180,7 +180,7 @@ export default function CourseRegistration() {
 
                         {(programme.spotlightTitle || programme.spotlightMessage) && (
                           <div className="rounded-lg border border-vahani-blue/20 bg-vahani-blue/5 p-3">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-vahani-blue">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-vahani-gold">
                               {programme.spotlightTitle || "Programme Spotlight"}
                             </p>
                             <p className="mt-1 text-sm text-muted-foreground">

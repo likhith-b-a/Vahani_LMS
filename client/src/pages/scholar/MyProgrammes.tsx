@@ -366,7 +366,7 @@ function ProgrammeCard({
 
           {(programme.spotlightTitle || programme.spotlightMessage) && (
             <div className="rounded-lg border border-vahani-gold-border bg-vahani-gold-light p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-vahani-blue">
+              <p className="text-xs font-semibold uppercase tracking-wide text-vahani-gold">
                 {programme.spotlightTitle || "Spotlight"}
               </p>
               <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">

@@ -29,10 +29,10 @@ const Index = () => {
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-5xl grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-12 lg:gap-8 lg:p-8">
             <div className="space-y-6 lg:col-span-8 lg:space-y-8">
-              <section className="overflow-hidden rounded-[2rem] border border-border bg-[linear-gradient(135deg,rgba(12,106,204,0.12),rgba(255,199,88,0.08),rgba(255,255,255,0.98))] p-6 shadow-sm sm:p-8">
+              <section className="overflow-hidden rounded-[2rem] border border-border bg-[linear-gradient(135deg,hsl(var(--vahani-blue)/12%),hsl(var(--vahani-gold)/16%),hsl(var(--card)))] p-6 shadow-sm sm:p-8">
                 <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.3em] text-vahani-blue">
+                    <p className="text-xs font-semibold uppercase tracking-[0.3em] text-vahani-gold">
                       Scholar Dashboard
                     </p>
                     <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">

@@ -286,7 +286,7 @@ export default function ProgrammeDetail() {
                                 <Badge
                                   className={
                                     assignment.submissions.length
-                                      ? "bg-blue-500/10 text-blue-600"
+                                      ? "bg-vahani-blue/10 text-vahani-blue"
                                       : "bg-yellow-500/10 text-yellow-700"
                                   }
                                 >

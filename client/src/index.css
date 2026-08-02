@@ -85,49 +85,56 @@
 
   /* Vahani Scholarship Trust brand palette, scoped to scholar-facing pages */
   .scholar-theme {
-    --background: 60 8% 97%;
-    --foreground: 40 3% 19%;
+    --background: 0 0% 100%;
+    --foreground: 238 73% 16%;
 
     --card: 0 0% 100%;
-    --card-foreground: 40 3% 19%;
+    --card-foreground: 238 73% 16%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 40 3% 19%;
+    --popover-foreground: 238 73% 16%;
 
     --primary: 238 73% 16%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 40 15% 93%;
-    --secondary-foreground: 40 3% 19%;
+    --secondary: 39 90% 95%;
+    --secondary-foreground: 238 73% 16%;
 
-    --muted: 40 15% 93%;
-    --muted-foreground: 40 3% 39%;
+    --muted: 220 15% 95%;
+    --muted-foreground: 238 24% 49%;
 
-    --accent: 238 73% 16%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 39 95% 75%;
+    --accent-foreground: 238 73% 16%;
 
     --vahani-blue: 238 73% 16%;
     --vahani-gold: 39 95% 75%;
     --vahani-gold-light: 39 90% 94%;
     --vahani-gold-border: 39 60% 85%;
 
-    --border: 40 10% 80%;
-    --input: 40 10% 80%;
-    --ring: 238 73% 16%;
+    --border: 213 15% 88%;
+    --input: 213 15% 88%;
+    --ring: 39 95% 75%;
 
     --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 40 3% 39%;
+    --sidebar-foreground: 238 24% 49%;
     --sidebar-primary: 238 73% 16%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 40 15% 94%;
+    --sidebar-accent: 39 90% 94%;
     --sidebar-accent-foreground: 238 73% 16%;
-    --sidebar-border: 40 10% 85%;
-    --sidebar-ring: 238 73% 16%;
+    --sidebar-border: 213 15% 88%;
+    --sidebar-ring: 39 95% 75%;
 
     background-image:
       radial-gradient(1100px circle at 0% 0%, hsl(var(--vahani-blue) / 6%), transparent 55%),
       radial-gradient(900px circle at 100% 100%, hsl(var(--vahani-gold) / 16%), transparent 50%);
     background-attachment: fixed;
+  }
+
+  .scholar-theme h1,
+  .scholar-theme h2,
+  .scholar-theme h3 {
+    font-family: 'Gloock', Georgia, serif;
+    font-weight: 400;
   }
 }
 
