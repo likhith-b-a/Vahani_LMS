@@ -30,6 +30,7 @@ import ProgrammeDetail from "./pages/scholar/ProgrammeDetail";
 import Queries from "./pages/scholar/Queries";
 import Updates from "./pages/scholar/Updates";
 import Wishlist from "./pages/scholar/Wishlist";
+import Suggestions from "./pages/scholar/Suggestions";
 import Marks from "./pages/scholar/Marks";
 import VerifyCertificate from "./pages/VerifyCertificate";
 import { queryClient } from "./lib/queryClient";
@@ -161,6 +162,14 @@ const App = () => (
                 element={
                   <ProtectedRoute allowedRoles={["scholar"]}>
                     <Wishlist />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/suggestions"
+                element={
+                  <ProtectedRoute allowedRoles={["scholar"]}>
+                    <Suggestions />
                   </ProtectedRoute>
                 }
               />

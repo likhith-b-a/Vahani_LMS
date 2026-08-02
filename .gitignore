@@ -114,3 +114,6 @@ storybook-static/
 tmp/
 temp/
 test-reports/
+ppt/
+bash.exe.stackdump
+/server/prisma/migrations
